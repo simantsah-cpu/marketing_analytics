@@ -6,6 +6,7 @@ const PAGE_INFO = {
   '/traffic':    { title: 'Traffic & Engagement',     sub: 'Session quality & user behaviour analysis' },
   '/commercial': { title: 'Commercial Performance',   sub: 'Bookings, revenue, conversion rate & AOV' },
   '/funnel':     { title: 'Funnel Analysis',          sub: 'Full booking funnel · drop-off investigation' },
+  '/llm':        { title: 'LLM Intelligence',         sub: 'AI referral traffic · ChatGPT, Gemini, Copilot, Perplexity, Claude & Grok' },
 }
 
 export default function Topbar() {

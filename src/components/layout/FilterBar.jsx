@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useFilters } from '../../context/FiltersContext'
 import { useProperty } from '../../context/PropertyContext'
 import { getFilterOptions } from '../../services/data-service'
@@ -20,6 +21,8 @@ const SEP = () => (
 export default function FilterBar() {
   const { filters, actions } = useFilters()
   const { selectedProperty } = useProperty()
+  const { pathname } = useLocation()
+  const isLLMPage = pathname === '/llm'
 
   // ── Load dynamic affiliate + country options whenever property or date range changes ──
   useEffect(() => {
@@ -89,46 +92,48 @@ export default function FilterBar() {
 
       <SEP />
 
-      {/* Group By toggle */}
-      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>Group by</span>
-      <div style={{
-        display: 'flex', alignItems: 'center',
-        background: 'var(--bg)', border: '1px solid var(--border)',
-        borderRadius: 6, padding: 2, gap: 1,
-      }}>
-        {[
-          { value: 'affiliate',        label: 'Affiliate' },
-          { value: 'promotion_method', label: 'Promo Method' },
-        ].map(({ value, label }) => {
-          const active = filters.groupBy === value
-          return (
-            <button
-              key={value}
-              onClick={() => actions.setGroupBy(value)}
-              style={{
-                padding: '4px 10px', border: 'none', borderRadius: 4,
-                background: active ? 'var(--teal)' : 'transparent',
-                color: active ? '#fff' : 'var(--subtext)',
-                fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
-                cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap',
-              }}
-            >
-              {label}
-            </button>
-          )
-        })}
-      </div>
-
-      <SEP />
-
-      {/* Affiliate multiselect */}
-      <MultiSelectFilter
-        label="All Affiliates"
-        options={filters.filterOptions.affiliates}
-        selected={filters.affiliateFilter}
-        onApply={actions.setAffiliateFilter}
-        minWidth={130}
-      />
+      {/* Group By toggle — hidden on /llm */}
+      {!isLLMPage && (
+        <>
+          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>Group by</span>
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            background: 'var(--bg)', border: '1px solid var(--border)',
+            borderRadius: 6, padding: 2, gap: 1,
+          }}>
+            {[
+              { value: 'affiliate',        label: 'Affiliate' },
+              { value: 'promotion_method', label: 'Promo Method' },
+            ].map(({ value, label }) => {
+              const active = filters.groupBy === value
+              return (
+                <button
+                  key={value}
+                  onClick={() => actions.setGroupBy(value)}
+                  style={{
+                    padding: '4px 10px', border: 'none', borderRadius: 4,
+                    background: active ? 'var(--teal)' : 'transparent',
+                    color: active ? '#fff' : 'var(--subtext)',
+                    fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                    cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+          <SEP />
+          {/* Affiliate multiselect */}
+          <MultiSelectFilter
+            label="All Affiliates"
+            options={filters.filterOptions.affiliates}
+            selected={filters.affiliateFilter}
+            onApply={actions.setAffiliateFilter}
+            minWidth={130}
+          />
+        </>
+      )}
 
       {/* Country multiselect */}
       <MultiSelectFilter

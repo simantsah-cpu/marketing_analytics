@@ -17,6 +17,7 @@ import FunnelAnalysis from './pages/FunnelAnalysis'
 import AffiliateScorecard from './pages/AffiliateScorecard'
 import MetricGlossary from './pages/MetricGlossary'
 import DestinationIntelligence from './pages/DestinationIntelligence'
+import LLMIntelligence from './pages/LLMIntelligence'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -81,6 +82,7 @@ function DashboardShell({ onQueryOpen }) {
             <Route path="/funnel" element={<FunnelAnalysis />} />
             <Route path="/destinations" element={<DestinationIntelligence />} />
             <Route path="/glossary" element={<MetricGlossary />} />
+            <Route path="/llm" element={<LLMIntelligence />} />
           </Routes>
         </div>
       </div>

@@ -488,6 +488,112 @@ function buildRequests(page: string, dateRanges: object[], filters: any) {
     return requests
   }
 
+  if (page === 'llm') {
+    // LLM Intelligence page — no sessionMedium filter.
+    // LLM traffic arrives via medium: referral, (none), organic — NOT 'affiliates'.
+    // We filter by sessionSource instead, matching the known LLM referrer domains.
+    const LLM_SOURCES = [
+      'chatgpt.com',
+      'gemini.google.com',
+      'copilot.microsoft.com',
+      'copilot.com',
+      'copilot.cloud.microsoft',
+      'perplexity',
+      'perplexity.ai',
+      'claude.ai',
+      'grok.com',
+    ]
+
+    // If the caller passed affiliateFilter (sub-selection of LLMs), use that;
+    // otherwise default to the full LLM_SOURCES list.
+    const sourcesToUse: string[] =
+      affiliateValues.length > 0 ? affiliateValues : LLM_SOURCES
+
+    const llmSourceFilter = {
+      filter: {
+        fieldName: 'sessionSource',
+        inListFilter: { values: sourcesToUse, caseSensitive: false },
+      },
+    }
+
+    // Optionally AND with device / country user filters
+    const extra = [deviceFilter, countryFilter].filter(Boolean)
+    const llmDimFilter = extra.length > 0
+      ? { andGroup: { expressions: [llmSourceFilter, ...extra.map((f: any) => ({ filter: f }))] } }
+      : llmSourceFilter
+
+    const llmCurrentParams = {
+      dateRanges: [dateRanges[0]],
+      dimensionFilter: llmDimFilter,
+      keepEmptyRows: false,
+    }
+    const llmPrevParams = dateRanges.length > 1 && dateRanges[1] ? {
+      dateRanges: [dateRanges[1]],
+      dimensionFilter: llmDimFilter,
+      keepEmptyRows: false,
+    } : null
+
+    const dailyMetrics = [
+      { name: 'sessions' }, { name: 'transactions' },
+      { name: 'purchaseRevenue' }, { name: 'engagedSessions' },
+    ]
+
+    const reqs: object[] = [
+      // report[0]: current period daily total (date only — for chart baseline)
+      {
+        ...llmCurrentParams,
+        dimensions: [{ name: 'date' }],
+        metrics: dailyMetrics,
+        orderBys: [{ dimension: { dimensionName: 'date' } }],
+      },
+      // report[1]: current period per-source aggregates (full canonical metrics)
+      {
+        ...llmCurrentParams,
+        dimensions: [{ name: 'sessionSource' }],
+        metrics: affiliateMetrics,
+        orderBys: [{ metric: { metricName: 'purchaseRevenue' }, desc: true }],
+        limit: 50,
+      },
+      // report[2]: current period per-source daily breakdown (date + sessionSource)
+      // This gives exact daily values per LLM — used for the trend chart lines.
+      {
+        ...llmCurrentParams,
+        dimensions: [{ name: 'date' }, { name: 'sessionSource' }],
+        metrics: dailyMetrics,
+        orderBys: [{ dimension: { dimensionName: 'date' } }],
+        limit: 5000,
+      },
+    ]
+
+    if (llmPrevParams) {
+      // report[3]: comparison period daily total
+      reqs.push({
+        ...llmPrevParams,
+        dimensions: [{ name: 'date' }],
+        metrics: dailyMetrics,
+        orderBys: [{ dimension: { dimensionName: 'date' } }],
+      })
+      // report[4]: comparison period per-source aggregates
+      reqs.push({
+        ...llmPrevParams,
+        dimensions: [{ name: 'sessionSource' }],
+        metrics: affiliateMetrics,
+        orderBys: [{ metric: { metricName: 'purchaseRevenue' }, desc: true }],
+        limit: 50,
+      })
+      // report[5]: comparison period per-source daily breakdown
+      reqs.push({
+        ...llmPrevParams,
+        dimensions: [{ name: 'date' }, { name: 'sessionSource' }],
+        metrics: dailyMetrics,
+        orderBys: [{ dimension: { dimensionName: 'date' } }],
+        limit: 5000,
+      })
+    }
+
+    return reqs
+  }
+
   if (page === 'filter-options') {
     // Dedicated dimension-list fetch for populating filter dropdowns.
     // No medium filter — returns ALL session sources and countries.
