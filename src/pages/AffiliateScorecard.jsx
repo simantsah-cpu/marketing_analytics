@@ -547,39 +547,6 @@ export default function AffiliateScorecard() {
         .sc-btn:hover { background: #F1F5F9; }
       `}</style>
 
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: '#0A2540', marginBottom: 2 }}>Affiliate Scorecard</div>
-        <div style={{ fontSize: 13, color: '#5A6A7A' }}>
-          {groupBy === 'promotion_method' ? 'Grouped by Promotion Method' : 'All affiliates'} · every key metric · one view
-        </div>
-        {/* Date range context row — matches Topbar but 2px larger (13px) */}
-        {filters.dateRanges?.primary && (() => {
-          const fmtR = (r) => r?.startDate && r?.endDate
-            ? `${format(parseISO(r.startDate), 'MMM d, yyyy')} – ${format(parseISO(r.endDate), 'MMM d, yyyy')}`
-            : null
-          const cur  = fmtR(filters.dateRanges.primary)
-          const comp = fmtR(filters.dateRanges.comparison)
-          const mode = filters.comparison === 'prevPeriod' ? 'vs Prev Period'
-                     : filters.comparison === 'prevYear'   ? 'vs Last Year' : null
-          return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 5, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, color: '#0A2540', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--blue)', display: 'inline-block' }} />
-                {cur}
-              </span>
-              {comp && mode && (
-                <>
-                  <span style={{ fontSize: 13, color: '#5A6A7A' }}>{mode}:</span>
-                  <span style={{ fontSize: 13, color: '#5A6A7A', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#94A3B8', display: 'inline-block' }} />
-                    {comp}
-                  </span>
-                </>
-              )}
-            </div>
-          )
-        })()}
-      </div>
 
       <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
 

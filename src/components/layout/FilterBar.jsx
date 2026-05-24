@@ -22,7 +22,7 @@ export default function FilterBar() {
   const { filters, actions } = useFilters()
   const { selectedProperty } = useProperty()
   const { pathname } = useLocation()
-  const isLLMPage = pathname === '/llm'
+  const isLLMPage = pathname.startsWith('/llm')
 
   // ── Load dynamic affiliate + country options whenever property or date range changes ──
   useEffect(() => {
@@ -135,23 +135,25 @@ export default function FilterBar() {
         </>
       )}
 
-      {/* Country multiselect */}
-      <MultiSelectFilter
-        label="All Countries"
-        options={filters.filterOptions.countries}
-        selected={filters.countryFilter}
-        onApply={actions.setCountryFilter}
-        minWidth={130}
-      />
-
-      {/* Device multiselect */}
-      <MultiSelectFilter
-        label="All Devices"
-        options={DEVICE_OPTIONS}
-        selected={filters.deviceFilter}
-        onApply={actions.setDeviceFilter}
-        minWidth={110}
-      />
+      {/* Country + Device — hidden on LLM pages */}
+      {!isLLMPage && (
+        <>
+          <MultiSelectFilter
+            label="All Countries"
+            options={filters.filterOptions.countries}
+            selected={filters.countryFilter}
+            onApply={actions.setCountryFilter}
+            minWidth={130}
+          />
+          <MultiSelectFilter
+            label="All Devices"
+            options={DEVICE_OPTIONS}
+            selected={filters.deviceFilter}
+            onApply={actions.setDeviceFilter}
+            minWidth={110}
+          />
+        </>
+      )}
 
       <SEP />
 

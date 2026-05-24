@@ -279,16 +279,6 @@ export default function MetricGlossary() {
   return (
     <div className="page-content fade-in" style={{ maxWidth: '100%' }}>
 
-      {/* Page Header */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--navy)', margin: 0, fontFamily: 'DM Sans, sans-serif' }}>
-          Metric Glossary
-        </h1>
-        <p style={{ fontSize: 13, color: 'var(--subtext)', marginTop: 4, marginBottom: 0 }}>
-          Definitions, formulas, and data sources for every metric in the Affiliate Intelligence dashboard
-        </p>
-      </div>
-
       {/* ── Section 1: Searchable Metrics Table ── */}
       <div className="chart-card" style={{ marginBottom: 24 }}>
         <div className="chart-header">

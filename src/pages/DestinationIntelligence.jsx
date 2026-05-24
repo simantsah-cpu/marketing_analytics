@@ -165,7 +165,6 @@ export default function DestinationIntelligence() {
   )
   if (!affiliates.length) return (
     <div className="page-content fade-in">
-      <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--navy)' }}>Destination Intelligence</h1>
       <p style={{ color: 'var(--subtext)', fontSize: 13 }}>No destination data found for this period and filter selection.</p>
     </div>
   )
@@ -178,19 +177,6 @@ export default function DestinationIntelligence() {
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
     <div className="page-content fade-in">
-
-      {/* Page Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--navy)', margin: 0, fontFamily: 'DM Sans, sans-serif' }}>
-          Destination Intelligence
-        </h1>
-        <p style={{ fontSize: 13, color: 'var(--subtext)', marginTop: 4, marginBottom: 0 }}>
-          Top destinations driven by each affiliate · based on landing page and booking data
-        </p>
-        <p style={{ fontSize: 12, color: 'var(--navy)', marginTop: 3, marginBottom: 0, fontWeight: 700 }}>
-          {dateLabel}
-        </p>
-      </div>
 
       {/* Phase 2 Banner */}
       {!phase2Dismissed && (

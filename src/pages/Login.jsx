@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useAuth } from '../context/AuthContext'
+import { useAuth, isAllowedEmail, DOMAIN_ERROR } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 
 export default function Login() {
-  const { signIn, signInWithGoogle, createUser, resetPassword } = useAuth()
+  const { signIn, signInWithGoogle, createUser, resetPassword, domainError } = useAuth()
   const navigate = useNavigate()
 
   // Tabs: 'login' | 'adduser'
@@ -29,8 +29,13 @@ export default function Login() {
 
   const handleSignIn = async (e) => {
     e.preventDefault()
-    setLoading(true)
     setError(null)
+    // Layer 1 — frontend domain check (UX gate)
+    if (!isAllowedEmail(email)) {
+      setError(DOMAIN_ERROR)
+      return
+    }
+    setLoading(true)
     const { error } = await signIn(email, password)
     if (error) {
       setError(error.message)
@@ -41,6 +46,8 @@ export default function Login() {
   }
 
   const handleGoogle = async () => {
+    // Domain restriction is enforced post-redirect in AuthContext (onAuthStateChange).
+    // No pre-check possible here since Google controls the email selection UI.
     await signInWithGoogle()
   }
 
@@ -48,6 +55,11 @@ export default function Login() {
     e.preventDefault()
     setAddError(null)
     setAddSuccess(null)
+    // Layer 1 — frontend domain check (UX gate)
+    if (!isAllowedEmail(newEmail)) {
+      setAddError(DOMAIN_ERROR)
+      return
+    }
     if (newPassword !== confirmPassword) {
       setAddError('Passwords do not match.')
       return
@@ -186,7 +198,7 @@ export default function Login() {
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  placeholder="you@company.com"
+                  placeholder="you@elifetransfer.com"
                   required
                   autoComplete="email"
                 />
@@ -242,6 +254,13 @@ export default function Login() {
                 </button>
               </div>
 
+              {/* Domain error — shown after blocked Google OAuth redirect */}
+              {domainError && (
+                <div style={{ marginBottom: 16, padding: '10px 14px', background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
+                  🔒 {domainError}
+                </div>
+              )}
+
               {error && (
                 <div style={{ marginBottom: 16, padding: '10px 14px', background: '#FEE2E2', border: '1px solid #FCA5A5', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
                   {error}
@@ -287,7 +306,7 @@ export default function Login() {
                   type="email"
                   value={newEmail}
                   onChange={e => setNewEmail(e.target.value)}
-                  placeholder="colleague@company.com"
+                  placeholder="colleague@elifetransfer.com"
                   required
                   autoComplete="off"
                 />
@@ -356,9 +375,7 @@ export default function Login() {
               </button>
             </form>
 
-            <div style={{ marginTop: 20, padding: '12px 16px', background: 'var(--blue-pale)', border: '1px solid var(--blue-light)', borderRadius: 8, fontSize: 12, color: 'var(--subtext)', lineHeight: 1.6 }}>
-              <strong style={{ color: 'var(--blue)' }}>ℹ️ Note:</strong> The new user will receive a confirmation email from Supabase before they can log in. Make sure email confirmations are enabled in Supabase settings, or disable them for direct access.
-            </div>
+
           </>
         )}
 

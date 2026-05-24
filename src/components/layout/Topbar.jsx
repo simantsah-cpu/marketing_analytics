@@ -16,12 +16,6 @@ export default function Topbar() {
 
   return (
     <header className="topbar">
-      {/* Page title */}
-      <div style={{ paddingRight: 24 }}>
-        <div className="topbar-title">{info.title}</div>
-        <div className="topbar-sub">{info.sub}</div>
-      </div>
-
       {/* Property switcher — right side */}
       <div className="topbar-right">
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>

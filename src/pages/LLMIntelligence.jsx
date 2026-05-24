@@ -29,8 +29,15 @@ function fmt(v, type) {
   }
 }
 
-function makeBadge(curr, prev, type) {
+// Minimum comparison-period sessions required to show a meaningful delta.
+// Below this the % swing is statistically noise (e.g. 3 sessions last year vs 989 now).
+const MIN_BASELINE_SESSIONS = 10
+
+function makeBadge(curr, prev, type, prevSessions) {
   if (prev === null || prev === undefined || prev === 0) return null
+  // Suppress volume-metric deltas when the comparison baseline is too small to be meaningful
+  const isVolume = type !== 'pct1' && type !== 'pct2'
+  if (isVolume && prevSessions !== undefined && prevSessions < MIN_BASELINE_SESSIONS) return null
   const isPct = type === 'pct1' || type === 'pct2'
   const delta = curr - prev
   const deltaPct = ((curr - prev) / Math.abs(prev)) * 100
@@ -64,9 +71,9 @@ function LLMDot({ name }) {
   )
 }
 
-function DeltaCell({ curr, prev, fmtType, hasComp }) {
+function DeltaCell({ curr, prev, fmtType, hasComp, prevSessions }) {
   const [tip, setTip] = useState(null)
-  const badge = hasComp && prev != null ? makeBadge(curr, prev, fmtType) : null
+  const badge = hasComp && prev != null ? makeBadge(curr, prev, fmtType, prevSessions) : null
   return (
     <td className="sc-td" style={{ textAlign: 'right' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
@@ -452,14 +459,16 @@ export default function LLMIntelligence() {
 
     rows = rows.map(r => ({
       ...r,
-      health:      computeLLMHealth(r),
+      health:          computeLLMHealth(r),
+      // Null out comparison values when the baseline sessions are below the minimum
+      // threshold — prevents misleading deltas like +163% from 3 sessions last year.
       prevSessions:    compMap[r.llm]?.sessions    ?? null,
-      prevBookings:    compMap[r.llm]?.bookings    ?? null,
-      prevRevenue:     compMap[r.llm]?.revenue     ?? null,
-      prevEngRate:     compMap[r.llm]?.engagementRate ?? null,
-      prevConvRate:    compMap[r.llm]?.convRate    ?? null,
-      prevAov:         compMap[r.llm]?.aov         ?? null,
-      prevRevPerSes:   compMap[r.llm]?.revPerSession ?? null,
+      prevBookings:    compMap[r.llm]?.sessions >= MIN_BASELINE_SESSIONS ? (compMap[r.llm]?.bookings ?? null) : null,
+      prevRevenue:     compMap[r.llm]?.sessions >= MIN_BASELINE_SESSIONS ? (compMap[r.llm]?.revenue  ?? null) : null,
+      prevEngRate:     compMap[r.llm]?.sessions >= MIN_BASELINE_SESSIONS ? (compMap[r.llm]?.engagementRate ?? null) : null,
+      prevConvRate:    compMap[r.llm]?.sessions >= MIN_BASELINE_SESSIONS ? (compMap[r.llm]?.convRate  ?? null) : null,
+      prevAov:         compMap[r.llm]?.sessions >= MIN_BASELINE_SESSIONS ? (compMap[r.llm]?.aov       ?? null) : null,
+      prevRevPerSes:   compMap[r.llm]?.sessions >= MIN_BASELINE_SESSIONS ? (compMap[r.llm]?.revPerSession ?? null) : null,
     }))
 
     return [...rows].sort((a, b) => {
@@ -551,30 +560,6 @@ export default function LLMIntelligence() {
         .llm-select{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;padding:4px 8px;border:1px solid #E2E8F0;border-radius:6px;background:#F8FAFC;color:#0A2540;cursor:pointer;outline:none;}
         .llm-select:focus{border-color:#1A7FD4;}
       `}</style>
-
-      {/* ── Page header ── */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 2 }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#0A2540' }}>LLM Intelligence</div>
-          <span style={{ fontSize: 10, fontWeight: 700, background: '#EDE9FE', color: '#7B61FF', padding: '2px 8px', borderRadius: 10, letterSpacing: '0.05em' }}>BETA</span>
-        </div>
-        <div style={{ fontSize: 13, color: '#5A6A7A' }}>AI referral traffic · ChatGPT, Gemini, Copilot, Perplexity, Claude &amp; Grok</div>
-        {dateLabel && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 13, color: '#0A2540', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#0F5FA6', display: 'inline-block' }} />{dateLabel.cur}
-            </span>
-            {dateLabel.comp && hasComparison && (
-              <>
-                <span style={{ fontSize: 13, color: '#5A6A7A' }}>vs:</span>
-                <span style={{ fontSize: 13, color: '#5A6A7A', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#94A3B8', display: 'inline-block' }} />{dateLabel.comp}
-                </span>
-              </>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* ── Local filter bar ── */}
       <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
@@ -695,13 +680,13 @@ export default function LLMIntelligence() {
                     <td style={{ ...tdS, textAlign: 'left', position: 'sticky', left: 44, zIndex: 1 }}>
                       <span style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#3B82F6' }}>Total</span>
                     </td>
-                    <DeltaCell curr={totals.sessions}      prev={totals.prevSessions}  fmtType="int"  hasComp={hasComparison} />
-                    <DeltaCell curr={totals.engagementRate} prev={totals.prevEngRate}  fmtType="pct1" hasComp={hasComparison} />
-                    <DeltaCell curr={totals.convRate}      prev={totals.prevConvRate}  fmtType="pct2" hasComp={hasComparison} />
-                    <DeltaCell curr={totals.bookings}      prev={totals.prevBookings}  fmtType="int"  hasComp={hasComparison} />
-                    <DeltaCell curr={totals.revenue}       prev={totals.prevRevenue}   fmtType="gbp"  hasComp={hasComparison} />
-                    <DeltaCell curr={totals.aov}           prev={totals.prevAov}       fmtType="gbp2" hasComp={hasComparison} />
-                    <DeltaCell curr={totals.revPerSession} prev={totals.prevRevPerSes} fmtType="gbp2" hasComp={hasComparison} />
+                    <DeltaCell curr={totals.sessions}      prev={totals.prevSessions}  fmtType="int"  hasComp={hasComparison} prevSessions={totals.prevSessions} />
+                    <DeltaCell curr={totals.engagementRate} prev={totals.prevEngRate}  fmtType="pct1" hasComp={hasComparison} prevSessions={totals.prevSessions} />
+                    <DeltaCell curr={totals.convRate}      prev={totals.prevConvRate}  fmtType="pct2" hasComp={hasComparison} prevSessions={totals.prevSessions} />
+                    <DeltaCell curr={totals.bookings}      prev={totals.prevBookings}  fmtType="int"  hasComp={hasComparison} prevSessions={totals.prevSessions} />
+                    <DeltaCell curr={totals.revenue}       prev={totals.prevRevenue}   fmtType="gbp"  hasComp={hasComparison} prevSessions={totals.prevSessions} />
+                    <DeltaCell curr={totals.aov}           prev={totals.prevAov}       fmtType="gbp2" hasComp={hasComparison} prevSessions={totals.prevSessions} />
+                    <DeltaCell curr={totals.revPerSession} prev={totals.prevRevPerSes} fmtType="gbp2" hasComp={hasComparison} prevSessions={totals.prevSessions} />
                     <td style={{ ...tdS, textAlign: 'center' }} />
                   </tr>
                 )
@@ -723,13 +708,13 @@ export default function LLMIntelligence() {
                         <span style={{ fontWeight: 600, fontSize: 13 }}>{row.llm}</span>
                       </div>
                     </td>
-                    <DeltaCell curr={row.sessions}      prev={row.prevSessions}  fmtType="int"  hasComp={hasComparison} />
-                    <DeltaCell curr={row.engagementRate} prev={row.prevEngRate}  fmtType="pct1" hasComp={hasComparison} />
-                    <DeltaCell curr={row.convRate}       prev={row.prevConvRate} fmtType="pct2" hasComp={hasComparison} />
-                    <DeltaCell curr={row.bookings}       prev={row.prevBookings} fmtType="int"  hasComp={hasComparison} />
-                    <DeltaCell curr={row.revenue}        prev={row.prevRevenue}  fmtType="gbp"  hasComp={hasComparison} />
-                    <DeltaCell curr={row.aov}            prev={row.prevAov}      fmtType="gbp2" hasComp={hasComparison} />
-                    <DeltaCell curr={row.revPerSession}  prev={row.prevRevPerSes} fmtType="gbp2" hasComp={hasComparison} />
+                    <DeltaCell curr={row.sessions}      prev={row.prevSessions}  fmtType="int"  hasComp={hasComparison} prevSessions={row.prevSessions} />
+                    <DeltaCell curr={row.engagementRate} prev={row.prevEngRate}  fmtType="pct1" hasComp={hasComparison} prevSessions={row.prevSessions} />
+                    <DeltaCell curr={row.convRate}       prev={row.prevConvRate} fmtType="pct2" hasComp={hasComparison} prevSessions={row.prevSessions} />
+                    <DeltaCell curr={row.bookings}       prev={row.prevBookings} fmtType="int"  hasComp={hasComparison} prevSessions={row.prevSessions} />
+                    <DeltaCell curr={row.revenue}        prev={row.prevRevenue}  fmtType="gbp"  hasComp={hasComparison} prevSessions={row.prevSessions} />
+                    <DeltaCell curr={row.aov}            prev={row.prevAov}      fmtType="gbp2" hasComp={hasComparison} prevSessions={row.prevSessions} />
+                    <DeltaCell curr={row.revPerSession}  prev={row.prevRevPerSes} fmtType="gbp2" hasComp={hasComparison} prevSessions={row.prevSessions} />
                     <HealthPill label={row.health} />
                   </tr>
                 )
