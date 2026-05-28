@@ -1,0 +1,237 @@
+/**
+ * aiOverviewUtils.js
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Shared pure functions for the AI Overview Intelligence section.
+ * No React imports — safe to use in any component or service.
+ */
+
+export const SNIPPET_KEY = 'customEvent:ai_overview_click'
+
+// ─── Content categorisation ───────────────────────────────────────────────────
+
+/**
+ * categorise() — map a snippet text to a content category label.
+ * Used for the donut chart, category pills in the table, and device split bars.
+ */
+export function categorise(text) {
+  if (!text) return 'Other'
+
+  // Transport tables (most specific — always first)
+  if (/Table_title:|Table:/i.test(text)) return 'Transport tables'
+
+  // Pricing (monetary / cost)
+  if (/[€£$]|per person|per vehicle|fixed.{0,10}rate|\bfare\b|cheap|afford|expensive|tariff|\bcost\b|\bprice[sd]?\b/i.test(text)) return 'Pricing'
+
+  // Travel timing (when to leave, pre-flight advice)
+  if (/how early|hours? before|check.?in|before.{1,40}flight|before.{1,40}departure|recommended.{1,30}arriv|allow.{1,30}time|leave.{1,20}early|get.{1,15}early|domestic.{1,20}(flight|airport)|international.{1,20}(flight|airport)|boarding|security.{1,20}time|departure.{1,20}time|arrive.{1,30}airport.{1,30}(early|hour|time)|airport.{1,30}arrive.{1,30}(early|hour|time)/i.test(text)) return 'Travel timing'
+
+  // Transfer times (journey duration, transport options to/from airports)
+  if (/\btaxi|\bcab\b|minicab|rideshare|private (car|vehicle)/i.test(text)) return 'Transfer times'
+  if (/\btransfer\b|\bshuttle\b/i.test(text)) return 'Transfer times'
+  if (/(train|bus|coach|metro|tube|tram|rail).{0,40}(airport|city|centre|center|terminal)|(airport|terminal).{0,40}(train|bus|coach|metro|tube|tram|rail)/i.test(text)) return 'Transfer times'
+  if (/(minute|hour|km|mile).{0,25}(airport|terminal|city|centre|station)|(airport|terminal).{0,25}(minute|hour|km|mile)/i.test(text)) return 'Transfer times'
+  if (/getting (from|to).{1,30}airport|how long.{1,30}(take|get to|travel|reach|journey)|distance.{1,20}airport|airport.{0,30}(route|distance|journey|drive)|airport express|fast link/i.test(text)) return 'Transfer times'
+
+  // Destinations (places, tourism, attractions)
+  if (/things to do|attraction|sightseeing|city cent(re|er)|museum|\bbeach\b|landmark|heritage|cultural|explore|discover|places to|nightlife|\brestaurant\b|holiday destination|holiday.*land|tour(ist|ism)|guide to|local.*guide|visit.{1,20}(city|town|island|country)|resort|famous for/i.test(text)) return 'Destinations'
+
+  // Hoppa booking (direct booking references)
+  if (/hoppa|pre.?book|door.?to.?door|private transfer|book.{1,20}(taxi|cab|shuttle|transfer|ride)|compare.{1,20}transfer/i.test(text)) return 'Hoppa booking'
+
+  return 'Other'
+}
+
+
+/**
+ * classifySnippet() — simpler 3-way classification for device split bars.
+ */
+export function classifySnippet(text) {
+  if (!text) return 'text'
+  if (/Table_title:|Table:/i.test(text)) return 'table'
+  if (/€|£|\$|per person|per vehicle|per night/i.test(text)) return 'price'
+  return 'text'
+}
+
+// ─── Category colour map ──────────────────────────────────────────────────────
+
+export const CATEGORY_COLORS = {
+  'Transfer times':   '#1D9E75',
+  'Travel timing':    '#378ADD',
+  'Transport tables': '#7F77DD',
+  'Pricing':          '#EF9F27',
+  'Destinations':     '#D85A30',
+  'Hoppa booking':    '#D4537E',
+  'Other':            '#B4B2A9',
+}
+
+// ─── Week label helper ────────────────────────────────────────────────────────
+
+/**
+ * weekLabel(yearWeek) — convert GA4 yearWeek (e.g. "202611") to "W11 · Mar 10"
+ * Uses ISO week convention: Week 1 contains the first Thursday of the year.
+ */
+export function weekLabel(yearWeek) {
+  if (!yearWeek || yearWeek.length < 6) return yearWeek
+  const year = parseInt(yearWeek.slice(0, 4), 10)
+  const week = parseInt(yearWeek.slice(4), 10)
+
+  // Find Jan 4 of the year (always in week 1 by ISO 8601)
+  const jan4 = new Date(year, 0, 4)
+  // Get the Monday of week 1
+  const dayOfWeek = jan4.getDay() || 7 // 1=Mon … 7=Sun
+  const week1Monday = new Date(jan4)
+  week1Monday.setDate(jan4.getDate() - dayOfWeek + 1)
+
+  // Advance to the target week's Monday
+  const targetMonday = new Date(week1Monday)
+  targetMonday.setDate(week1Monday.getDate() + (week - 1) * 7)
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const mon = months[targetMonday.getMonth()]
+  const day = targetMonday.getDate()
+  return `W${week} · ${mon} ${day}`
+}
+
+// ─── Trend status classifier ──────────────────────────────────────────────────
+
+/**
+ * computeTrendStatus(weeklyMap, allSortedWeeks) — determine lifecycle status for a snippet.
+ * weeklyMap: { [yearWeek]: eventCount }
+ * allSortedWeeks: sorted array of all yearWeek strings in the dataset
+ */
+export function computeTrendStatus(weeklyMap, allSortedWeeks) {
+  const snippetWeeks = allSortedWeeks.filter(w => (weeklyMap[w] ?? 0) > 0)
+  if (snippetWeeks.length === 0) return 'stable'
+
+  const latestWeek = allSortedWeeks[allSortedWeeks.length - 1]
+  const secondLatest = allSortedWeeks[allSortedWeeks.length - 2]
+  const snippetStart = snippetWeeks[0]
+
+  // "new" if the snippet only appears in the most recent 2 weeks
+  if (snippetStart === latestWeek || snippetStart === secondLatest) {
+    const appearsOnlyRecently = snippetWeeks.every(w => w === latestWeek || w === secondLatest)
+    if (appearsOnlyRecently) return 'new'
+  }
+
+  const firstCount = weeklyMap[snippetWeeks[0]] ?? 0
+  const lastCount = weeklyMap[snippetWeeks[snippetWeeks.length - 1]] ?? 0
+
+  if (lastCount >= firstCount) return 'growing'
+  if (lastCount < firstCount * 0.5) return 'declining'
+  return 'stable'
+}
+
+// ─── Data processors ─────────────────────────────────────────────────────────
+
+/**
+ * processKpisData — derive KPI summary from kpis query current rows.
+ * Returns { totalEvents, uniqueSnippets, topSnippetEvents, topSnippetText,
+ *           avgEventsPerSnippet, rows }
+ */
+export function processKpisData(rows) {
+  if (!rows || rows.length === 0) {
+    return { totalEvents: 0, uniqueSnippets: 0, topSnippetEvents: 0, topSnippetText: '', avgEventsPerSnippet: '0.0', rows: [] }
+  }
+  // Rows are already sorted by eventCount desc from GA4
+  const totalEvents = rows.reduce((s, r) => s + (r.eventCount || 0), 0)
+  const uniqueSnippets = rows.length
+  const topRow = rows[0]
+  const topSnippetEvents = topRow?.eventCount || 0
+  const topSnippetText = (topRow?.[SNIPPET_KEY] ?? '').slice(0, 40)
+  const avgEventsPerSnippet = uniqueSnippets > 0 ? (totalEvents / uniqueSnippets).toFixed(1) : '0.0'
+
+  return { totalEvents, uniqueSnippets, topSnippetEvents, topSnippetText, avgEventsPerSnippet, rows }
+}
+
+/**
+ * processTrendData — group trend rows by week and by snippet.
+ * Returns:
+ *   weeklyTotals: [{ week, label, events }] sorted ascending
+ *   snippetWeekMap: { snippetText: { [yearWeek]: eventCount } }
+ *   allSortedWeeks: sorted string[] of all yearWeeks present
+ */
+export function processTrendData(rows) {
+  if (!rows || rows.length === 0) {
+    return { weeklyTotals: [], snippetWeekMap: {}, allSortedWeeks: [] }
+  }
+
+  const weekTotals = {}      // yearWeek → total eventCount
+  const snippetWeekMap = {}  // snippetText → { yearWeek: eventCount }
+
+  rows.forEach(row => {
+    const week = row.yearWeek
+    const snippet = row[SNIPPET_KEY] ?? ''
+    const events = row.eventCount || 0
+
+    weekTotals[week] = (weekTotals[week] || 0) + events
+
+    if (!snippetWeekMap[snippet]) snippetWeekMap[snippet] = {}
+    snippetWeekMap[snippet][week] = (snippetWeekMap[snippet][week] || 0) + events
+  })
+
+  const allSortedWeeks = Object.keys(weekTotals).sort()
+  const weeklyTotals = allSortedWeeks.map(week => ({
+    week,
+    label: weekLabel(week),
+    events: weekTotals[week],
+  }))
+
+  return { weeklyTotals, snippetWeekMap, allSortedWeeks }
+}
+
+/**
+ * processDeviceData — compute per content-type device splits from device rows.
+ * Returns { text, table, price } each with { mobile, desktop, tablet, total }
+ */
+export function processDeviceData(rows) {
+  const buckets = {
+    text:  { mobile: 0, desktop: 0, tablet: 0 },
+    table: { mobile: 0, desktop: 0, tablet: 0 },
+    price: { mobile: 0, desktop: 0, tablet: 0 },
+  }
+  if (!rows) return buckets
+
+  rows.forEach(row => {
+    const snippet = row[SNIPPET_KEY] ?? ''
+    const device = (row.deviceCategory ?? '').toLowerCase()
+    const events = row.eventCount || 0
+    const type = classifySnippet(snippet)
+    const bucket = buckets[type] ?? buckets.text
+    if (device === 'mobile') bucket.mobile += events
+    else if (device === 'desktop') bucket.desktop += events
+    else if (device === 'tablet') bucket.tablet += events
+  })
+
+  // Add totals and percentages
+  const withPct = (b) => {
+    const total = b.mobile + b.desktop + b.tablet
+    return {
+      ...b,
+      total,
+      mobilePct: total > 0 ? Math.round((b.mobile / total) * 100) : 0,
+      desktopPct: total > 0 ? Math.round((b.desktop / total) * 100) : 0,
+    }
+  }
+
+  return {
+    text:  withPct(buckets.text),
+    table: withPct(buckets.table),
+    price: withPct(buckets.price),
+  }
+}
+
+/**
+ * buildCategoryBreakdown — from kpis rows, produce category event totals + percentages.
+ */
+export function buildCategoryBreakdown(rows) {
+  const catMap = {}
+  rows.forEach(row => {
+    const cat = categorise(row[SNIPPET_KEY] ?? '')
+    catMap[cat] = (catMap[cat] || 0) + (row.eventCount || 0)
+  })
+  const total = Object.values(catMap).reduce((s, v) => s + v, 0) || 1
+  return Object.entries(catMap)
+    .map(([label, events]) => ({ label, events, pct: Math.round((events / total) * 100) }))
+    .sort((a, b) => b.events - a.events)
+}

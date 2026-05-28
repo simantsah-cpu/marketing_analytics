@@ -22,7 +22,7 @@ export default function FilterBar() {
   const { filters, actions } = useFilters()
   const { selectedProperty } = useProperty()
   const { pathname } = useLocation()
-  const isLLMPage = pathname.startsWith('/llm')
+  const isLLMPage = pathname.startsWith('/llm') || pathname.startsWith('/ai-overview')
 
   // ── Load dynamic affiliate + country options whenever property or date range changes ──
   useEffect(() => {

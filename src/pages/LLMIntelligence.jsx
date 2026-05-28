@@ -150,16 +150,19 @@ function LLMChat({ tableData, filters }) {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
     try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
+      const res = await fetch(`${supabaseUrl}/functions/v1/ai-invoke`, {
         method: 'POST', signal: ctrl.signal,
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseKey}` },
         body: JSON.stringify({
-          chartTitle: 'LLM Intelligence',
-          chartType: 'llm',
-          dateRange: filters.preset,
-          chartData: tableData,
+          mode: 'chat',
           message: trimmed,
-          history,
+          context: {
+            chartTitle: 'LLM Intelligence',
+            chartType: 'llm',
+            dateRange: filters.preset,
+            data: tableData,
+          },
+          conversationHistory: history.slice(-12),
           systemPrompt: LLM_SYSTEM_PROMPT,
         }),
       })

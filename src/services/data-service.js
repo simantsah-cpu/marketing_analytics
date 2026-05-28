@@ -979,6 +979,70 @@ export async function getSiteWideFunnel(propertyId, filters) {
   return transformFunnel(reports, { ...filters, affiliateFilter: 'all' }).funnelSteps
 }
 
+// ─── AI Overview Intelligence ─────────────────────────────────────────────────
+//
+// All three functions route to page: 'ai-overview' on the Edge Function.
+// The queryType filter tells the edge function which GA4 requests to build.
+// The AI_OVERVIEW_FILTER is applied inside the edge function on every call.
+//
+// Row shape returned by the edge function after normaliseReport():
+//   kpis query:   { 'customEvent:ai_overview_click': string, eventCount: number, activeUsers: number }
+//   trend query:  { yearWeek: string, 'customEvent:ai_overview_click': string, eventCount: number, activeUsers: number }
+//   device query: { deviceCategory: string, 'customEvent:ai_overview_click': string, eventCount: number, sessions: number }
+
+async function callAiOverview(propertyId, queryType, dateRanges, deviceFilter = null) {
+  await supabase.auth.getSession()
+  const { data, error } = await supabase.functions.invoke('ga4-ai-overview', {
+    body: {
+      propertyId,
+      dateRanges,
+      filters: {
+        queryType,
+        deviceFilter: deviceFilter ? [deviceFilter] : [],
+      },
+    },
+  })
+  if (error) throw new Error(`AI Overview fetch error: ${error.message}`)
+  if (data?.error) throw new Error(`GA4 error: ${data.error}`)
+  return data.reports ?? []
+}
+
+/**
+ * fetchAiOverviewKpis — snippet-level aggregates for KPI cards + snippet table.
+ * Supports optional comparison date range. Returns { current: Row[], comparison: Row[]|null }
+ */
+export async function fetchAiOverviewKpis(propertyId, dateRange, comparisonDateRange = null, deviceFilter = null) {
+  if (!propertyId) return { current: [], comparison: null }
+  const ranges = comparisonDateRange
+    ? [dateRange, comparisonDateRange]
+    : [dateRange]
+  const reports = await callAiOverview(propertyId, 'kpis', ranges, deviceFilter)
+  return {
+    current:    reports[0] ?? [],
+    comparison: reports[1] ?? null,
+  }
+}
+
+/**
+ * fetchAiOverviewTrend — yearWeek × snippet for trend chart + lifecycle matrix.
+ * Returns a flat array of { yearWeek, 'customEvent:ai_overview_click', eventCount, activeUsers }
+ */
+export async function fetchAiOverviewTrend(propertyId, dateRange, deviceFilter = null) {
+  if (!propertyId) return []
+  const reports = await callAiOverview(propertyId, 'trend', [dateRange], deviceFilter)
+  return reports[0] ?? []
+}
+
+/**
+ * fetchAiOverviewDeviceSplit — deviceCategory × snippet for device split bars.
+ * Returns a flat array of { deviceCategory, 'customEvent:ai_overview_click', eventCount, sessions }
+ */
+export async function fetchAiOverviewDeviceSplit(propertyId, dateRange) {
+  if (!propertyId) return []
+  const reports = await callAiOverview(propertyId, 'device', [dateRange], null)
+  return reports[0] ?? []
+}
+
 // ─── Mock data fallbacks (used when MOCK_MODE = true) ──────────────────────────
 
 const AFFILIATE_IDS = [

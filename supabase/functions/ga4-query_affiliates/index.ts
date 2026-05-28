@@ -668,6 +668,115 @@ function buildRequests(page: string, dateRanges: object[], filters: any) {
     ]
   }
 
+  // ─── AI Overview Intelligence ──────────────────────────────────────────────
+  if (page === 'ai-overview') {
+    // Filter that excludes empty string and "(not set)" values for the custom dimension.
+    // These are rows where the GA4 parameter was not populated — not real AI Overview clicks.
+    const aiOverviewFilter = {
+      notExpression: {
+        orGroup: {
+          expressions: [
+            {
+              filter: {
+                fieldName: 'customEvent:ai_overview_click',
+                stringFilter: { matchType: 'EXACT', value: '' },
+              },
+            },
+            {
+              filter: {
+                fieldName: 'customEvent:ai_overview_click',
+                stringFilter: { matchType: 'EXACT', value: '(not set)' },
+              },
+            },
+          ],
+        },
+      },
+    }
+
+    // Optionally AND the AI Overview filter with device filter if provided
+    const buildAiFilter = (extraFilters: any[] = []) => {
+      const all = [aiOverviewFilter, ...extraFilters].filter(Boolean)
+      if (all.length === 1) return all[0]
+      return { andGroup: { expressions: all } }
+    }
+
+    const deviceExtraFilters: any[] = []
+    if (deviceFilter) {
+      deviceExtraFilters.push({ filter: deviceFilter })
+    }
+
+    // queryType tells us which subset of reports to build:
+    //   'kpis'   → snippet aggregates (supports comparison dateRanges)
+    //   'trend'  → yearWeek × snippet weekly breakdown
+    //   'device' → deviceCategory × snippet breakdown
+    const queryType = filters?.queryType ?? 'kpis'
+
+    if (queryType === 'kpis') {
+      const aiFilter = buildAiFilter(deviceExtraFilters)
+      const currentReq = {
+        dateRanges: [dateRanges[0]],
+        dimensions: [{ name: 'customEvent:ai_overview_click' }],
+        metrics: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+        dimensionFilter: aiFilter,
+        orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+        keepEmptyRows: false,
+        limit: 50,
+      }
+      const reqs: object[] = [currentReq]
+      if (dateRanges.length > 1 && dateRanges[1]) {
+        reqs.push({
+          dateRanges: [dateRanges[1]],
+          dimensions: [{ name: 'customEvent:ai_overview_click' }],
+          metrics: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+          dimensionFilter: aiFilter,
+          orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+          keepEmptyRows: false,
+          limit: 50,
+        })
+      }
+      return reqs
+    }
+
+    if (queryType === 'trend') {
+      const aiFilter = buildAiFilter(deviceExtraFilters)
+      return [
+        {
+          dateRanges: [dateRanges[0]],
+          dimensions: [
+            { name: 'yearWeek' },
+            { name: 'customEvent:ai_overview_click' },
+          ],
+          metrics: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+          dimensionFilter: aiFilter,
+          orderBys: [{ dimension: { dimensionName: 'yearWeek' } }],
+          keepEmptyRows: false,
+          limit: 1000,
+        },
+      ]
+    }
+
+    if (queryType === 'device') {
+      // No device filter for device split — we want all devices to compare
+      const aiFilter = buildAiFilter()
+      return [
+        {
+          dateRanges: [dateRanges[0]],
+          dimensions: [
+            { name: 'deviceCategory' },
+            { name: 'customEvent:ai_overview_click' },
+          ],
+          metrics: [{ name: 'eventCount' }, { name: 'sessions' }],
+          dimensionFilter: aiFilter,
+          orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+          keepEmptyRows: false,
+          limit: 500,
+        },
+      ]
+    }
+
+    return []
+  }
+
   return []
 }
 

@@ -19,6 +19,7 @@ import MetricGlossary from './pages/MetricGlossary'
 import DestinationIntelligence from './pages/DestinationIntelligence'
 import LLMIntelligence from './pages/LLMIntelligence'
 import LLMDeepDive from './pages/LLMDeepDive'
+import AiOverviewPage from './pages/AiOverviewPage'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -67,7 +68,7 @@ function ProtectedLayout() {
 function SectionToggle() {
   const location = useLocation()
   const navigate = useNavigate()
-  const isLLM = location.pathname.startsWith('/llm')
+  const isLLM = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview')
   const { properties, selectedProperty, switchProperty } = useProperty()
 
   const activeStyle = {
@@ -185,6 +186,7 @@ function DashboardShell({ onQueryOpen }) {
             <Route path="/glossary" element={<MetricGlossary />} />
             <Route path="/llm" element={<LLMIntelligence />} />
             <Route path="/llm-deep-dive" element={<LLMDeepDive />} />
+            <Route path="/ai-overview" element={<AiOverviewPage />} />
           </Routes>
         </div>
       </div>

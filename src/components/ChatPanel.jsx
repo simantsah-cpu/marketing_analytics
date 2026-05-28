@@ -85,7 +85,7 @@ export default function ChatPanel({ open, onClose, chartTitle, chartType, chartD
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
     try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
+      const res = await fetch(`${supabaseUrl}/functions/v1/ai-invoke`, {
         method: 'POST',
         signal: ctrl.signal,
         headers: {
@@ -93,12 +93,15 @@ export default function ChatPanel({ open, onClose, chartTitle, chartType, chartD
           'Authorization': `Bearer ${supabaseKey}`,
         },
         body: JSON.stringify({
-          chartTitle,
-          chartType,
-          dateRange,
-          chartData: chartData ?? null,
+          mode: 'chat',
           message: trimmed,
-          history,
+          context: {
+            chartTitle,
+            chartType,
+            dateRange,
+            data: chartData ?? null,
+          },
+          conversationHistory: history.slice(-12), // last 12 messages for context window
         }),
       })
 
@@ -153,7 +156,8 @@ export default function ChatPanel({ open, onClose, chartTitle, chartType, chartD
         }
       } else {
         const json = await res.json()
-        accumulated = json?.content ?? json?.text ?? json?.reply ?? JSON.stringify(json)
+        // ai-invoke returns { response: string }
+        accumulated = json?.response ?? json?.content ?? json?.text ?? JSON.stringify(json)
       }
 
       // Finalise — remove streaming flag
@@ -353,7 +357,7 @@ export default function ChatPanel({ open, onClose, chartTitle, chartType, chartD
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
               <span>
-                Chat requires the <code style={{ background: '#FEF3C7', padding: '1px 4px', borderRadius: 3, fontSize: 11 }}>ai-chat</code> Edge Function to be deployed to your Supabase project.
+                Chat requires the <code style={{ background: '#FEF3C7', padding: '1px 4px', borderRadius: 3, fontSize: 11 }}>ai-invoke</code> Edge Function to be deployed to your Supabase project.
               </span>
             </div>
           )}

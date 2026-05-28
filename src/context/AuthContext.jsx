@@ -14,6 +14,11 @@ export function isAllowedEmail(email) {
   return email.toLowerCase().trim().endsWith(`@${ALLOWED_DOMAIN}`)
 }
 
+// ─── Production URL — NEVER use window.location.origin here because admins ─────
+// create users from their local machine (localhost). The confirmation link must
+// always point to the live production app, not wherever the admin is running.
+const PRODUCTION_URL = import.meta.env.VITE_APP_URL || 'https://orbit.elifetransfer.com'
+
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
@@ -56,19 +61,33 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  // ── Sign in with email/password — domain-checked before any Supabase call ───
+  // ── Sign in with email/password ───────────────────────────────────────────────
+  // Layer 1: domain check (blocks non-elifetransfer.com before hitting Supabase)
+  // Layer 2: email confirmation check (blocks users who haven't clicked their
+  //          verification link — Supabase itself enforces this when
+  //          "Confirm email" is enabled in the Dashboard, but we double-check
+  //          here as a defence-in-depth measure)
   const signIn = async (email, password) => {
     if (!isAllowedEmail(email)) {
       return { data: null, error: { message: DOMAIN_ERROR } }
     }
-    return supabase.auth.signInWithPassword({ email, password })
+    const result = await supabase.auth.signInWithPassword({ email, password })
+    if (result.data?.user && !result.data.user.email_confirmed_at) {
+      // User exists but hasn't confirmed — force sign-out and surface clear message
+      await supabase.auth.signOut()
+      return {
+        data: null,
+        error: { message: 'Please verify your email before signing in. Check your inbox for a confirmation link.' },
+      }
+    }
+    return result
   }
 
-  // ── Google OAuth — domain enforcement happens in onAuthStateChange above ─────
+  // ── Google OAuth — domain enforcement happens in onAuthStateChange above ──────
   const signInWithGoogle = async () => {
     return supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/` }
+      options: { redirectTo: PRODUCTION_URL }
     })
   }
 
@@ -76,17 +95,25 @@ export function AuthProvider({ children }) {
     return supabase.auth.signOut()
   }
 
-  // ── Create user — domain-checked before any Supabase call ───────────────────
+  // ── Create user — domain-checked, emailRedirectTo always uses PRODUCTION_URL ─
+  // CRITICAL: Do NOT use window.location.origin here. When an admin creates a user
+  // from their local machine, window.location.origin = http://localhost:5173, which
+  // makes the confirmation link in the email point to localhost — unclickable for
+  // the new user. PRODUCTION_URL (from VITE_APP_URL env var) is always correct.
   const createUser = async (email, password) => {
     if (!isAllowedEmail(email)) {
       return { data: null, error: { message: DOMAIN_ERROR } }
     }
-    return supabase.auth.signUp({ email, password })
+    return supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: PRODUCTION_URL },
+    })
   }
 
   const resetPassword = async (email) => {
     return supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`
+      redirectTo: `${PRODUCTION_URL}/reset-password`,
     })
   }
 
