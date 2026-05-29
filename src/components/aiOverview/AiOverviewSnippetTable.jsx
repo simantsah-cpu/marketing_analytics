@@ -180,7 +180,7 @@ export default function AiOverviewSnippetTable({
   allSortedWeeks,
   totalEvents,
   totalUsers,
-  pageRows,   // snippet × landingPage rows from the pages query
+  snippetToPages = {},  // snippetText → [{page, events}] — built by processKpisData
 }) {
   const [sortKey, setSortKey]   = useState('events')
   const [sortDir, setSortDir]   = useState('desc')
@@ -191,23 +191,9 @@ export default function AiOverviewSnippetTable({
     else { setSortKey(col); setSortDir('desc') }
   }, [sortKey])
 
-  // Build snippet → sorted pages lookup
-  // e.g. { "Local airport taxis…": [{ page: '/en/uk/heathrow', events: 556 }, …] }
-  const snippetToPages = useMemo(() => {
-    const map = {}
-    ;(pageRows || []).forEach(row => {
-      const snippet = row[SNIPPET_KEY] ?? ''
-      const page    = row.pagePath      ?? ''   // pagePath (event-scoped) from the updated query
-      if (!snippet || !page || page === '(not set)' || page === '(not provided)') return
-      if (!map[snippet]) map[snippet] = []
-      map[snippet].push({ page, events: row.eventCount || 0 })
-    })
-    // Rows already arrive sorted by eventCount desc from GA4, but deduplicate within snippet
-    Object.keys(map).forEach(k => {
-      map[k].sort((a, b) => b.events - a.events)
-    })
-    return map
-  }, [pageRows])
+  // snippetToPages comes directly as a prop — built by processKpisData
+  // from the kpis query rows (snippet × pagePath combinations).
+  // No need to build it here; the parent already has it.
 
   // Build enriched rows
   const enrichedRows = kpisRows.map(row => {

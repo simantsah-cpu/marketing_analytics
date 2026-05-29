@@ -125,23 +125,70 @@ export function computeTrendStatus(weeklyMap, allSortedWeeks) {
 // ─── Data processors ─────────────────────────────────────────────────────────
 
 /**
- * processKpisData — derive KPI summary from kpis query current rows.
+/**
+ * processKpisData — derive KPI summary from kpis query rows.
+ *
+ * The kpis query now returns snippet × pagePath rows (one row per unique
+ * snippet + page combination). This function:
+ *   1. Aggregates events/users per snippet (collapsing multiple page rows)
+ *   2. Builds snippetToPages: snippetText → [{page, events}] sorted desc
+ *   3. Returns aggregated snippet-level rows for the table / matrix / lifecycle
+ *
  * Returns { totalEvents, uniqueSnippets, topSnippetEvents, topSnippetText,
- *           avgEventsPerSnippet, rows }
+ *           avgEventsPerSnippet, rows, snippetToPages }
  */
 export function processKpisData(rows) {
   if (!rows || rows.length === 0) {
-    return { totalEvents: 0, uniqueSnippets: 0, topSnippetEvents: 0, topSnippetText: '', avgEventsPerSnippet: '0.0', rows: [] }
+    return {
+      totalEvents: 0, uniqueSnippets: 0, topSnippetEvents: 0,
+      topSnippetText: '', avgEventsPerSnippet: '0.0',
+      rows: [], snippetToPages: {},
+    }
   }
-  // Rows are already sorted by eventCount desc from GA4
-  const totalEvents = rows.reduce((s, r) => s + (r.eventCount || 0), 0)
-  const uniqueSnippets = rows.length
-  const topRow = rows[0]
-  const topSnippetEvents = topRow?.eventCount || 0
-  const topSnippetText = (topRow?.[SNIPPET_KEY] ?? '').slice(0, 40)
+
+  // Aggregate: collapse snippet×pagePath rows into one row per snippet
+  const snippetAgg   = {}  // snippetText → { events, users }
+  const snippetPages = {}  // snippetText → [{page, events}]
+
+  rows.forEach(row => {
+    const text   = row[SNIPPET_KEY] ?? ''
+    const events = row.eventCount  || 0
+    const users  = row.activeUsers || 0
+    const page   = row.pagePath    ?? ''
+
+    if (!snippetAgg[text]) snippetAgg[text] = { events: 0, users: 0 }
+    snippetAgg[text].events += events
+    snippetAgg[text].users  += users
+
+    if (page && page !== '(not set)' && page !== '(not provided)') {
+      if (!snippetPages[text]) snippetPages[text] = []
+      snippetPages[text].push({ page, events })
+    }
+  })
+
+  // Sort each snippet's pages by events desc so topPage = highest-traffic page
+  Object.values(snippetPages).forEach(pages => pages.sort((a, b) => b.events - a.events))
+
+  // Build aggregated snippet-level rows sorted by total events desc
+  const aggregated = Object.entries(snippetAgg)
+    .map(([text, { events, users }]) => ({
+      [SNIPPET_KEY]: text,
+      eventCount:   events,
+      activeUsers:  users,
+    }))
+    .sort((a, b) => b.eventCount - a.eventCount)
+
+  const totalEvents         = aggregated.reduce((s, r) => s + r.eventCount, 0)
+  const uniqueSnippets      = aggregated.length
+  const topRow              = aggregated[0]
+  const topSnippetEvents    = topRow?.eventCount || 0
+  const topSnippetText      = (topRow?.[SNIPPET_KEY] ?? '').slice(0, 40)
   const avgEventsPerSnippet = uniqueSnippets > 0 ? (totalEvents / uniqueSnippets).toFixed(1) : '0.0'
 
-  return { totalEvents, uniqueSnippets, topSnippetEvents, topSnippetText, avgEventsPerSnippet, rows }
+  return {
+    totalEvents, uniqueSnippets, topSnippetEvents, topSnippetText,
+    avgEventsPerSnippet, rows: aggregated, snippetToPages: snippetPages,
+  }
 }
 
 /**

@@ -192,12 +192,19 @@ function buildRequests(
     return { andGroup: { expressions } }
   }
 
-  // ── kpis: snippet-level aggregates (supports up to 2 date ranges for comparison)
+  // ── kpis: snippet × pagePath aggregates (supports up to 2 date ranges for comparison)
+  // pagePath is added here so we get the exact hoppa.com page for each snippet
+  // in the same request that already has a working filter. This avoids the
+  // GA4 API incompatibility that occurs when customEvent:ai_overview_click
+  // is combined with page dimensions in a SEPARATE filtered query.
   if (queryType === 'kpis') {
     const filter = buildFilter(true)
     const baseReq = (dr: object) => ({
       dateRanges: [dr],
-      dimensions: [{ name: 'customEvent:ai_overview_click' }],
+      dimensions: [
+        { name: 'customEvent:ai_overview_click' },
+        { name: 'pagePath' },   // event-scoped: the exact page where the click event fired
+      ],
       metrics: [
         { name: 'eventCount' },
         { name: 'activeUsers' },
@@ -205,7 +212,7 @@ function buildRequests(
       dimensionFilter: filter,
       orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
       keepEmptyRows: false,
-      limit: 500,
+      limit: 2000,   // snippet × pagePath combos (was 500 for snippet-only)
     })
     const reqs = [baseReq(dateRanges[0])]
     if (dateRanges.length > 1 && dateRanges[1]) reqs.push(baseReq(dateRanges[1]))

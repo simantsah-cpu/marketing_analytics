@@ -19,7 +19,6 @@ import {
   fetchAiOverviewKpis,
   fetchAiOverviewTrend,
   fetchAiOverviewDeviceSplit,
-  fetchAiOverviewPages,
 } from '../../services/data-service'
 import {
   processKpisData,
@@ -84,14 +83,13 @@ export default function AiOverviewSection({
 }) {
   // ── All hooks first — NO conditional returns before this block ──────────────
 
-  const [loading, setLoading]         = useState(true)
-  const [error, setError]             = useState(null)
-  const [kpisData, setKpisData]       = useState(null)
-  const [trendData, setTrendData]     = useState(null)
-  const [deviceData, setDeviceData]   = useState(null)
-  const [rawPageRows, setRawPageRows] = useState([])   // snippet × landingPage (unfiltered)
-  const [gran, setGran]               = useState('Week')
-  const [category, setCategory]       = useState('All')
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState(null)
+  const [kpisData, setKpisData]     = useState(null)
+  const [trendData, setTrendData]   = useState(null)
+  const [deviceData, setDeviceData] = useState(null)
+  const [gran, setGran]             = useState('Week')
+  const [category, setCategory]     = useState('All')
 
   const fetchAll = useCallback(async () => {
     if (!dateRange?.startDate || !propertyId) return
@@ -111,13 +109,6 @@ export default function AiOverviewSection({
       setKpisData(kpis)
       setTrendData(trend)
       setDeviceData(device)
-
-      // Pages query is isolated — a failure here must NOT crash kpis/trend/device.
-      // If it errors (e.g. edge function not yet deployed), page column shows "—"
-      // but all KPI numbers remain intact.
-      fetchAiOverviewPages(propertyId, dateRange)
-        .then(pages => setRawPageRows(pages ?? []))
-        .catch(() => setRawPageRows([]))
 
     } catch (err) {
       setError(err?.message ?? 'Unknown error')
@@ -141,6 +132,7 @@ export default function AiOverviewSection({
     topSnippetText,
     avgEventsPerSnippet,
     rows: kpisRows,
+    snippetToPages,        // snippetText → [{page, events}] — built by processKpisData from kpis rows
   } = useMemo(() => processKpisData(currentRows), [currentRows])
 
   const prevTotalEvents = useMemo(
@@ -224,12 +216,6 @@ export default function AiOverviewSection({
     return weeklyTotals[weeklyTotals.length - 1].events >= weeklyTotals[0].events ? 'growing' : 'declining'
   }, [weeklyTotals])
 
-  // Filter out any residual garbage (belt-and-suspenders — the filter in the
-  // edge function already handles this, but guard client-side too).
-  const cleanPageRows = useMemo(() => {
-    const garbage = new Set(['', '(not set)', '(not provided)'])
-    return rawPageRows.filter(row => !garbage.has(row[SNIPPET_KEY] ?? ''))
-  }, [rawPageRows])
 
   // Notify parent — use a ref to avoid stale closure issues
   const onDataLoadedRef = useRef(onDataLoaded)
@@ -331,7 +317,8 @@ export default function AiOverviewSection({
         allSortedWeeks={allSortedWeeks}
         totalEvents={filteredTotalEvents}
         totalUsers={filteredTotalUsers}
-        pageRows={cleanPageRows}
+        pageRows={undefined}
+        snippetToPages={snippetToPages}
       />
 
       {/* E: Lifecycle matrix — top 10 of filtered snippets */}
