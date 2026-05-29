@@ -231,8 +231,8 @@ export default function AiOverviewSnippetTable({
           <thead>
             <tr>
               <th style={{ ...thBase, width: 36, textAlign: 'center' }}>#</th>
-              <th style={{ ...thBase }}>Snippet</th>
-              <th style={{ ...thBase, minWidth: 160 }}>
+              <th style={{ ...thBase, maxWidth: 340 }}>Snippet</th>
+              <th style={{ ...thBase, width: 220, textAlign: 'center' }}>
                 <div>Hoppa.com Page</div>
                 <div style={{ fontSize: 9, fontWeight: 400, color: '#94A3B8', marginTop: 1 }}>GA4 landing page</div>
               </th>
@@ -270,8 +270,8 @@ export default function AiOverviewSnippetTable({
                       {row.text}
                     </span>
                   </td>
-                  {/* Hoppa.com Page — clickable link to the actual cited page */}
-                  <td style={{ ...tdBase, minWidth: 160 }}>
+                  {/* Hoppa.com Page — clickable link, full path always shown */}
+                  <td style={{ ...tdBase, width: 220, verticalAlign: 'middle' }}>
                     {topPage ? (
                       <div>
                         <a
@@ -282,8 +282,7 @@ export default function AiOverviewSnippetTable({
                           style={{
                             fontSize: 10.5, color: '#0F5FA6', textDecoration: 'none',
                             fontWeight: 500, display: 'block',
-                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            maxWidth: 200,
+                            whiteSpace: 'normal', wordBreak: 'break-all',
                           }}
                           onMouseEnter={e => e.target.style.textDecoration = 'underline'}
                           onMouseLeave={e => e.target.style.textDecoration = 'none'}
