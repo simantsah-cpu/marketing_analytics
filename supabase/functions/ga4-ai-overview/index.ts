@@ -248,6 +248,29 @@ function buildRequests(
     ]
   }
 
+  // ── pages: snippet × landingPage for the "which page" column ────────────────
+  // IMPORTANT: No dimensionFilter here. Combining a filter on an event-scoped
+  // custom dimension (customEvent:ai_overview_click) with a session-scoped
+  // dimension (landingPage) is incompatible with the GA4 Data API and returns
+  // 0 results. Instead we order by eventCount desc (limit 250) and let the
+  // client filter out the ~10-15 garbage rows (empty snippet / "(not set)") that
+  // appear at the top before the real AI Overview data begins.
+  if (queryType === 'pages') {
+    return [
+      {
+        dateRanges: [dateRanges[0]],
+        dimensions: [
+          { name: 'customEvent:ai_overview_click' },
+          { name: 'landingPage' },
+        ],
+        metrics: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+        orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+        keepEmptyRows: false,
+        limit: 250,
+      },
+    ]
+  }
+
   throw new Error(`Unknown queryType: ${queryType}`)
 }
 

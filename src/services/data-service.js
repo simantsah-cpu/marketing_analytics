@@ -1043,6 +1043,18 @@ export async function fetchAiOverviewDeviceSplit(propertyId, dateRange) {
   return reports[0] ?? []
 }
 
+/**
+ * fetchAiOverviewPages — snippet × landingPage for the "which hoppa.com page" column.
+ * No dimension filter (event-scoped + session-scoped combo is incompatible with GA4 filters).
+ * Returns 250 rows ordered by eventCount desc. Client filters out empty-snippet garbage rows.
+ * Returns flat array of { 'customEvent:ai_overview_click', landingPage, eventCount, activeUsers }
+ */
+export async function fetchAiOverviewPages(propertyId, dateRange) {
+  if (!propertyId) return []
+  const reports = await callAiOverview(propertyId, 'pages', [dateRange], null)
+  return reports[0] ?? []
+}
+
 // ─── Mock data fallbacks (used when MOCK_MODE = true) ──────────────────────────
 
 const AFFILIATE_IDS = [

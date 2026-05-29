@@ -19,6 +19,7 @@ import {
   fetchAiOverviewKpis,
   fetchAiOverviewTrend,
   fetchAiOverviewDeviceSplit,
+  fetchAiOverviewPages,
 } from '../../services/data-service'
 import {
   processKpisData,
@@ -83,20 +84,21 @@ export default function AiOverviewSection({
 }) {
   // ── All hooks first — NO conditional returns before this block ──────────────
 
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState(null)
-  const [kpisData, setKpisData]     = useState(null)
-  const [trendData, setTrendData]   = useState(null)
-  const [deviceData, setDeviceData] = useState(null)
-  const [gran, setGran]             = useState('Week')  // shared by Charts + Lifecycle
-  const [category, setCategory]     = useState('All')   // shared by ALL sub-sections
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState(null)
+  const [kpisData, setKpisData]       = useState(null)
+  const [trendData, setTrendData]     = useState(null)
+  const [deviceData, setDeviceData]   = useState(null)
+  const [rawPageRows, setRawPageRows] = useState([])   // snippet × landingPage (unfiltered)
+  const [gran, setGran]               = useState('Week')
+  const [category, setCategory]       = useState('All')
 
   const fetchAll = useCallback(async () => {
     if (!dateRange?.startDate || !propertyId) return
     setLoading(true)
     setError(null)
     try {
-      const [kpis, trend, device] = await Promise.all([
+      const [kpis, trend, device, pages] = await Promise.all([
         fetchAiOverviewKpis(
           propertyId,
           dateRange,
@@ -105,10 +107,12 @@ export default function AiOverviewSection({
         ),
         fetchAiOverviewTrend(propertyId, dateRange, deviceFilter || null),
         fetchAiOverviewDeviceSplit(propertyId, dateRange),
+        fetchAiOverviewPages(propertyId, dateRange),
       ])
       setKpisData(kpis)
       setTrendData(trend)
       setDeviceData(device)
+      setRawPageRows(pages)
     } catch (err) {
       setError(err?.message ?? 'Unknown error')
     } finally {
@@ -214,6 +218,14 @@ export default function AiOverviewSection({
     return weeklyTotals[weeklyTotals.length - 1].events >= weeklyTotals[0].events ? 'growing' : 'declining'
   }, [weeklyTotals])
 
+  // Filter out garbage rows from the pages query.
+  // GA4 returns ~10-15 rows at the top where the snippet is empty / "(not set)" /
+  // "(not provided)" — normal site traffic that floats up because of high session counts.
+  const cleanPageRows = useMemo(() => {
+    const garbage = new Set(['', '(not set)', '(not provided)'])
+    return rawPageRows.filter(row => !garbage.has(row[SNIPPET_KEY] ?? ''))
+  }, [rawPageRows])
+
   // Notify parent — use a ref to avoid stale closure issues
   const onDataLoadedRef = useRef(onDataLoaded)
   useEffect(() => { onDataLoadedRef.current = onDataLoaded }, [onDataLoaded])
@@ -307,13 +319,14 @@ export default function AiOverviewSection({
         availableCategories={availableCategories}
       />
 
-      {/* D: Snippets table — receives category-filtered rows */}
+      {/* D: Snippets table — receives category-filtered rows + landing page data */}
       <AiOverviewSnippetTable
         kpisRows={filteredKpisRows}
         snippetWeekMap={snippetWeekMap}
         allSortedWeeks={allSortedWeeks}
         totalEvents={filteredTotalEvents}
         totalUsers={filteredTotalUsers}
+        pageRows={cleanPageRows}
       />
 
       {/* E: Lifecycle matrix — top 10 of filtered snippets */}

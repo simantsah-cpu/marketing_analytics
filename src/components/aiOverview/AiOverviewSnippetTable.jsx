@@ -180,6 +180,7 @@ export default function AiOverviewSnippetTable({
   allSortedWeeks,
   totalEvents,
   totalUsers,
+  pageRows,   // snippet × landingPage rows from the pages query
 }) {
   const [sortKey, setSortKey]   = useState('events')
   const [sortDir, setSortDir]   = useState('desc')
@@ -189,6 +190,24 @@ export default function AiOverviewSnippetTable({
     if (sortKey === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(col); setSortDir('desc') }
   }, [sortKey])
+
+  // Build snippet → sorted pages lookup
+  // e.g. { "Local airport taxis…": [{ page: '/en/uk/heathrow', events: 556 }, …] }
+  const snippetToPages = useMemo(() => {
+    const map = {}
+    ;(pageRows || []).forEach(row => {
+      const snippet = row[SNIPPET_KEY] ?? ''
+      const page    = row.landingPage   ?? ''
+      if (!snippet || !page || page === '(not set)' || page === '(not provided)') return
+      if (!map[snippet]) map[snippet] = []
+      map[snippet].push({ page, events: row.eventCount || 0 })
+    })
+    // Rows already arrive sorted by eventCount desc from GA4, but deduplicate within snippet
+    Object.keys(map).forEach(k => {
+      map[k].sort((a, b) => b.events - a.events)
+    })
+    return map
+  }, [pageRows])
 
   // Build enriched rows
   const enrichedRows = kpisRows.map(row => {
@@ -227,6 +246,10 @@ export default function AiOverviewSnippetTable({
             <tr>
               <th style={{ ...thBase, width: 36, textAlign: 'center' }}>#</th>
               <th style={{ ...thBase }}>Snippet</th>
+              <th style={{ ...thBase, minWidth: 160 }}>
+                <div>Hoppa.com Page</div>
+                <div style={{ fontSize: 9, fontWeight: 400, color: '#94A3B8', marginTop: 1 }}>GA4 landing page</div>
+              </th>
               <th style={{ ...thBase, textAlign: 'left' }}>Category</th>
               <SortTh col="events"      label="Events"       sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ textAlign: 'right' }} />
               {/* Active Users: GA4's compatible user-level metric for event-scoped dimensions.
@@ -243,32 +266,68 @@ export default function AiOverviewSnippetTable({
               <td style={{ ...tdBase, textAlign: 'center', fontWeight: 700, color: '#3B82F6' }}>Σ</td>
               <td style={{ ...tdBase, fontWeight: 700, color: '#3B82F6', fontSize: 11, letterSpacing: '0.05em', textTransform: 'uppercase' }}>ALL SNIPPETS</td>
               <td style={{ ...tdBase }} />
+              <td style={{ ...tdBase }} />
               <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700 }}>{totalEvents.toLocaleString()}</td>
               <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700 }}>{totalUsers.toLocaleString()}</td>
             </tr>
 
             {/* Data rows */}
-            {displayRows.map((row, idx) => (
-              <tr key={row.text} style={{ background: idx % 2 === 0 ? '#fff' : '#FAFBFC' }}>
-                <td style={{ ...tdBase, textAlign: 'center', color: '#94A3B8', fontWeight: 600 }}>{idx + 1}</td>
-                <td style={{ ...tdBase }}>
-                  <span style={{ fontSize: 11.5, lineHeight: 1.5, display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>
-                    {row.text}
-                  </span>
-                </td>
-                <td style={{ ...tdBase, textAlign: 'left' }}><CategoryPill text={row.text} /></td>
-                <td style={{ ...tdBase, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
-                  {row.events.toLocaleString()}
-                </td>
-                <td style={{ ...tdBase, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
-                  {row.activeUsers.toLocaleString()}
-                </td>
-              </tr>
-            ))}
+            {displayRows.map((row, idx) => {
+              const pages      = snippetToPages[row.text] || []
+              const topPage    = pages[0]?.page ?? null
+              const extraCount = pages.length - 1
+              return (
+                <tr key={row.text} style={{ background: idx % 2 === 0 ? '#fff' : '#FAFBFC' }}>
+                  <td style={{ ...tdBase, textAlign: 'center', color: '#94A3B8', fontWeight: 600 }}>{idx + 1}</td>
+                  <td style={{ ...tdBase }}>
+                    <span style={{ fontSize: 11.5, lineHeight: 1.5, display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                      {row.text}
+                    </span>
+                  </td>
+                  {/* Hoppa.com Page — clickable link to the actual cited page */}
+                  <td style={{ ...tdBase, minWidth: 160 }}>
+                    {topPage ? (
+                      <div>
+                        <a
+                          href={`https://www.hoppa.com${topPage}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title={`https://www.hoppa.com${topPage}`}
+                          style={{
+                            fontSize: 10.5, color: '#0F5FA6', textDecoration: 'none',
+                            fontWeight: 500, display: 'block',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            maxWidth: 200,
+                          }}
+                          onMouseEnter={e => e.target.style.textDecoration = 'underline'}
+                          onMouseLeave={e => e.target.style.textDecoration = 'none'}
+                        >
+                          &#x1F517; {topPage}
+                        </a>
+                        {extraCount > 0 && (
+                          <span style={{ fontSize: 9, color: '#94A3B8', marginTop: 2, display: 'block' }}>
+                            +{extraCount} more page{extraCount > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 10, color: '#CBD5E1' }}>—</span>
+                    )}
+                  </td>
+                  <td style={{ ...tdBase, textAlign: 'left' }}><CategoryPill text={row.text} /></td>
+                  <td style={{ ...tdBase, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                    {row.events.toLocaleString()}
+                  </td>
+                  <td style={{ ...tdBase, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#374151' }}>
+                    {row.activeUsers.toLocaleString()}
+                  </td>
+                </tr>
+              )
+            })}
 
             {displayRows.length === 0 && (
               <tr>
-                <td colSpan={5} style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>
+                <td colSpan={6} style={{ padding: 32, textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>
                   No snippet data for this period.
                 </td>
               </tr>
