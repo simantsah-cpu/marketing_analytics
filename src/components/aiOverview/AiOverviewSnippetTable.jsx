@@ -227,16 +227,16 @@ export default function AiOverviewSnippetTable({
 
       {/* Table */}
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'DM Sans', sans-serif", minWidth: 800, tableLayout: 'fixed' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'DM Sans', sans-serif", minWidth: 800 }}>
           <thead>
             <tr>
               <th style={{ ...thBase, width: 36, textAlign: 'center' }}>#</th>
-              <th style={{ ...thBase, width: '35%' }}>Snippet</th>
+              <th style={{ ...thBase, maxWidth: 320 }}>Snippet</th>
               <th style={{ ...thBase, width: 220, textAlign: 'center' }}>
                 <div>Hoppa.com Page</div>
                 <div style={{ fontSize: 9, fontWeight: 400, color: '#94A3B8', marginTop: 1 }}>GA4 landing page</div>
               </th>
-              <th style={{ ...thBase, width: 110, textAlign: 'left' }}>Category</th>
+              <th style={{ ...thBase, textAlign: 'left' }}>Category</th>
               <SortTh col="events"      label="Events"       sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ textAlign: 'right' }} />
               {/* Active Users: GA4's compatible user-level metric for event-scoped dimensions.
                   'sessions' and 'newUsers' return 0 with event-scoped custom dimension filters (GA4 API limitation). */}
