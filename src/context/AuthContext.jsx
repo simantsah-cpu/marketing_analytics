@@ -35,13 +35,42 @@ export function AuthProvider({ children }) {
       return
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // getSession may return an error if the stored refresh token is stale/invalid.
+    // When that happens ("Refresh Token Not Found"), clear the corrupted session
+    // from localStorage so the user sees the login screen instead of a broken app.
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error?.message?.includes('Refresh Token')) {
+        // Token is stale — wipe it and force re-login
+        supabase.auth.signOut().catch(() => {})
+        setSession(null)
+        setUser(null)
+        setLoading(false)
+        return
+      }
       setSession(session)
       setUser(session?.user ?? null)
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Handle token refresh failure — clears corrupted tokens and forces re-login
+      if (event === 'TOKEN_REFRESHED' && !session) {
+        await supabase.auth.signOut().catch(() => {})
+        setSession(null)
+        setUser(null)
+        setLoading(false)
+        return
+      }
+
+      // SIGNED_OUT — always clear state (handles manual signout + forced signout from refresh failure)
+      if (event === 'SIGNED_OUT') {
+        setDomainError(null)
+        setSession(null)
+        setUser(null)
+        setLoading(false)
+        return
+      }
+
       // Post-OAuth domain check — fires after Google redirect completes.
       // If the signed-in email isn't @elifetransfer.com, sign them out immediately.
       if (session?.user && !isAllowedEmail(session.user.email)) {
