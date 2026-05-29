@@ -3,7 +3,7 @@
  * Sparklines are lazy-inited via IntersectionObserver.
  * High events/user ratio rows get an amber warning indicator.
  */
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { categorise, computeTrendStatus, CATEGORY_COLORS, SNIPPET_KEY } from './aiOverviewUtils'
 
 const DEFAULT_ROWS = 15
