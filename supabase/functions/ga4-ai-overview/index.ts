@@ -248,25 +248,48 @@ function buildRequests(
     ]
   }
 
-  // ── pages: snippet × landingPage for the "which page" column ────────────────
-  // IMPORTANT: No dimensionFilter here. Combining a filter on an event-scoped
-  // custom dimension (customEvent:ai_overview_click) with a session-scoped
-  // dimension (landingPage) is incompatible with the GA4 Data API and returns
-  // 0 results. Instead we order by eventCount desc (limit 250) and let the
-  // client filter out the ~10-15 garbage rows (empty snippet / "(not set)") that
-  // appear at the top before the real AI Overview data begins.
+  // ── pages: snippet × pagePath for the "which hoppa.com page" column ──────────
+  // KEY DESIGN DECISION: We use pagePath (event-scoped) NOT landingPage (session-scoped).
+  //
+  // With landingPage (session-scoped):
+  //   - GA4 treats it as a higher scope than the event-scoped custom dimension
+  //   - The dimensionFilter on customEvent:ai_overview_click returns 0 results
+  //   - Without a filter we get 250 garbage rows (normal traffic, millions of events)
+  //     before any real AI Overview rows appear
+  //
+  // With pagePath (event-scoped):
+  //   - Both dimensions are at the event level — the filter works correctly
+  //   - Returns clean rows: only snippets with real values, paired with the
+  //     exact page URL where the ai_overview_click event fired
+  //   - For AI Overview clicks this IS the landing page (user came from Google,
+  //     first page of session = page where the click event fired)
   if (queryType === 'pages') {
+    const aiFilter = {
+      filter: {
+        fieldName: 'customEvent:ai_overview_click',
+        stringFilter: { matchType: 'FULL_REGEXP', value: '.+' },
+      },
+    }
+    const notSetFilter = {
+      notExpression: {
+        filter: {
+          fieldName: 'customEvent:ai_overview_click',
+          stringFilter: { matchType: 'EXACT', value: '(not set)' },
+        },
+      },
+    }
     return [
       {
         dateRanges: [dateRanges[0]],
         dimensions: [
           { name: 'customEvent:ai_overview_click' },
-          { name: 'landingPage' },
+          { name: 'pagePath' },
         ],
-        metrics: [{ name: 'eventCount' }, { name: 'activeUsers' }],
+        metrics: [{ name: 'eventCount' }],
+        dimensionFilter: { andGroup: { expressions: [aiFilter, notSetFilter] } },
         orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
         keepEmptyRows: false,
-        limit: 250,
+        limit: 500,
       },
     ]
   }

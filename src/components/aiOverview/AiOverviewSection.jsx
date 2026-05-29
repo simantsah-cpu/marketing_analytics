@@ -98,7 +98,7 @@ export default function AiOverviewSection({
     setLoading(true)
     setError(null)
     try {
-      const [kpis, trend, device, pages] = await Promise.all([
+      const [kpis, trend, device] = await Promise.all([
         fetchAiOverviewKpis(
           propertyId,
           dateRange,
@@ -107,12 +107,18 @@ export default function AiOverviewSection({
         ),
         fetchAiOverviewTrend(propertyId, dateRange, deviceFilter || null),
         fetchAiOverviewDeviceSplit(propertyId, dateRange),
-        fetchAiOverviewPages(propertyId, dateRange),
       ])
       setKpisData(kpis)
       setTrendData(trend)
       setDeviceData(device)
-      setRawPageRows(pages)
+
+      // Pages query is isolated — a failure here must NOT crash kpis/trend/device.
+      // If it errors (e.g. edge function not yet deployed), page column shows "—"
+      // but all KPI numbers remain intact.
+      fetchAiOverviewPages(propertyId, dateRange)
+        .then(pages => setRawPageRows(pages ?? []))
+        .catch(() => setRawPageRows([]))
+
     } catch (err) {
       setError(err?.message ?? 'Unknown error')
     } finally {
@@ -218,9 +224,8 @@ export default function AiOverviewSection({
     return weeklyTotals[weeklyTotals.length - 1].events >= weeklyTotals[0].events ? 'growing' : 'declining'
   }, [weeklyTotals])
 
-  // Filter out garbage rows from the pages query.
-  // GA4 returns ~10-15 rows at the top where the snippet is empty / "(not set)" /
-  // "(not provided)" — normal site traffic that floats up because of high session counts.
+  // Filter out any residual garbage (belt-and-suspenders — the filter in the
+  // edge function already handles this, but guard client-side too).
   const cleanPageRows = useMemo(() => {
     const garbage = new Set(['', '(not set)', '(not provided)'])
     return rawPageRows.filter(row => !garbage.has(row[SNIPPET_KEY] ?? ''))

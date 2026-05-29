@@ -197,7 +197,7 @@ export default function AiOverviewSnippetTable({
     const map = {}
     ;(pageRows || []).forEach(row => {
       const snippet = row[SNIPPET_KEY] ?? ''
-      const page    = row.landingPage   ?? ''
+      const page    = row.pagePath      ?? ''   // pagePath (event-scoped) from the updated query
       if (!snippet || !page || page === '(not set)' || page === '(not provided)') return
       if (!map[snippet]) map[snippet] = []
       map[snippet].push({ page, events: row.eventCount || 0 })
