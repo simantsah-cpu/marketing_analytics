@@ -146,35 +146,42 @@ export function processKpisData(rows) {
     }
   }
 
-  // Aggregate: collapse snippet×pagePath rows into one row per snippet
-  const snippetAgg   = {}  // snippetText → { events, users }
-  const snippetPages = {}  // snippetText → [{page, events}]
+  // Aggregate: collapse snippet × pagePath rows into one row per snippet.
+  // sessions, transactions, purchaseRevenue are NOT in the kpis query —
+  // they are sourced from the separate commerce query (joined by pagePath in the table).
+  const snippetAgg     = {}  // snippetText → { events, users }
+  const snippetPageMap = {}  // snippetText → { pagePath → totalEvents }
 
   rows.forEach(row => {
     const text   = row[SNIPPET_KEY] ?? ''
-    const events = row.eventCount  || 0
-    const users  = row.activeUsers || 0
-    const page   = row.pagePath    ?? ''
+    const events = row.eventCount   || 0
+    const users  = row.activeUsers  || 0
+    const page   = row.pagePath     ?? ''
 
     if (!snippetAgg[text]) snippetAgg[text] = { events: 0, users: 0 }
     snippetAgg[text].events += events
     snippetAgg[text].users  += users
 
     if (page && page !== '(not set)' && page !== '(not provided)') {
-      if (!snippetPages[text]) snippetPages[text] = []
-      snippetPages[text].push({ page, events })
+      if (!snippetPageMap[text]) snippetPageMap[text] = {}
+      snippetPageMap[text][page] = (snippetPageMap[text][page] || 0) + events
     }
   })
 
-  // Sort each snippet's pages by events desc so topPage = highest-traffic page
-  Object.values(snippetPages).forEach(pages => pages.sort((a, b) => b.events - a.events))
+  // Convert page maps to sorted arrays
+  const snippetPages = {}
+  Object.entries(snippetPageMap).forEach(([text, pageMap]) => {
+    snippetPages[text] = Object.entries(pageMap)
+      .map(([page, events]) => ({ page, events }))
+      .sort((a, b) => b.events - a.events)
+  })
 
   // Build aggregated snippet-level rows sorted by total events desc
   const aggregated = Object.entries(snippetAgg)
     .map(([text, { events, users }]) => ({
       [SNIPPET_KEY]: text,
-      eventCount:   events,
-      activeUsers:  users,
+      eventCount:    events,
+      activeUsers:   users,
     }))
     .sort((a, b) => b.eventCount - a.eventCount)
 

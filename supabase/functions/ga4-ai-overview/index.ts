@@ -203,7 +203,7 @@ function buildRequests(
       dateRanges: [dr],
       dimensions: [
         { name: 'customEvent:ai_overview_click' },
-        { name: 'pagePath' },   // event-scoped: the exact page where the click event fired
+        { name: 'pagePath' },  // event-scoped: exact page where the click event fired
       ],
       metrics: [
         { name: 'eventCount' },
@@ -212,7 +212,7 @@ function buildRequests(
       dimensionFilter: filter,
       orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
       keepEmptyRows: false,
-      limit: 2000,   // snippet × pagePath combos (was 500 for snippet-only)
+      limit: 2000,
     })
     const reqs = [baseReq(dateRanges[0])]
     if (dateRanges.length > 1 && dateRanges[1]) reqs.push(baseReq(dateRanges[1]))
@@ -297,6 +297,96 @@ function buildRequests(
         orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
         keepEmptyRows: false,
         limit: 500,
+      },
+    ]
+  }
+
+  // ── commerce: organic landing-page purchase attribution ────────────────────
+  //
+  // WHY A SEPARATE QUERY:
+  //   GA4 e-commerce metrics (transactions, purchaseRevenue) are tied to the
+  //   `purchase` event. That event does NOT carry the customEvent:ai_overview_click
+  //   parameter, so filtering the kpis query by that parameter always returns 0
+  //   for purchases/revenue — even with sessionDefaultChannelGroup present.
+  //
+  // THIS QUERY instead uses landingPage (session-scoped):
+  //   "For organic-search sessions that STARTED on page X, what was the revenue?"
+  //   Since AI Overview clicks always arrive via Organic Search and the click
+  //   IS the session start, this is the correct session-level attribution.
+  //
+  //   We strip query strings when joining on the frontend so ?utm_* params
+  //   don't prevent the pagePath ↔ landingPage match.
+  if (queryType === 'commerce') {
+    return [
+      {
+        dateRanges: [dateRanges[0]],
+        dimensions: [
+          { name: 'landingPage' },              // session-scoped: first page of the session
+          { name: 'sessionDefaultChannelGroup' }, // session-scoped: to filter organic only
+        ],
+        metrics: [
+          { name: 'sessions' },
+          { name: 'transactions' },
+          { name: 'purchaseRevenue' },
+        ],
+        dimensionFilter: {
+          filter: {
+            fieldName: 'sessionDefaultChannelGroup',
+            stringFilter: { matchType: 'EXACT', value: 'Organic Search' },
+          },
+        },
+        orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+        keepEmptyRows: false,
+        limit: 1000,
+      },
+    ]
+  }
+
+  // ── organic_sessions: total organic sessions per week (Attribution chart — Bar 1) ─────
+  // No AI Overview filter — this is the full organic session baseline.
+  if (queryType === 'organic_sessions') {
+    return [
+      {
+        dateRanges: [dateRanges[0]],
+        dimensions: [{ name: 'yearWeek' }],
+        metrics: [{ name: 'sessions' }],
+        dimensionFilter: {
+          filter: {
+            fieldName: 'sessionDefaultChannelGroup',
+            stringFilter: { matchType: 'EXACT', value: 'Organic Search' },
+          },
+        },
+        orderBys: [{ dimension: { dimensionName: 'yearWeek' } }],
+        keepEmptyRows: false,
+        limit: 100,
+      },
+    ]
+  }
+
+  // ── attribution_organic + attribution_direct: AI Overview sessions by channel ─────────
+  // Both queries have the same shape: yearWeek × customEvent:ai_overview_click ×
+  // sessionDefaultChannelGroup, with the AI Overview event filter applied.
+  // The client filters by channel group to split into Organic (Bar 2) vs Direct (Bar 3).
+  //
+  // WHY sessionDefaultChannelGroup IS SAFE HERE:
+  //   Unlike the kpis query (which lost events when we added this session-scoped dim),
+  //   the trend query already mixed yearWeek (derived from the session) with event-scoped
+  //   dims. sessionDefaultChannelGroup is also session-scoped, so the join semantics are
+  //   identical — no event loss expected.
+  if (queryType === 'attribution_sessions') {
+    return [
+      {
+        dateRanges: [dateRanges[0]],
+        dimensions: [
+          { name: 'yearWeek' },
+          { name: 'customEvent:ai_overview_click' },
+          { name: 'sessionDefaultChannelGroup' },
+        ],
+        metrics: [{ name: 'sessions' }, { name: 'eventCount' }],
+        dimensionFilter: buildFilter(false),  // AI Overview event filter only, no device
+        orderBys: [{ dimension: { dimensionName: 'yearWeek' } }],
+        keepEmptyRows: false,
+        limit: 5000,
       },
     ]
   }

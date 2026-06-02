@@ -1055,6 +1055,50 @@ export async function fetchAiOverviewPages(propertyId, dateRange) {
   return reports[0] ?? []
 }
 
+/**
+ * fetchAiOverviewCommerce — organic landing-page purchase attribution.
+ *
+ * GA4 e-commerce metrics (transactions, purchaseRevenue) cannot be derived
+ * from the event-scoped kpis query — the `purchase` event does not carry the
+ * ai_overview_click parameter, so transactions/revenue are always 0 there.
+ *
+ * This function queries by landingPage + sessionDefaultChannelGroup='Organic Search'
+ * to get: for organic sessions starting on each page, how many transactions/revenue?
+ *
+ * Since AI Overview clicks always arrive as Organic Search and the click IS the
+ * session entry point, this gives correct session-level attribution.
+ *
+ * Returns flat array of { landingPage, sessionDefaultChannelGroup, sessions, transactions, purchaseRevenue }
+ */
+export async function fetchAiOverviewCommerce(propertyId, dateRange) {
+  if (!propertyId) return []
+  const reports = await callAiOverview(propertyId, 'commerce', [dateRange], null)
+  return reports[0] ?? []
+}
+
+/**
+ * fetchOrganicSessionsByWeek — total organic search sessions per ISO week.
+ * Powers Bar 1 (background baseline) of the Attribution chart.
+ * Returns flat array of { yearWeek, sessions }
+ */
+export async function fetchOrganicSessionsByWeek(propertyId, dateRange) {
+  if (!propertyId) return []
+  const reports = await callAiOverview(propertyId, 'organic_sessions', [dateRange], null)
+  return reports[0] ?? []
+}
+
+/**
+ * fetchAttributionSessions — AI Overview sessions split by sessionDefaultChannelGroup.
+ * A SINGLE query returns yearWeek × snippet × channelGroup rows.
+ * The client splits this into Organic (Bar 2) and Direct (Bar 3) by filtering channel.
+ * Returns flat array of { yearWeek, 'customEvent:ai_overview_click', sessionDefaultChannelGroup, sessions, eventCount }
+ */
+export async function fetchAttributionSessions(propertyId, dateRange) {
+  if (!propertyId) return []
+  const reports = await callAiOverview(propertyId, 'attribution_sessions', [dateRange], null)
+  return reports[0] ?? []
+}
+
 // ─── Mock data fallbacks (used when MOCK_MODE = true) ──────────────────────────
 
 const AFFILIATE_IDS = [

@@ -19,6 +19,7 @@ import {
   fetchAiOverviewKpis,
   fetchAiOverviewTrend,
   fetchAiOverviewDeviceSplit,
+  fetchAiOverviewCommerce,
 } from '../../services/data-service'
 import {
   processKpisData,
@@ -83,13 +84,14 @@ export default function AiOverviewSection({
 }) {
   // ── All hooks first — NO conditional returns before this block ──────────────
 
-  const [loading, setLoading]       = useState(true)
-  const [error, setError]           = useState(null)
-  const [kpisData, setKpisData]     = useState(null)
-  const [trendData, setTrendData]   = useState(null)
-  const [deviceData, setDeviceData] = useState(null)
-  const [gran, setGran]             = useState('Week')
-  const [category, setCategory]     = useState('All')
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState(null)
+  const [kpisData, setKpisData]       = useState(null)
+  const [trendData, setTrendData]     = useState(null)
+  const [deviceData, setDeviceData]   = useState(null)
+  const [commerceRows, setCommerceRows] = useState([])   // landingPage-level organic purchase data
+  const [gran, setGran]               = useState('Week')
+  const [category, setCategory]       = useState('All')
 
   const fetchAll = useCallback(async () => {
     if (!dateRange?.startDate || !propertyId) return
@@ -109,6 +111,12 @@ export default function AiOverviewSection({
       setKpisData(kpis)
       setTrendData(trend)
       setDeviceData(device)
+
+      // Commerce query: isolated so a failure here NEVER affects KPI numbers.
+      // Runs after the main trio so the page doesn't show a loading state for it.
+      fetchAiOverviewCommerce(propertyId, dateRange)
+        .then(rows => setCommerceRows(rows ?? []))
+        .catch(() => setCommerceRows([]))
 
     } catch (err) {
       setError(err?.message ?? 'Unknown error')
@@ -216,6 +224,23 @@ export default function AiOverviewSection({
     return weeklyTotals[weeklyTotals.length - 1].events >= weeklyTotals[0].events ? 'growing' : 'declining'
   }, [weeklyTotals])
 
+  // pageCommerce: normalised pagePath → { transactions, purchaseRevenue }
+  // Built from the commerce query (organic landing-page attribution).
+  // landingPage values may contain query strings (?utm_...) — strip them so
+  // they always match the clean pagePath keys from the kpis query.
+  const pageCommerce = useMemo(() => {
+    const map = {}
+    ;(commerceRows || []).forEach(row => {
+      const raw  = row.landingPage ?? ''
+      const path = raw.split('?')[0]  // strip query string for reliable join
+      if (!path || path === '(not set)') return
+      if (!map[path]) map[path] = { sessions: 0, transactions: 0, purchaseRevenue: 0 }
+      map[path].sessions        += row.sessions        || 0
+      map[path].transactions    += row.transactions    || 0
+      map[path].purchaseRevenue += row.purchaseRevenue || 0
+    })
+    return map
+  }, [commerceRows])
 
   // Notify parent — use a ref to avoid stale closure issues
   const onDataLoadedRef = useRef(onDataLoaded)
@@ -308,6 +333,8 @@ export default function AiOverviewSection({
         category={category}
         onCategoryChange={setCategory}
         availableCategories={availableCategories}
+        propertyId={propertyId}
+        dateRange={dateRange}
       />
 
       {/* D: Snippets table — receives category-filtered rows + landing page data */}
@@ -319,6 +346,7 @@ export default function AiOverviewSection({
         totalUsers={filteredTotalUsers}
         pageRows={undefined}
         snippetToPages={snippetToPages}
+        pageCommerce={pageCommerce}
       />
 
       {/* E: Lifecycle matrix — top 10 of filtered snippets */}

@@ -1,19 +1,25 @@
 /**
- * AiOverviewCharts.jsx — Section B: AI Overview Events bar chart.
+ * AiOverviewCharts.jsx — Section B: AI Overview Events bar chart + Attribution view.
  *
- * Features:
- *  - Bar chart (matching Executive Summary / LLM Intelligence style)
- *  - Day | Week | Month | Quarter | Year granularity toggle
- *  - Category filter pills (All + Transfer times, Travel timing, etc.)
- *  - Canvas lifecycle safe for React StrictMode (safeCreateChart helper)
+ * VIEW 1 — "Click Volume": existing bar chart, completely unchanged.
+ * VIEW 2 — "Attribution":  new grouped bar chart showing:
+ *   Bar 1 (y1, right axis, grey)  — Total Organic Sessions
+ *   Bar 2 (y,  left  axis, teal)  — AI Overview · Organic Search
+ *   Bar 3 (y,  left  axis, amber) — AI Overview · Misattributed to Direct
  *
- * Props:
- *   weeklyTotals    — [{ week: '202618', label: 'W18 · Apr 28', events: 1024 }]
- *   trendData       — raw rows: [{ yearWeek, 'customEvent:ai_overview_click', eventCount }]
- *   categoryBreakdown — [{ label, events, pct }] from buildCategoryBreakdown
+ * Props (unchanged from before):
+ *   trendData          — raw kpis trend rows
+ *   gran               — 'Week' | 'Month' | 'Quarter' | 'Year'
+ *   onGranChange       — (gran) => void
+ *   category           — string
+ *   onCategoryChange   — (cat)  => void
+ *   availableCategories — Set<string>
+ *   propertyId         — GA4 property ID (new, for attribution queries)
+ *   dateRange          — { startDate, endDate } (new)
  */
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { CATEGORY_COLORS, SNIPPET_KEY, categorise, weekLabel } from './aiOverviewUtils'
+import { fetchOrganicSessionsByWeek, fetchAttributionSessions } from '../../services/data-service'
 
 // ─── Safe chart create (React StrictMode safe) ────────────────────────────────
 function safeCreateChart(canvas, config) {
@@ -38,31 +44,18 @@ function isoWeekToDate(yearWeek) {
   return target
 }
 
-// ─── Granularity bucket key from a Date ───────────────────────────────────────
-function bucketKey(date, gran) {
-  if (!date) return ''
-  const y = date.getFullYear()
-  const m = date.getMonth() // 0-based
-  const d = date.getDate()
-  switch (gran) {
-    case 'Month':   return `${y}-${String(m + 1).padStart(2, '0')}`
-    case 'Quarter': return `${y}-Q${Math.floor(m / 3) + 1}`
-    case 'Year':    return `${y}`
-    default:        return `${y}-W${String(parseInt(String(date).slice(0, 4) === String(y) ? 1 : 1)).padStart(2, '0')}` // fallback Week
-  }
-}
-
+// ─── Granularity bucket key from a yearWeek string ───────────────────────────
 function bucketKeyFromWeek(yearWeek, gran) {
   const date = isoWeekToDate(yearWeek)
   if (!date) return yearWeek
   const y = date.getFullYear()
   const m = date.getMonth()
   switch (gran) {
-    case 'Week':    return yearWeek  // keep as-is
+    case 'Week':    return yearWeek
     case 'Month':   return `${y}-${String(m + 1).padStart(2, '0')}`
     case 'Quarter': return `${y}-Q${Math.floor(m / 3) + 1}`
     case 'Year':    return `${y}`
-    default:        return yearWeek  // Day not possible with weekly data → show as weekly
+    default:        return yearWeek
   }
 }
 
@@ -76,7 +69,7 @@ function bucketLabel(key, gran) {
     }
     case 'Quarter': return key.replace('-', ' ')
     case 'Year':    return key
-    default:        return weekLabel(key) // Week
+    default:        return weekLabel(key)
   }
 }
 
@@ -84,7 +77,7 @@ function bucketLabel(key, gran) {
 function aggregateBars(trendRows, gran, selectedCategory) {
   if (!trendRows?.length) return { labels: [], data: [] }
 
-  const buckets = {}  // key → total events
+  const buckets = {}
 
   trendRows.forEach(row => {
     const snippet  = row[SNIPPET_KEY] ?? ''
@@ -104,7 +97,53 @@ function aggregateBars(trendRows, gran, selectedCategory) {
   }
 }
 
-// ─── Bar chart canvas component ───────────────────────────────────────────────
+// ─── Aggregate attribution rows by week + channel ────────────────────────────
+function aggregateAttribution(organicRows, attrRows, gran) {
+  const organicBuckets = {}   // yearWeek key → total organic sessions (Bar 1)
+  const aioOrgBuckets  = {}   // yearWeek key → AI Overview organic sessions (Bar 2)
+  const aioDirBuckets  = {}   // yearWeek key → AI Overview direct sessions (Bar 3)
+
+  // Bar 1: total organic
+  ;(organicRows || []).forEach(row => {
+    const key = bucketKeyFromWeek(row.yearWeek ?? '', gran)
+    if (!key) return
+    organicBuckets[key] = (organicBuckets[key] || 0) + (row.sessions || 0)
+  })
+
+  // Bar 2 + 3: split AI Overview attribution rows by channel — use eventCount (event-scoped)
+  const SNIPPET_DIM = 'customEvent:ai_overview_click'
+  ;(attrRows || []).forEach(row => {
+    const snippet = row[SNIPPET_DIM] ?? ''
+    if (!snippet || snippet === '(not set)' || snippet === '') return
+
+    const key     = bucketKeyFromWeek(row.yearWeek ?? '', gran)
+    if (!key) return
+    const channel = row.sessionDefaultChannelGroup ?? ''
+    const events  = row.eventCount || 0   // event-scoped — correct scope for this dimension
+
+    if (channel === 'Organic Search') {
+      aioOrgBuckets[key] = (aioOrgBuckets[key] || 0) + events
+    } else if (channel === 'Direct') {
+      aioDirBuckets[key] = (aioDirBuckets[key] || 0) + events
+    }
+  })
+
+  // Merge all keys and sort
+  const allKeys = [...new Set([
+    ...Object.keys(organicBuckets),
+    ...Object.keys(aioOrgBuckets),
+    ...Object.keys(aioDirBuckets),
+  ])].sort()
+
+  return {
+    labels:      allKeys.map(k => bucketLabel(k, gran)),
+    organicData: allKeys.map(k => organicBuckets[k] || 0),
+    aioOrgData:  allKeys.map(k => aioOrgBuckets[k]  || 0),
+    aioDirData:  allKeys.map(k => aioDirBuckets[k]  || 0),
+  }
+}
+
+// ─── EXISTING: Click Volume bar chart (unchanged) ────────────────────────────
 function BarChart({ labels, data, accentColor }) {
   const canvasRef = useRef(null)
   const chartRef  = useRef(null)
@@ -113,7 +152,6 @@ function BarChart({ labels, data, accentColor }) {
     if (!canvasRef.current || !window.Chart) return
     if (!labels?.length) return
 
-    // ── Custom plugin: draw value on top of each bar ──────────────────────────
     const barValuePlugin = {
       id: 'aio-barValues',
       afterDatasetsDraw(chart) {
@@ -151,11 +189,11 @@ function BarChart({ labels, data, accentColor }) {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        clip: false,                          // allow labels to draw above chart area
+        clip: false,
         interaction: { mode: 'index', intersect: false },
-        layout: { padding: { top: 24 } },    // room for bar-top labels
+        layout: { padding: { top: 24 } },
         plugins: {
-          datalabels: { display: false },   // suppress global chartjs-plugin-datalabels
+          datalabels: { display: false },
           legend: { display: false },
           tooltip: {
             backgroundColor: '#0A2540',
@@ -191,7 +229,6 @@ function BarChart({ labels, data, accentColor }) {
           },
         },
       },
-      // top-level plugins array — this is how Chart.js v4 accepts inline plugins
       plugins: [barValuePlugin],
     })
 
@@ -213,6 +250,232 @@ function BarChart({ labels, data, accentColor }) {
     <div style={{ height: 260, position: 'relative' }}>
       <canvas ref={canvasRef} role="img" aria-label="AI Overview events bar chart" />
     </div>
+  )
+}
+
+// ─── NEW: Attribution grouped bar chart (dual Y-axes) ────────────────────────
+function AttributionChart({ labels, organicData, aioOrgData, aioDirData }) {
+  const canvasRef = useRef(null)
+  const chartRef  = useRef(null)
+
+  useEffect(() => {
+    if (!canvasRef.current || !window.Chart) return
+    if (!labels?.length) return
+
+    chartRef.current = safeCreateChart(canvasRef.current, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Total Organic Sessions',
+            data: organicData,
+            backgroundColor: 'rgba(148, 163, 184, 0.55)',
+            borderColor: '#94A3B8',
+            borderWidth: 1,
+            borderRadius: 3,
+            borderSkipped: false,
+            yAxisID: 'y1',
+          },
+          {
+            label: 'AI Overview Events · Organic',
+            data: aioOrgData,
+            backgroundColor: '#1D9E75',
+            borderRadius: 4,
+            borderSkipped: false,
+            yAxisID: 'y',
+          },
+          {
+            label: 'AI Overview Events · Misattributed to Direct',
+            data: aioDirData,
+            backgroundColor: '#EF9F27',
+            borderRadius: 4,
+            borderSkipped: false,
+            yAxisID: 'y',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { top: 8 } },
+        plugins: {
+          datalabels: { display: false },
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              font: { size: 11, family: 'DM Sans, sans-serif' },
+              color: '#374151',
+              padding: 16,
+              usePointStyle: true,
+              pointStyleWidth: 10,
+            },
+          },
+          tooltip: {
+            backgroundColor: '#0A2540',
+            titleColor: '#94A3B8',
+            bodyColor: '#fff',
+            padding: 14,
+            cornerRadius: 8,
+            callbacks: {
+              label: ctx => {
+                const v = ctx.raw ?? 0
+                if (ctx.datasetIndex === 0) return `  Total Organic Sessions: ${v.toLocaleString()}`
+                if (ctx.datasetIndex === 1) return `  AI Overview Events (Organic): ${v.toLocaleString()}`
+                return `  AI Overview Events (Direct): ${v.toLocaleString()}`
+              },
+              afterBody: items => {
+                const idx = items[0]?.dataIndex ?? 0
+                const org = aioOrgData[idx] || 0
+                const dir = aioDirData[idx] || 0
+                const total = org + dir
+                if (total === 0) return []
+                const rate = ((dir / total) * 100).toFixed(1)
+                return [`  Misattribution rate: ${rate}%`]
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              font: { size: 10, family: 'DM Sans, sans-serif' },
+              color: '#374151',
+              maxRotation: 45,
+              autoSkip: true,
+              maxTicksLimit: 16,
+            },
+          },
+          y: {
+            position: 'left',
+            grid: { color: '#F1F5F9' },
+            border: { display: false },
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'AI Overview Events',
+              font: { size: 10, family: 'DM Sans, sans-serif' },
+              color: '#94A3B8',
+            },
+            ticks: {
+              font: { size: 10, family: 'DM Sans, sans-serif' },
+              color: '#374151',
+              callback: v => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toLocaleString(),
+            },
+          },
+          y1: {
+            position: 'right',
+            grid: { drawOnChartArea: false },   // no grid lines for right axis
+            border: { display: false },
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Total Organic Sessions',
+              font: { size: 10, family: 'DM Sans, sans-serif' },
+              color: '#94A3B8',
+            },
+            ticks: {
+              font: { size: 10, family: 'DM Sans, sans-serif' },
+              color: '#94A3B8',
+              callback: v => v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toLocaleString(),
+            },
+          },
+        },
+      },
+    })
+
+    return () => {
+      chartRef.current?.destroy()
+      chartRef.current = null
+    }
+  }, [labels, organicData, aioOrgData, aioDirData])
+
+  if (!labels?.length) {
+    return (
+      <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: 12 }}>
+        No attribution data available for this period.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ height: 300, position: 'relative' }}>
+      <canvas ref={canvasRef} role="img" aria-label="AI Overview attribution analysis chart" />
+    </div>
+  )
+}
+
+// ─── Attribution insight stat cards ──────────────────────────────────────────
+function AttributionInsights({ organicData, aioOrgData, aioDirData }) {
+  const totalOrg    = (aioOrgData  || []).reduce((s, v) => s + v, 0)
+  const totalDir    = (aioDirData  || []).reduce((s, v) => s + v, 0)
+  const trueTotal   = totalOrg + totalDir
+
+  const misratePct  = trueTotal > 0 ? (totalDir / trueTotal) * 100 : 0
+  const misrateColor = misratePct >= 20 ? '#D97706' : '#1D9E75'
+
+  const cardStyle = {
+    background: '#F8FAFC',
+    border: '1px solid #E2E8F0',
+    borderRadius: 10,
+    padding: '14px 18px',
+    flex: 1,
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+      {/* Stat 1 — Misattribution rate */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: misrateColor, fontVariantNumeric: 'tabular-nums' }}>
+          {misratePct.toFixed(1)}%
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#0A2540', marginTop: 2 }}>Misattribution rate</div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 3, lineHeight: 1.4 }}>
+          of AI Overview events attributed to Direct instead of Organic Search
+        </div>
+      </div>
+
+      {/* Stat 2 — True AI Overview events */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: '#1D9E75', fontVariantNumeric: 'tabular-nums' }}>
+          {trueTotal.toLocaleString()}
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#0A2540', marginTop: 2 }}>True AI Overview events</div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 3, lineHeight: 1.4 }}>
+          Organic + misattributed Direct combined
+        </div>
+      </div>
+
+      {/* Stat 3 — Organic Search AI Overview events (Bar 2 only) */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: '#0A2540', fontVariantNumeric: 'tabular-nums' }}>
+          {totalOrg.toLocaleString()}
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#0A2540', marginTop: 2 }}>Organic Search AI Overview events</div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 3, lineHeight: 1.4 }}>
+          Events confirmed attributed to Organic Search by GA4 channel grouping
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Chart skeleton placeholder ───────────────────────────────────────────────
+function ChartSkeleton({ height = 300 }) {
+  return (
+    <>
+      <style>{`@keyframes aio-pulse{0%,100%{opacity:1}50%{opacity:0.45}}`}</style>
+      <div style={{
+        height,
+        borderRadius: 8,
+        background: '#F1F5F9',
+        animation: 'aio-pulse 1.4s ease-in-out infinite',
+        marginTop: 8,
+      }} />
+    </>
   )
 }
 
@@ -249,39 +512,33 @@ function GranToggle({ value, onChange }) {
   )
 }
 
-// ─── Category pills — All + each known category ───────────────────────────────
-const ALL_CATEGORIES = ['All', ...Object.keys(CATEGORY_COLORS)]
-
-function CategoryPills({ value, onChange, available }) {
-  // Only show categories that have data
-  const visible = ALL_CATEGORIES.filter(c => c === 'All' || available.has(c))
+// ─── View toggle: Click Volume | Attribution ──────────────────────────────────
+function ViewToggle({ value, onChange }) {
+  const VIEWS = ['Click Volume', 'Attribution']
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-      {visible.map(cat => {
-        const active = value === cat
-        const color  = cat === 'All' ? '#0F5FA6' : CATEGORY_COLORS[cat]
+    <div style={{
+      display: 'inline-flex', alignItems: 'center',
+      background: '#F1F5F9',
+      border: '1px solid #E2E8F0',
+      borderRadius: 20, padding: 3, gap: 2,
+    }}>
+      {VIEWS.map(v => {
+        const active = value === v
         return (
           <button
-            key={cat}
-            onClick={() => onChange(cat)}
+            key={v}
+            onClick={() => onChange(v)}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '4px 10px', border: `1px solid ${active ? color : 'var(--border, #E2E8F0)'}`,
-              borderRadius: 20,
-              background: active ? color : '#fff',
-              color: active ? '#fff' : 'var(--subtext, #5A6A7A)',
-              fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
-              cursor: 'pointer', transition: 'all 0.12s',
+              padding: '4px 14px', border: 'none', borderRadius: 16,
+              background: active ? '#fff' : 'transparent',
+              color: active ? '#0A2540' : '#5A6A7A',
+              fontSize: 11, fontWeight: active ? 700 : 500,
+              fontFamily: 'inherit', cursor: 'pointer',
+              transition: 'all 0.15s',
+              boxShadow: active ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
             }}
           >
-            {cat !== 'All' && (
-              <span style={{
-                width: 7, height: 7, borderRadius: '50%',
-                background: active ? 'rgba(255,255,255,0.8)' : color,
-                flexShrink: 0, display: 'inline-block',
-              }} />
-            )}
-            {cat}
+            {v}
           </button>
         )
       })}
@@ -290,23 +547,88 @@ function CategoryPills({ value, onChange, available }) {
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
-export default function AiOverviewCharts({ trendData, gran, onGranChange, category, onCategoryChange, availableCategories }) {
-  // category is now controlled from AiOverviewSection (shared across all sub-components)
+export default function AiOverviewCharts({
+  trendData,
+  gran,
+  onGranChange,
+  category,
+  onCategoryChange,
+  availableCategories,
+  propertyId,
+  dateRange,
+}) {
+  const [view, setView] = useState('Click Volume')
 
-  // Compute bar chart labels + data
+  // Attribution data state — lazy-fetched on first switch to Attribution view
+  const [attrLoading, setAttrLoading]   = useState(false)
+  const [attrError,   setAttrError]     = useState(null)
+  const [attrFetched, setAttrFetched]   = useState(false)   // true once fetched for this dateRange
+  const [organicRows, setOrganicRows]   = useState([])
+  const [attrRows,    setAttrRows]      = useState([])
+
+  // Re-fetch attribution when dateRange changes (reset cache)
+  const prevDateRange = useRef(null)
+  useEffect(() => {
+    const key = `${dateRange?.startDate}|${dateRange?.endDate}`
+    const prev = prevDateRange.current
+    if (key !== prev) {
+      prevDateRange.current = key
+      setAttrFetched(false)
+      setOrganicRows([])
+      setAttrRows([])
+      setAttrError(null)
+    }
+  }, [dateRange])
+
+  const fetchAttribution = useCallback(async () => {
+    if (!propertyId || !dateRange?.startDate) return
+    setAttrLoading(true)
+    setAttrError(null)
+    try {
+      const [organic, attr] = await Promise.all([
+        fetchOrganicSessionsByWeek(propertyId, dateRange),
+        fetchAttributionSessions(propertyId, dateRange),
+      ])
+      setOrganicRows(organic)
+      setAttrRows(attr)
+      setAttrFetched(true)
+    } catch (err) {
+      setAttrError(err?.message ?? 'Attribution data fetch failed')
+    } finally {
+      setAttrLoading(false)
+    }
+  }, [propertyId, dateRange])
+
+  // Lazy-fetch when the user switches to Attribution for the first time
+  const handleViewChange = useCallback(v => {
+    setView(v)
+    if (v === 'Attribution' && !attrFetched && !attrLoading) {
+      fetchAttribution()
+    }
+  }, [attrFetched, attrLoading, fetchAttribution])
+
+  // ── Click Volume derived data (unchanged) ──────────────────────────────────
   const { labels, data } = useMemo(
     () => aggregateBars(trendData ?? [], gran, category),
     [trendData, gran, category]
   )
-
-  // Pick accent colour based on selected category
   const accentColor = category === 'All' ? '#1D9E75' : (CATEGORY_COLORS[category] ?? '#1D9E75')
-
-  // Subtitle text
-  const granLabel = gran === 'Week' ? 'ISO week' : gran.toLowerCase()
-  const subtitle  = category === 'All'
+  const granLabel   = gran === 'Week' ? 'ISO week' : gran.toLowerCase()
+  const cvSubtitle  = category === 'All'
     ? `All categories · per ${granLabel}`
     : `${category} · per ${granLabel}`
+
+  // ── Attribution derived data ───────────────────────────────────────────────
+  const { labels: attrLabels, organicData, aioOrgData, aioDirData } = useMemo(
+    () => aggregateAttribution(organicRows, attrRows, gran),
+    [organicRows, attrRows, gran]
+  )
+
+  const isAttribution = view === 'Attribution'
+  const chartTitle    = isAttribution ? 'AI Overview Attribution Analysis' : 'AI Overview Events'
+  const subtitle      = isAttribution
+    ? 'Organic traffic vs AI Overview sessions vs misattributed to Direct'
+    : cvSubtitle
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -318,19 +640,57 @@ export default function AiOverviewCharts({ trendData, gran, onGranChange, catego
         boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
       }}>
 
-        {/* ── Header row: title + granularity toggle ── */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14, gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#0A2540', marginBottom: 2 }}>
-              AI Overview Events
-            </div>
-            <div style={{ fontSize: 10, color: '#94A3B8' }}>{subtitle}</div>
+        {/* ── Row 1: title + subtitle ── */}
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#0A2540', marginBottom: 2 }}>
+            {chartTitle}
           </div>
+          <div style={{ fontSize: 10, color: '#94A3B8' }}>{subtitle}</div>
+        </div>
+
+        {/* ── Row 2: view toggle (left) + granularity toggle (right) ── */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12 }}>
+          <ViewToggle value={view} onChange={handleViewChange} />
           <GranToggle value={gran} onChange={onGranChange} />
         </div>
 
-        {/* ── Bar chart ── */}
-        <BarChart labels={labels} data={data} accentColor={accentColor} />
+        {/* ── Chart area ── */}
+        {!isAttribution && (
+          <BarChart labels={labels} data={data} accentColor={accentColor} />
+        )}
+
+        {isAttribution && attrLoading && (
+          <ChartSkeleton height={300} />
+        )}
+
+        {isAttribution && !attrLoading && attrError && (
+          <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '14px 18px', color: '#92400E', marginTop: 8 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 12 }}>⚠ Attribution data error</div>
+            <div style={{ fontSize: 11, marginBottom: 8 }}>{attrError}</div>
+            <button
+              onClick={fetchAttribution}
+              style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #F97316', background: '#FFF7ED', color: '#C2410C', fontFamily: 'inherit', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {isAttribution && !attrLoading && !attrError && (
+          <>
+            <AttributionChart
+              labels={attrLabels}
+              organicData={organicData}
+              aioOrgData={aioOrgData}
+              aioDirData={aioDirData}
+            />
+            <AttributionInsights
+              organicData={organicData}
+              aioOrgData={aioOrgData}
+              aioDirData={aioDirData}
+            />
+          </>
+        )}
 
       </div>
     </div>

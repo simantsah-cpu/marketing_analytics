@@ -195,11 +195,10 @@ export default function AiOverviewSnippetTable({
   // from the kpis query rows (snippet × pagePath combinations).
   // No need to build it here; the parent already has it.
 
-  // Build enriched rows
   const enrichedRows = kpisRows.map(row => {
     const text        = row[SNIPPET_KEY] ?? ''
-    const events      = row.eventCount  || 0
-    const activeUsers = row.activeUsers || 0
+    const events      = row.eventCount   || 0
+    const activeUsers = row.activeUsers  || 0
     return { text, events, activeUsers }
   })
 
@@ -227,20 +226,18 @@ export default function AiOverviewSnippetTable({
 
       {/* Table */}
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'DM Sans', sans-serif", minWidth: 800 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'DM Sans', sans-serif", tableLayout: 'fixed' }}>
           <thead>
             <tr>
-              <th style={{ ...thBase, width: 36, textAlign: 'center' }}>#</th>
-              <th style={{ ...thBase, maxWidth: 320 }}>Snippet</th>
-              <th style={{ ...thBase, width: 220, textAlign: 'center' }}>
+              <th style={{ ...thBase, width: '4%',  textAlign: 'center' }}>#</th>
+              <th style={{ ...thBase, width: '30%' }}>Snippet</th>
+              <th style={{ ...thBase, width: '26%', textAlign: 'center' }}>
                 <div>Hoppa.com Page</div>
                 <div style={{ fontSize: 9, fontWeight: 400, color: '#94A3B8', marginTop: 1 }}>GA4 landing page</div>
               </th>
-              <th style={{ ...thBase, textAlign: 'left' }}>Category</th>
-              <SortTh col="events"      label="Events"       sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ textAlign: 'right' }} />
-              {/* Active Users: GA4's compatible user-level metric for event-scoped dimensions.
-                  'sessions' and 'newUsers' return 0 with event-scoped custom dimension filters (GA4 API limitation). */}
-              <th style={{ ...thBase, textAlign: 'right' }}>
+              <th style={{ ...thBase, width: '16%', textAlign: 'center' }}>Category</th>
+              <SortTh col="events" label="Events" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} style={{ width: '12%', textAlign: 'right' }} />
+              <th style={{ ...thBase, width: '12%', textAlign: 'right' }}>
                 <div>Active Users</div>
                 <div style={{ fontSize: 9, fontWeight: 400, color: '#94A3B8', marginTop: 1 }}>engaged sessions</div>
               </th>
@@ -253,8 +250,8 @@ export default function AiOverviewSnippetTable({
               <td style={{ ...tdBase, fontWeight: 700, color: '#3B82F6', fontSize: 11, letterSpacing: '0.05em', textTransform: 'uppercase' }}>ALL SNIPPETS</td>
               <td style={{ ...tdBase }} />
               <td style={{ ...tdBase }} />
-              <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700 }}>{totalEvents.toLocaleString()}</td>
-              <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700 }}>{totalUsers.toLocaleString()}</td>
+              <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{totalEvents.toLocaleString()}</td>
+              <td style={{ ...tdBase, textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{totalUsers.toLocaleString()}</td>
             </tr>
 
             {/* Data rows */}
@@ -266,12 +263,12 @@ export default function AiOverviewSnippetTable({
                 <tr key={row.text} style={{ background: idx % 2 === 0 ? '#fff' : '#FAFBFC' }}>
                   <td style={{ ...tdBase, textAlign: 'center', color: '#94A3B8', fontWeight: 600 }}>{idx + 1}</td>
                   <td style={{ ...tdBase }}>
-                    <span style={{ fontSize: 11.5, lineHeight: 1.5, display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                    <span style={{ fontSize: 11.5, lineHeight: 1.5, display: 'block', whiteSpace: 'normal', wordBreak: 'break-word', overflow: 'hidden' }}>
                       {row.text}
                     </span>
                   </td>
-                  {/* Hoppa.com Page — clickable link, full path always shown */}
-                  <td style={{ ...tdBase, width: 220, verticalAlign: 'middle' }}>
+                  {/* Hoppa.com Page — clickable link, full path shown */}
+                  <td style={{ ...tdBase, verticalAlign: 'middle' }}>
                     {topPage ? (
                       <div>
                         <a
@@ -299,7 +296,7 @@ export default function AiOverviewSnippetTable({
                       <span style={{ fontSize: 10, color: '#CBD5E1' }}>—</span>
                     )}
                   </td>
-                  <td style={{ ...tdBase, textAlign: 'left' }}><CategoryPill text={row.text} /></td>
+                  <td style={{ ...tdBase, textAlign: 'center' }}><CategoryPill text={row.text} /></td>
                   <td style={{ ...tdBase, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                     {row.events.toLocaleString()}
                   </td>
