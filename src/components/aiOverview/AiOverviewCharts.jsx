@@ -689,6 +689,25 @@ export default function AiOverviewCharts({
               aioOrgData={aioOrgData}
               aioDirData={aioDirData}
             />
+
+            {/* ── Methodology note ── */}
+            <div style={{
+              marginTop: 14,
+              padding: '10px 14px',
+              background: '#F8FAFC',
+              border: '1px solid #E2E8F0',
+              borderRadius: 8,
+              fontSize: 10.5,
+              color: '#64748B',
+              lineHeight: 1.6,
+            }}>
+              <span style={{ fontWeight: 700, color: '#475569' }}>ℹ️ Why this total is lower than the AI Overview Events KPI: </span>
+              This chart only counts sessions GA4 attributed to <strong>Organic Search</strong> or <strong>Direct</strong> — the two expected channels for AI Overview traffic.
+              The remaining events are distributed across other channels where GA4 overrode the attribution:
+              {' '}<strong>Paid Search</strong> (when a paid ad touch exists in the same session),
+              {' '}<strong>Email</strong>, <strong>Referral</strong>, <strong>Unassigned</strong>, and a small number of others.
+              These are confirmed real AI Overview clicks — the <code style={{ background: '#E2E8F0', padding: '1px 4px', borderRadius: 3, fontSize: 10 }}>ai_overview_click</code> event fired — but GA4's session-level channel assignment took precedence.
+            </div>
           </>
         )}
 
