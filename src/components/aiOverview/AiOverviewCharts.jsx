@@ -135,11 +135,23 @@ function aggregateAttribution(organicRows, attrRows, gran) {
     ...Object.keys(aioDirBuckets),
   ])].sort()
 
+  // Share of organic: (aioOrg + aioDir) / organic × 100.
+  // Return null (not 0) when aioTotal = 0 — these are pre-collection weeks where
+  // organic sessions exist but no AI Overview events were tracked yet.
+  // null values are skipped by spanGaps on the line chart and excluded from the avg.
+  const shareData = allKeys.map(k => {
+    const organic  = organicBuckets[k] || 0
+    const aioTotal = (aioOrgBuckets[k] || 0) + (aioDirBuckets[k] || 0)
+    if (organic === 0 || aioTotal === 0) return null
+    return parseFloat(((aioTotal / organic) * 100).toFixed(2))
+  })
+
   return {
     labels:      allKeys.map(k => bucketLabel(k, gran)),
     organicData: allKeys.map(k => organicBuckets[k] || 0),
     aioOrgData:  allKeys.map(k => aioOrgBuckets[k]  || 0),
     aioDirData:  allKeys.map(k => aioDirBuckets[k]  || 0),
+    shareData,
   }
 }
 
@@ -408,6 +420,177 @@ function AttributionChart({ labels, organicData, aioOrgData, aioDirData }) {
   )
 }
 
+// ─── NEW: Share of Organic line chart ───────────────────────────────────────
+function ShareOfOrganicChart({ labels, shareData }) {
+  const canvasRef = useRef(null)
+  const chartRef  = useRef(null)
+
+  useEffect(() => {
+    if (!canvasRef.current || !window.Chart) return
+    if (!labels?.length) return
+
+    chartRef.current = safeCreateChart(canvasRef.current, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'AI Overview share of organic sessions',
+          data: shareData,
+          borderColor: '#0F5FA6',
+          backgroundColor: 'rgba(15, 95, 166, 0.08)',
+          borderWidth: 2.5,
+          pointRadius: 4,
+          pointBackgroundColor: '#0F5FA6',
+          pointHoverRadius: 6,
+          fill: true,
+          tension: 0.35,
+          spanGaps: true,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { top: 12 } },
+        plugins: {
+          datalabels: { display: false },
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0A2540',
+            titleColor: '#94A3B8',
+            bodyColor: '#fff',
+            padding: 12,
+            cornerRadius: 8,
+            callbacks: {
+              label: ctx => {
+                const v = ctx.raw
+                return v == null ? '  No data' : `  AI Overview share: ${v.toFixed(2)}%`
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              font: { size: 10, family: 'DM Sans, sans-serif' },
+              color: '#374151',
+              maxRotation: 45,
+              autoSkip: true,
+              maxTicksLimit: 16,
+            },
+          },
+          y: {
+            grid: { color: '#F1F5F9' },
+            border: { display: false },
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: '% of Organic Sessions',
+              font: { size: 10, family: 'DM Sans, sans-serif' },
+              color: '#94A3B8',
+            },
+            ticks: {
+              font: { size: 10, family: 'DM Sans, sans-serif' },
+              color: '#374151',
+              callback: v => `${v}%`,
+            },
+          },
+        },
+      },
+    })
+
+    return () => {
+      chartRef.current?.destroy()
+      chartRef.current = null
+    }
+  }, [labels, shareData])
+
+  if (!labels?.length) {
+    return (
+      <div style={{ height: 280, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8', fontSize: 12 }}>
+        No data available for this period.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ height: 280, position: 'relative' }}>
+      <canvas ref={canvasRef} role="img" aria-label="AI Overview share of organic sessions line chart" />
+    </div>
+  )
+}
+
+// ─── Share of Organic insight stat card ──────────────────────────────────────
+function ShareOfOrganicInsights({ shareData, organicData, aioOrgData, aioDirData }) {
+  // Average of non-null share values across the period
+  const validPoints  = (shareData || []).filter(v => v != null)
+  const avgShare     = validPoints.length > 0
+    ? validPoints.reduce((s, v) => s + v, 0) / validPoints.length
+    : 0
+
+  const totalOrganic = (organicData || []).reduce((s, v) => s + v, 0)
+  const totalAio     = (aioOrgData  || []).reduce((s, v) => s + v, 0)
+                     + (aioDirData  || []).reduce((s, v) => s + v, 0)
+  const overallShare = totalOrganic > 0 ? (totalAio / totalOrganic) * 100 : 0
+
+  // Trend: compare first half vs second half of shareData
+  const mid      = Math.floor(validPoints.length / 2)
+  const firstH   = validPoints.slice(0, mid)
+  const secondH  = validPoints.slice(mid)
+  const avg1     = firstH.length  > 0 ? firstH.reduce((s, v)  => s + v, 0) / firstH.length  : null
+  const avg2     = secondH.length > 0 ? secondH.reduce((s, v) => s + v, 0) / secondH.length : null
+  const trendDir = avg1 != null && avg2 != null ? (avg2 > avg1 ? '↑' : avg2 < avg1 ? '↓' : '→') : ''
+  const trendColor = trendDir === '↑' ? '#1D9E75' : trendDir === '↓' ? '#D97706' : '#64748B'
+
+  const cardStyle = {
+    background: '#F8FAFC',
+    border: '1px solid #E2E8F0',
+    borderRadius: 10,
+    padding: '14px 18px',
+    flex: 1,
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+      {/* Card 1 — Period average share */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: '#0F5FA6', fontVariantNumeric: 'tabular-nums' }}>
+          {avgShare.toFixed(2)}%
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#0A2540', marginTop: 2 }}>Avg AI Overview share of organic</div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 3, lineHeight: 1.4 }}>
+          Average per {validPoints.length > 0 ? `${validPoints.length} ${validPoints.length === 1 ? 'period' : 'periods'}` : 'period'} in the selected date range
+        </div>
+      </div>
+
+      {/* Card 2 — Overall (total-level) share */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: '#0A2540', fontVariantNumeric: 'tabular-nums' }}>
+          {overallShare.toFixed(2)}%
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#0A2540', marginTop: 2 }}>Overall share of organic</div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 3, lineHeight: 1.4 }}>
+          Total AI Overview events ÷ total organic sessions for the full period
+        </div>
+      </div>
+
+      {/* Card 3 — Trend direction */}
+      <div style={cardStyle}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: trendColor, fontVariantNumeric: 'tabular-nums' }}>
+          {trendDir || '—'}
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#0A2540', marginTop: 2 }}>Share trend</div>
+        <div style={{ fontSize: 10, color: '#94A3B8', marginTop: 3, lineHeight: 1.4 }}>
+          {avg1 != null && avg2 != null
+            ? `First half avg: ${avg1.toFixed(2)}% → second half avg: ${avg2.toFixed(2)}%`
+            : 'Not enough data to compute trend'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Attribution insight stat cards ──────────────────────────────────────────
 function AttributionInsights({ organicData, aioOrgData, aioDirData }) {
   const totalOrg    = (aioOrgData  || []).reduce((s, v) => s + v, 0)
@@ -514,7 +697,7 @@ function GranToggle({ value, onChange }) {
 
 // ─── View toggle: Click Volume | Attribution ──────────────────────────────────
 function ViewToggle({ value, onChange }) {
-  const VIEWS = ['Click Volume', 'Attribution']
+  const VIEWS = ['Click Volume', 'Attribution', 'Share of Organic']
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center',
@@ -599,10 +782,10 @@ export default function AiOverviewCharts({
     }
   }, [propertyId, dateRange])
 
-  // Lazy-fetch when the user switches to Attribution for the first time
+  // Lazy-fetch when the user switches to Attribution or Share of Organic
   const handleViewChange = useCallback(v => {
     setView(v)
-    if (v === 'Attribution' && !attrFetched && !attrLoading) {
+    if ((v === 'Attribution' || v === 'Share of Organic') && !attrFetched && !attrLoading) {
       fetchAttribution()
     }
   }, [attrFetched, attrLoading, fetchAttribution])
@@ -618,17 +801,27 @@ export default function AiOverviewCharts({
     ? `All categories · per ${granLabel}`
     : `${category} · per ${granLabel}`
 
-  // ── Attribution derived data ───────────────────────────────────────────────
-  const { labels: attrLabels, organicData, aioOrgData, aioDirData } = useMemo(
+  // ── Attribution + Share of Organic derived data ────────────────────────────
+  const { labels: attrLabels, organicData, aioOrgData, aioDirData, shareData } = useMemo(
     () => aggregateAttribution(organicRows, attrRows, gran),
     [organicRows, attrRows, gran]
   )
 
-  const isAttribution = view === 'Attribution'
-  const chartTitle    = isAttribution ? 'AI Overview Attribution Analysis' : 'AI Overview Events'
-  const subtitle      = isAttribution
-    ? 'Organic traffic vs AI Overview sessions vs misattributed to Direct'
-    : cvSubtitle
+  const isAttribution   = view === 'Attribution'
+  const isShareOfOrg    = view === 'Share of Organic'
+  const needsAttrData   = isAttribution || isShareOfOrg
+
+  const chartTitle = isAttribution
+    ? 'AI Overview Attribution Analysis'
+    : isShareOfOrg
+      ? 'AI Overview Share of Organic Sessions'
+      : 'AI Overview Events'
+
+  const subtitle = isAttribution
+    ? 'Organic traffic vs AI Overview events vs misattributed to Direct'
+    : isShareOfOrg
+      ? 'AI Overview events as a % of total organic sessions · by period'
+      : cvSubtitle
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -655,17 +848,18 @@ export default function AiOverviewCharts({
         </div>
 
         {/* ── Chart area ── */}
-        {!isAttribution && (
+        {!isAttribution && !isShareOfOrg && (
           <BarChart labels={labels} data={data} accentColor={accentColor} />
         )}
 
-        {isAttribution && attrLoading && (
+        {/* Shared loading / error states for Attribution + Share of Organic */}
+        {needsAttrData && attrLoading && (
           <ChartSkeleton height={300} />
         )}
 
-        {isAttribution && !attrLoading && attrError && (
+        {needsAttrData && !attrLoading && attrError && (
           <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 8, padding: '14px 18px', color: '#92400E', marginTop: 8 }}>
-            <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 12 }}>⚠ Attribution data error</div>
+            <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 12 }}>⚠ Data error</div>
             <div style={{ fontSize: 11, marginBottom: 8 }}>{attrError}</div>
             <button
               onClick={fetchAttribution}
@@ -676,6 +870,7 @@ export default function AiOverviewCharts({
           </div>
         )}
 
+        {/* ── Attribution view ── */}
         {isAttribution && !attrLoading && !attrError && (
           <>
             <AttributionChart
@@ -708,6 +903,22 @@ export default function AiOverviewCharts({
               {' '}<strong>Email</strong>, <strong>Referral</strong>, <strong>Unassigned</strong>, and a small number of others.
               These are confirmed real AI Overview clicks — the <code style={{ background: '#E2E8F0', padding: '1px 4px', borderRadius: 3, fontSize: 10 }}>ai_overview_click</code> event fired — but GA4's session-level channel assignment took precedence.
             </div>
+          </>
+        )}
+
+        {/* ── Share of Organic view ── */}
+        {isShareOfOrg && !attrLoading && !attrError && (
+          <>
+            <ShareOfOrganicChart
+              labels={attrLabels}
+              shareData={shareData}
+            />
+            <ShareOfOrganicInsights
+              shareData={shareData}
+              organicData={organicData}
+              aioOrgData={aioOrgData}
+              aioDirData={aioDirData}
+            />
           </>
         )}
 

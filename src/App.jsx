@@ -20,6 +20,7 @@ import DestinationIntelligence from './pages/DestinationIntelligence'
 import LLMIntelligence from './pages/LLMIntelligence'
 import LLMDeepDive from './pages/LLMDeepDive'
 import AiOverviewPage from './pages/AiOverviewPage'
+import Report109 from './pages/Report109'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -69,6 +70,7 @@ function SectionToggle() {
   const location = useLocation()
   const navigate = useNavigate()
   const isLLM = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview')
+  const isReport109 = location.pathname.startsWith('/report-109')
   const { properties, selectedProperty, switchProperty } = useProperty()
 
   const activeStyle = {
@@ -109,10 +111,10 @@ function SectionToggle() {
       padding: '10px 20px 0',
     }}>
       <button
-        onClick={() => !isLLM || navigate('/scorecard')}
-        style={!isLLM ? activeStyle : inactiveStyle}
-        onMouseEnter={e => { if (isLLM) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
-        onMouseLeave={e => { if (isLLM) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+        onClick={() => (!isLLM && !isReport109) || navigate('/scorecard')}
+        style={!isLLM && !isReport109 ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (isLLM || isReport109) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (isLLM || isReport109) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
       >
         Affiliates
       </button>
@@ -123,6 +125,14 @@ function SectionToggle() {
         onMouseLeave={e => { if (!isLLM) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
       >
         LLM Intelligence
+      </button>
+      <button
+        onClick={() => isReport109 || navigate('/report-109')}
+        style={isReport109 ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (!isReport109) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (!isReport109) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+      >
+        Report — 109
       </button>
 
       {/* Property switcher — right corner of same bar */}
@@ -187,6 +197,7 @@ function DashboardShell({ onQueryOpen }) {
             <Route path="/llm" element={<LLMIntelligence />} />
             <Route path="/llm-deep-dive" element={<LLMDeepDive />} />
             <Route path="/ai-overview" element={<AiOverviewPage />} />
+            <Route path="/report-109" element={<Report109 />} />
           </Routes>
         </div>
       </div>

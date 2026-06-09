@@ -19,6 +19,10 @@ export function FiltersProvider({ children }) {
   const [anomalies, setAnomalies] = useState({})
   // Dynamic options loaded from GA4
   const [filterOptions, setFilterOptions] = useState({ affiliates: [], countries: [] })
+  // Report-109 specific BigQuery filters
+  const [r109Platform, setR109Platform]         = useState(['APP', 'WEB'])  // default both
+  const [r109Channel, setR109Channel]           = useState([])              // empty = all
+  const [r109ExchangeRate, setR109ExchangeRate] = useState(0.744)           // GBP→USD rate
 
   const dateRanges = useMemo(
     () => computeDateRanges(preset, comparison, customRange),
@@ -37,7 +41,10 @@ export function FiltersProvider({ children }) {
     granularity,
     anomalies,
     filterOptions,
-  }), [dateRanges, preset, comparison, customRange, affiliateFilter, countryFilter, deviceFilter, groupBy, granularity, anomalies, filterOptions])
+    r109Platform,
+    r109Channel,
+    r109ExchangeRate,
+  }), [dateRanges, preset, comparison, customRange, affiliateFilter, countryFilter, deviceFilter, groupBy, granularity, anomalies, filterOptions, r109Platform, r109Channel, r109ExchangeRate])
 
   const actions = {
     setPreset,
@@ -50,6 +57,9 @@ export function FiltersProvider({ children }) {
     setGranularity,
     setAnomalies,
     setFilterOptions,
+    setR109Platform,
+    setR109Channel,
+    setR109ExchangeRate,
   }
 
   return (

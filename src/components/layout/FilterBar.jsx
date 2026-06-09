@@ -22,7 +22,8 @@ export default function FilterBar() {
   const { filters, actions } = useFilters()
   const { selectedProperty } = useProperty()
   const { pathname } = useLocation()
-  const isLLMPage = pathname.startsWith('/llm') || pathname.startsWith('/ai-overview')
+  const isLLMPage    = pathname.startsWith('/llm') || pathname.startsWith('/ai-overview')
+  const isReport109  = pathname.startsWith('/report-109')
 
   // ── Load dynamic affiliate + country options whenever property or date range changes ──
   useEffect(() => {
@@ -92,8 +93,8 @@ export default function FilterBar() {
 
       <SEP />
 
-      {/* Group By toggle — hidden on /llm */}
-      {!isLLMPage && (
+      {/* Group By toggle — hidden on /llm and /report-109 */}
+      {!isLLMPage && !isReport109 && (
         <>
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>Group by</span>
           <div style={{
@@ -135,25 +136,89 @@ export default function FilterBar() {
         </>
       )}
 
-      {/* Country + Device — hidden on LLM pages */}
-      {!isLLMPage && (
-        <>
-          <MultiSelectFilter
-            label="All Countries"
-            options={filters.filterOptions.countries}
-            selected={filters.countryFilter}
-            onApply={actions.setCountryFilter}
-            minWidth={130}
-          />
-          <MultiSelectFilter
-            label="All Devices"
-            options={DEVICE_OPTIONS}
-            selected={filters.deviceFilter}
-            onApply={actions.setDeviceFilter}
-            minWidth={110}
-          />
-        </>
-      )}
+      {/* Report-109 BigQuery filters — shown only on /report-109 */}
+      {isReport109 && (() => {
+        const PLATFORM_OPTIONS = ['WEB', 'APP', 'WLB']
+        const CHANNEL_OPTIONS = [
+          'AI / LLM','Affiliates','Chatbot','Cross-network','Direct','Display',
+          'Email','Organic Search','Other','Other Advertising','Paid Search',
+          'Push Notification','Referral','Social','Unassigned','Untracked',
+        ]
+        const platforms    = filters.r109Platform     ?? ['APP', 'WEB']
+        const channels     = filters.r109Channel      ?? []
+        const exchangeRate = filters.r109ExchangeRate ?? 0.744
+
+        const togglePlatform = (p) => {
+          const next = platforms.includes(p)
+            ? platforms.filter(x => x !== p)
+            : [...platforms, p]
+          if (next.length > 0) actions.setR109Platform(next)
+        }
+
+        return (
+          <>
+            {/* Platform toggle (multi-select) */}
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>Platform</span>
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              background: 'var(--bg)', border: '1px solid var(--border)',
+              borderRadius: 6, padding: 2, gap: 1,
+            }}>
+              {PLATFORM_OPTIONS.map(p => {
+                const active = platforms.includes(p)
+                return (
+                  <button
+                    key={p}
+                    onClick={() => togglePlatform(p)}
+                    style={{
+                      padding: '4px 9px', border: 'none', borderRadius: 4,
+                      background: active ? 'var(--teal)' : 'transparent',
+                      color: active ? '#fff' : 'var(--subtext)',
+                      fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                      cursor: 'pointer', transition: 'all 0.12s',
+                    }}
+                  >{p}</button>
+                )
+              })}
+            </div>
+
+            <SEP />
+
+            {/* Channel multiselect */}
+            <MultiSelectFilter
+              label={channels.length === 0 ? 'All Channels' : `${channels.length} Channel${channels.length > 1 ? 's' : ''}`}
+              options={CHANNEL_OPTIONS}
+              selected={channels}
+              onApply={actions.setR109Channel}
+              minWidth={140}
+            />
+
+            <SEP />
+
+            {/* GBP → USD exchange rate input */}
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>GBP→USD</span>
+            <input
+              type="number"
+              step="0.001"
+              min="0.1"
+              max="10"
+              value={exchangeRate}
+              onChange={e => {
+                const v = parseFloat(e.target.value)
+                if (!isNaN(v) && v > 0) actions.setR109ExchangeRate(v)
+              }}
+              title="Spend GBP → USD exchange rate (Spend ÷ rate)"
+              style={{
+                width: 60, padding: '4px 8px', fontSize: 11, fontFamily: 'inherit',
+                border: '1px solid var(--border)', borderRadius: 6,
+                background: 'var(--bg)', color: 'var(--text)',
+                outline: 'none', textAlign: 'right',
+              }}
+            />
+          </>
+        )
+      })()}
+
 
       <SEP />
 

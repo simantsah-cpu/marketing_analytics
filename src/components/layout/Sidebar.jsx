@@ -16,11 +16,16 @@ const LLM_NAV_ITEMS = [
   { to: '/ai-overview', label: 'AI Overview Click Events', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".6"/><path d="M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M11.1 4.9l1.4-1.4M3.5 12.5l1.4-1.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".4"/></svg> },
 ]
 
+const REPORT109_NAV_ITEMS = [
+  { to: '/report-109', label: 'B2C Performance', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="10" width="3" height="4" rx="1" fill="currentColor" opacity=".4"/><rect x="5" y="7" width="3" height="7" rx="1" fill="currentColor" opacity=".6"/><rect x="9" y="4" width="3" height="10" rx="1" fill="currentColor" opacity=".8"/><rect x="13" y="1" width="2" height="13" rx="1" fill="currentColor"/><path d="M1 9 L4 6 L7 8 L10 4 L13 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity=".5"/></svg> },
+]
+
 export default function Sidebar() {
   const { user, signOut } = useAuth()
   const location = useLocation()
   const isLLM = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview')
-  const navItems = isLLM ? LLM_NAV_ITEMS : AFFILIATE_NAV_ITEMS
+  const isReport109 = location.pathname.startsWith('/report-109')
+  const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : AFFILIATE_NAV_ITEMS
 
   return (
     <aside className="sidebar">
@@ -36,7 +41,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        <div className="nav-label">Dashboard</div>
+        <div className="nav-label">{isReport109 ? 'Report — 109' : 'Dashboard'}</div>
         {navItems.map(item => (
           <NavLink
             key={item.to}
