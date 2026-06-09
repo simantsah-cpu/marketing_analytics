@@ -267,3 +267,52 @@ export async function getLLMData(propertyId, filters) {
 
   return { current, comparison, dailySeries }
 }
+
+/**
+ * Fetches per-page purchase breakdown for LLM sources.
+ * Returns the top pagePaths where purchases originated from LLM-referred sessions.
+ *
+ * @param {string}   propertyId  GA4 property ID
+ * @param {string[]} sourceKeys  Raw GA4 sessionSource keys to filter (e.g. ['chatgpt.com'])
+ *                               If empty, all LLM sources are included.
+ * @param {object}   filters     Global filter state (dateRanges, deviceFilter, countryFilter)
+ * @returns {Promise<Array<{pagePath, sessions, purchases, revenue}>>}
+ */
+export async function getLLMPageData(propertyId, sourceKeys = [], filters = {}) {
+  if (!propertyId) return []
+
+  await supabase.auth.getSession()
+
+  const dateRanges = await buildGA4DateRanges(filters.dateRanges)
+
+  const ga4Filters = {
+    affiliateFilter: sourceKeys.length > 0 ? sourceKeys : LLM_SOURCE_KEYS,
+    countryFilter:   filters.countryFilter ?? [],
+    deviceFilter:    filters.deviceFilter  ?? [],
+  }
+
+  const { data, error } = await supabase.functions.invoke('ga4-query_affiliates', {
+    body: { page: 'llm-pages', propertyId, dateRanges, filters: ga4Filters }
+  })
+
+  if (error) throw new Error(`LLM page data fetch error: ${error.message}`)
+  if (data?.error) throw new Error(`GA4 error: ${data.error}`)
+
+  const rows = data?.reports?.[0] ?? []
+
+  // Group by pagePath, summing across source variants (e.g. copilot.com + copilot.microsoft.com)
+  const pageMap = {}
+  rows.forEach(row => {
+    const path = row.pagePath || '/'
+    if (!pageMap[path]) {
+      pageMap[path] = { pagePath: path, sessions: 0, purchases: 0, revenue: 0 }
+    }
+    pageMap[path].sessions  += (row.sessions          || 0)
+    pageMap[path].purchases += (row.transactions       || 0)
+    pageMap[path].revenue   += (row.purchaseRevenue    || 0)
+  })
+
+  return Object.values(pageMap)
+    .map(p => ({ ...p, revenue: parseFloat(p.revenue.toFixed(2)) }))
+    .sort((a, b) => b.revenue - a.revenue)
+}

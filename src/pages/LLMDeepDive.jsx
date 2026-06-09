@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
 import { format, parseISO } from 'date-fns'
 import { useFilters } from '../context/FiltersContext'
 import { useProperty } from '../context/PropertyContext'
-import { getLLMData, LLM_COLORS, LLM_ORDER } from '../services/llm-data-service'
+import { getLLMData, getLLMPageData, LLM_COLORS, LLM_ORDER, LLM_SOURCE_MAP } from '../services/llm-data-service'
 
 // ─── Formatters (mirrored from LLMIntelligence) ───────────────────────────────
 
@@ -54,6 +54,13 @@ export default function LLMDeepDive() {
   const [pivotMetric, setPivotMetric] = useState('sessions')
   const [granularity, setGranularity] = useState('month')
 
+  // ── Purchase page drill-down ─────────────────────────────────────────────────
+  const [expandedLLM, setExpandedLLM]   = useState(null)   // LLM name string | null
+  const [pageRows, setPageRows]         = useState([])
+  const [pageLoading, setPageLoading]   = useState(false)
+  const [pageError, setPageError]       = useState(null)
+  const [showAllPages, setShowAllPages] = useState(false)
+
   const hasComparison = filters.comparison !== 'off'
 
   // ── Data fetch ──────────────────────────────────────────────────────────────
@@ -75,6 +82,40 @@ export default function LLMDeepDive() {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir('desc') }
   }, [sortKey])
+
+  // ── Row click: fetch purchase page data for the clicked LLM ─────────────────
+  const handleRowClick = useCallback(async (llmName) => {
+    if (expandedLLM === llmName) {
+      setExpandedLLM(null)
+      setPageRows([])
+      return
+    }
+    setExpandedLLM(llmName)
+    setPageRows([])
+    setPageLoading(true)
+    setPageError(null)
+    setShowAllPages(false)
+    try {
+      // Resolve LLM display name → raw GA4 source keys
+      const sourceKeys = Object.entries(LLM_SOURCE_MAP)
+        .filter(([, name]) => name === llmName)
+        .map(([key]) => key)
+      const effectiveFilters = {
+        ...filters,
+        deviceFilter: localDevice.length > 0 ? localDevice : filters.deviceFilter,
+      }
+      const rows = await getLLMPageData(
+        selectedProperty?.ga4_property_id,
+        sourceKeys,
+        effectiveFilters
+      )
+      setPageRows(rows)
+    } catch (err) {
+      setPageError(err.message)
+    } finally {
+      setPageLoading(false)
+    }
+  }, [expandedLLM, filters, localDevice, selectedProperty])
 
   // ── Table rows ──────────────────────────────────────────────────────────────
 
@@ -257,6 +298,8 @@ export default function LLMDeepDive() {
         .dd-td{padding:9px 12px;font-size:12.5px;color:#0A2540;border-bottom:1px solid #F1F5F9;vertical-align:middle;}
         .dd-tr:hover .dd-td{background:#F8FAFC!important;}
         .llm-select{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;padding:4px 8px;border:1px solid #E2E8F0;border-radius:6px;background:#F8FAFC;color:#0A2540;cursor:pointer;outline:none;}
+        @keyframes dd-spin{to{transform:rotate(360deg)}}
+        .dd-tr-clickable:hover td{background:#F0F9FF!important;}
       `}</style>
 
       {/* ── Local filter bar ── */}
@@ -299,7 +342,12 @@ export default function LLMDeepDive() {
           <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #E2E8F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.06)', marginBottom: 20 }}>
             <div style={{ padding: '14px 16px', borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: '#0A2540' }}>Summary by Source</div>
-              <div style={{ fontSize: 11, color: '#94A3B8' }}>Aggregated over selected date range</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 11, color: '#94A3B8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontSize: 13 }}>👆</span> Click a source row to see purchase pages
+                </span>
+                <span style={{ fontSize: 11, color: '#94A3B8' }}>Aggregated over selected date range</span>
+              </div>
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'DM Sans',sans-serif" }}>
@@ -319,17 +367,154 @@ export default function LLMDeepDive() {
                   {tableRows.map((row, idx) => {
                     const alt = idx % 2 !== 0
                     const bg = alt ? '#F8FAFC' : '#fff'
+                    const isExpanded = expandedLLM === row.llm
+                    const color = LLM_COLORS[row.llm] ?? '#94A3B8'
+                    const maxRevenue = pageRows[0]?.revenue || 1
                     return (
-                      <tr key={row.llm} className="dd-tr">
-                        <td style={{ padding: '9px 12px', fontSize: 12.5, fontWeight: 600, color: '#0A2540', background: bg, borderBottom: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
-                          <LLMDot name={row.llm} />{row.llm}
-                        </td>
-                        <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.sessions, 'int')}</td>
-                        <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.bookings, 'int')}</td>
-                        <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.revenue, 'gbp')}</td>
-                        <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.convRate, 'pct2')}</td>
-                        <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.revPerSession, 'gbp2')}</td>
-                      </tr>
+                      <Fragment key={row.llm}>
+                        <tr
+                          className="dd-tr"
+                          onClick={() => handleRowClick(row.llm)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td style={{ padding: '9px 12px', fontSize: 12.5, fontWeight: 600, color: '#0A2540', background: bg, borderBottom: isExpanded ? 'none' : '1px solid #F1F5F9', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                            <LLMDot name={row.llm} />{row.llm}
+                            <span style={{
+                              marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              width: 18, height: 18, borderRadius: '50%',
+                              background: isExpanded ? color + '22' : '#F1F5F9',
+                              color: isExpanded ? color : '#94A3B8',
+                              fontSize: 10, fontWeight: 700,
+                              transition: 'all 0.18s',
+                              transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                              flexShrink: 0,
+                            }}>▾</span>
+                          </td>
+                          <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: isExpanded ? 'none' : '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.sessions, 'int')}</td>
+                          <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: isExpanded ? 'none' : '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.bookings, 'int')}</td>
+                          <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: isExpanded ? 'none' : '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.revenue, 'gbp')}</td>
+                          <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: isExpanded ? 'none' : '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.convRate, 'pct2')}</td>
+                          <td style={{ padding: '9px 12px', fontSize: 12.5, color: '#0A2540', background: bg, borderBottom: isExpanded ? 'none' : '1px solid #F1F5F9', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(row.revPerSession, 'gbp2')}</td>
+                        </tr>
+
+                        {/* ── Purchase Pages drill-down panel ── */}
+                        {isExpanded && (
+                          <tr key={`${row.llm}-pages`}>
+                            <td colSpan={6} style={{ padding: 0, background: bg, borderBottom: '1px solid #E2E8F0' }}>
+                              <div style={{
+                                margin: '0 12px 12px 12px',
+                                background: '#fff',
+                                border: `1.5px solid ${color}33`,
+                                borderRadius: 10,
+                                overflow: 'hidden',
+                                boxShadow: `0 2px 12px ${color}14`,
+                              }}>
+                                {/* Panel header */}
+                                <div style={{
+                                  padding: '10px 14px',
+                                  background: `linear-gradient(90deg, ${color}0e 0%, transparent 100%)`,
+                                  borderBottom: `1px solid ${color}22`,
+                                  display: 'flex', alignItems: 'center', gap: 8,
+                                }}>
+                                  <LLMDot name={row.llm} />
+                                  <span style={{ fontSize: 11, fontWeight: 700, color: '#0A2540', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                                    {row.llm} — Purchase Pages
+                                  </span>
+                                  <span style={{ fontSize: 10, color: '#94A3B8', marginLeft: 6 }}>pages where users completed a purchase after arriving from {row.llm}</span>
+                                </div>
+
+                                {/* Loading */}
+                                {pageLoading && (
+                                  <div style={{ padding: '20px 14px', display: 'flex', alignItems: 'center', gap: 10, color: '#94A3B8', fontSize: 12 }}>
+                                    <span style={{ display: 'inline-block', width: 14, height: 14, border: `2px solid ${color}44`, borderTopColor: color, borderRadius: '50%', animation: 'dd-spin 0.7s linear infinite' }} />
+                                    Loading purchase pages…
+                                  </div>
+                                )}
+
+                                {/* Error */}
+                                {!pageLoading && pageError && (
+                                  <div style={{ padding: '14px', fontSize: 12, color: '#B91C1C', background: '#FEF2F2', borderTop: '1px solid #FCA5A5' }}>
+                                    ⚠ {pageError}
+                                  </div>
+                                )}
+
+                                {/* No data */}
+                                {!pageLoading && !pageError && pageRows.length === 0 && (
+                                  <div style={{ padding: '20px 14px', color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>
+                                    No purchase pages found for this source in the selected date range.
+                                  </div>
+                                )}
+
+                                {/* Page rows */}
+                                {!pageLoading && !pageError && pageRows.length > 0 && (
+                                  <div style={{ padding: '6px 0 8px' }}>
+                                    {/* Column headers */}
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 80px', padding: '4px 14px 6px', borderBottom: '1px solid #F1F5F9' }}>
+                                      {['Page URL', 'Sessions', 'Purchases', 'Revenue (£)'].map((h, i) => (
+                                        <span key={h} style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.05em', textTransform: 'uppercase', textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
+                                      ))}
+                                    </div>
+                                    {(showAllPages ? pageRows : pageRows.slice(0, 15)).map((p, pi) => (
+                                      <div
+                                        key={p.pagePath}
+                                        style={{
+                                          display: 'grid',
+                                          gridTemplateColumns: '1fr 70px 70px 80px',
+                                          padding: '6px 14px',
+                                          background: pi % 2 === 0 ? '#fff' : '#FAFBFD',
+                                          alignItems: 'center',
+                                          gap: 4,
+                                          transition: 'background 0.1s',
+                                        }}
+                                      >
+                                        {/* URL with revenue share bar */}
+                                        <div style={{ overflow: 'hidden' }}>
+                                          <div style={{ fontSize: 11.5, color: '#0A2540', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}
+                                            title={p.pagePath}>
+                                            {p.pagePath}
+                                          </div>
+                                          <div style={{ height: 3, borderRadius: 2, background: '#F1F5F9', overflow: 'hidden' }}>
+                                            <div style={{
+                                              height: '100%',
+                                              width: `${Math.min(100, (p.revenue / maxRevenue) * 100)}%`,
+                                              background: `linear-gradient(90deg, ${color}, ${color}88)`,
+                                              borderRadius: 2,
+                                              transition: 'width 0.4s ease',
+                                            }} />
+                                          </div>
+                                        </div>
+                                        <span style={{ fontSize: 12, color: '#64748B', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.sessions.toLocaleString()}</span>
+                                        <span style={{ fontSize: 12, fontWeight: p.purchases > 0 ? 600 : 400, color: p.purchases > 0 ? '#0A2540' : '#94A3B8', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.purchases || '—'}</span>
+                                        <span style={{ fontSize: 12, fontWeight: 600, color: p.revenue > 0 ? color : '#94A3B8', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>£{p.revenue.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                                      </div>
+                                    ))}
+                                    {pageRows.length > 15 && (
+                                      <div style={{ padding: '8px 14px', borderTop: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setShowAllPages(v => !v) }}
+                                          style={{
+                                            background: 'none', border: 'none', cursor: 'pointer',
+                                            fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                                            color: color, padding: '3px 0',
+                                            display: 'flex', alignItems: 'center', gap: 4,
+                                            transition: 'opacity 0.15s',
+                                          }}
+                                          onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
+                                          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+                                        >
+                                          {showAllPages
+                                            ? `↑ Show less`
+                                            : `↓ Show all ${pageRows.length} pages`}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     )
                   })}
                   {totals && (

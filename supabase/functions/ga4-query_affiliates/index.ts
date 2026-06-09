@@ -594,6 +594,58 @@ function buildRequests(page: string, dateRanges: object[], filters: any) {
     return reqs
   }
 
+  if (page === 'llm-pages') {
+    // LLM purchase pages — same source filter as 'llm' but adds pagePath dimension.
+    // Returns which page URLs on the site had purchases attributed to LLM referral sessions.
+    // No sessionMedium filter — LLM traffic doesn't use the 'affiliates' medium.
+    const LLM_SOURCES = [
+      'chatgpt.com',
+      'gemini.google.com',
+      'copilot.microsoft.com',
+      'copilot.com',
+      'copilot.cloud.microsoft',
+      'perplexity',
+      'perplexity.ai',
+      'claude.ai',
+      'grok.com',
+    ]
+
+    const sourcesToUse: string[] =
+      affiliateValues.length > 0 ? affiliateValues : LLM_SOURCES
+
+    const llmSourceFilter = {
+      filter: {
+        fieldName: 'sessionSource',
+        inListFilter: { values: sourcesToUse, caseSensitive: false },
+      },
+    }
+
+    const extra = [deviceFilter, countryFilter].filter(Boolean)
+    const llmDimFilter = extra.length > 0
+      ? { andGroup: { expressions: [llmSourceFilter, ...extra.map((f: any) => ({ filter: f }))] } }
+      : llmSourceFilter
+
+    return [
+      // report[0]: sessionSource × pagePath with purchase metrics, current period
+      {
+        dateRanges: [dateRanges[0]],
+        dimensionFilter: llmDimFilter,
+        keepEmptyRows: false,
+        dimensions: [
+          { name: 'sessionSource' },
+          { name: 'pagePath' },
+        ],
+        metrics: [
+          { name: 'sessions' },
+          { name: 'transactions' },
+          { name: 'purchaseRevenue' },
+        ],
+        orderBys: [{ metric: { metricName: 'purchaseRevenue' }, desc: true }],
+        limit: 200,
+      },
+    ]
+  }
+
   if (page === 'filter-options') {
     // Dedicated dimension-list fetch for populating filter dropdowns.
     // No medium filter — returns ALL session sources and countries.
