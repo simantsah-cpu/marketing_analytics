@@ -54,12 +54,18 @@ export default function LLMDeepDive() {
   const [pivotMetric, setPivotMetric] = useState('sessions')
   const [granularity, setGranularity] = useState('month')
 
-  // ── Purchase page drill-down ─────────────────────────────────────────────────
-  const [expandedLLM, setExpandedLLM]   = useState(null)   // LLM name string | null
-  const [pageRows, setPageRows]         = useState([])
-  const [pageLoading, setPageLoading]   = useState(false)
-  const [pageError, setPageError]       = useState(null)
-  const [showAllPages, setShowAllPages] = useState(false)
+  // ── Landing page drill-down ─────────────────────────────────────────────────
+  const [expandedLLM, setExpandedLLM]     = useState(null)
+  const [purchasePages, setPurchasePages] = useState([])   // pages with ≥1 purchase
+  const [allPages, setAllPages]           = useState([])   // all pages by sessions
+  const [pageLoading, setPageLoading]     = useState(false)
+  const [pageError, setPageError]         = useState(null)
+  // Per-section show-all toggles
+  const [showAllPurchase, setShowAllPurchase] = useState(false)
+  const [showAllSessions, setShowAllSessions] = useState(false)
+  // Column sort directions (toggle desc↔asc on click)
+  const [sortRevDir, setSortRevDir]   = useState('desc')   // Revenue col in purchase table
+  const [sortSessDir, setSortSessDir] = useState('desc')   // Sessions col in all-pages table
 
   const hasComparison = filters.comparison !== 'off'
 
@@ -83,20 +89,24 @@ export default function LLMDeepDive() {
     else { setSortKey(key); setSortDir('desc') }
   }, [sortKey])
 
-  // ── Row click: fetch purchase page data for the clicked LLM ─────────────────
+  // ── Row click: fetch landing page data for the clicked LLM ─────────────────
   const handleRowClick = useCallback(async (llmName) => {
     if (expandedLLM === llmName) {
       setExpandedLLM(null)
-      setPageRows([])
+      setPurchasePages([])
+      setAllPages([])
       return
     }
     setExpandedLLM(llmName)
-    setPageRows([])
+    setPurchasePages([])
+    setAllPages([])
     setPageLoading(true)
     setPageError(null)
-    setShowAllPages(false)
+    setShowAllPurchase(false)
+    setShowAllSessions(false)
+    setSortRevDir('desc')
+    setSortSessDir('desc')
     try {
-      // Resolve LLM display name → raw GA4 source keys
       const sourceKeys = Object.entries(LLM_SOURCE_MAP)
         .filter(([, name]) => name === llmName)
         .map(([key]) => key)
@@ -104,12 +114,13 @@ export default function LLMDeepDive() {
         ...filters,
         deviceFilter: localDevice.length > 0 ? localDevice : filters.deviceFilter,
       }
-      const rows = await getLLMPageData(
+      const result = await getLLMPageData(
         selectedProperty?.ga4_property_id,
         sourceKeys,
         effectiveFilters
       )
-      setPageRows(rows)
+      setPurchasePages(result.purchasePages)
+      setAllPages(result.allPages)
     } catch (err) {
       setPageError(err.message)
     } finally {
@@ -369,7 +380,6 @@ export default function LLMDeepDive() {
                     const bg = alt ? '#F8FAFC' : '#fff'
                     const isExpanded = expandedLLM === row.llm
                     const color = LLM_COLORS[row.llm] ?? '#94A3B8'
-                    const maxRevenue = pageRows[0]?.revenue || 1
                     return (
                       <Fragment key={row.llm}>
                         <tr
@@ -427,7 +437,7 @@ export default function LLMDeepDive() {
                                 {pageLoading && (
                                   <div style={{ padding: '20px 14px', display: 'flex', alignItems: 'center', gap: 10, color: '#94A3B8', fontSize: 12 }}>
                                     <span style={{ display: 'inline-block', width: 14, height: 14, border: `2px solid ${color}44`, borderTopColor: color, borderRadius: '50%', animation: 'dd-spin 0.7s linear infinite' }} />
-                                    Loading purchase pages…
+                                    Loading landing pages…
                                   </div>
                                 )}
 
@@ -438,78 +448,123 @@ export default function LLMDeepDive() {
                                   </div>
                                 )}
 
-                                {/* No data */}
-                                {!pageLoading && !pageError && pageRows.length === 0 && (
-                                  <div style={{ padding: '20px 14px', color: '#94A3B8', fontSize: 12, textAlign: 'center' }}>
-                                    No purchase pages found for this source in the selected date range.
-                                  </div>
-                                )}
-
-                                {/* Page rows */}
-                                {!pageLoading && !pageError && pageRows.length > 0 && (
-                                  <div style={{ padding: '6px 0 8px' }}>
-                                    {/* Column headers */}
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 80px', padding: '4px 14px 6px', borderBottom: '1px solid #F1F5F9' }}>
-                                      {['Landing Page', 'Sessions', 'Purchases', 'Revenue (£)'].map((h, i) => (
-                                        <span key={h} style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.05em', textTransform: 'uppercase', textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
-                                      ))}
+                                {/* ── Section 1: Pages with Purchases ── */}
+                                {!pageLoading && !pageError && (() => {
+                                  const sorted = sortRevDir === 'desc'
+                                    ? [...purchasePages]
+                                    : [...purchasePages].reverse()
+                                  const visible = showAllPurchase ? sorted : sorted.slice(0, 15)
+                                  const maxRev = purchasePages[0]?.revenue || 1
+                                  return (
+                                    <div style={{ borderBottom: allPages.length > 0 ? `1px solid ${color}22` : 'none' }}>
+                                      {/* Section header */}
+                                      <div style={{ padding: '8px 14px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span style={{ fontSize: 10, fontWeight: 700, color: color, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                          Pages with Purchases
+                                        </span>
+                                        <span style={{ fontSize: 10, color: '#94A3B8' }}>{purchasePages.length} pages</span>
+                                      </div>
+                                      {purchasePages.length === 0 ? (
+                                        <div style={{ padding: '12px 14px', color: '#94A3B8', fontSize: 12 }}>No pages with purchases found.</div>
+                                      ) : (
+                                        <>
+                                          {/* Column headers — Revenue is clickable to toggle sort */}
+                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px 110px', padding: '4px 14px 5px', borderBottom: '1px solid #F1F5F9', borderTop: '1px solid #F1F5F9' }}>
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Landing Page</span>
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.05em', textTransform: 'uppercase', textAlign: 'right' }}>Sessions</span>
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.05em', textTransform: 'uppercase', textAlign: 'right' }}>Purchases</span>
+                                            <span
+                                              onClick={(e) => { e.stopPropagation(); setSortRevDir(d => d === 'desc' ? 'asc' : 'desc') }}
+                                              style={{ fontSize: 10, fontWeight: 700, color: color, letterSpacing: '0.05em', textTransform: 'uppercase', textAlign: 'right', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3, userSelect: 'none' }}
+                                            >
+                                              Revenue (£) <span style={{ fontSize: 9 }}>{sortRevDir === 'desc' ? '↓' : '↑'}</span>
+                                            </span>
+                                          </div>
+                                          {visible.map((p, pi) => (
+                                            <div key={p.landingPage} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 90px 110px', padding: '7px 14px', background: pi % 2 === 0 ? '#fff' : '#FAFBFD', alignItems: 'center', borderBottom: '1px solid #F8FAFC' }}>
+                                              <div style={{ overflow: 'hidden', paddingRight: 8 }}>
+                                                <div style={{ fontSize: 12, color: '#0A2540', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }} title={p.landingPage}>{p.landingPage}</div>
+                                                <div style={{ height: 2, borderRadius: 2, background: '#F1F5F9', overflow: 'hidden' }}>
+                                                  <div style={{ height: '100%', width: `${Math.min(100, (p.revenue / maxRev) * 100)}%`, background: `linear-gradient(90deg, ${color}, ${color}88)`, borderRadius: 2, transition: 'width 0.4s ease' }} />
+                                                </div>
+                                              </div>
+                                              <span style={{ fontSize: 12, color: '#64748B', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.sessions.toLocaleString()}</span>
+                                              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0A2540', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.purchases.toLocaleString()}</span>
+                                              <span style={{ fontSize: 12.5, fontWeight: 600, color: color, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>£{p.revenue.toFixed(2)}</span>
+                                            </div>
+                                          ))}
+                                          {purchasePages.length > 15 && (
+                                            <div style={{ padding: '7px 14px', display: 'flex', justifyContent: 'flex-end' }}>
+                                              <button onClick={(e) => { e.stopPropagation(); setShowAllPurchase(v => !v) }}
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: color, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 3 }}
+                                                onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
+                                                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                                                {showAllPurchase ? '↑ Show less' : `↓ Show all ${purchasePages.length}`}
+                                              </button>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
                                     </div>
-                                    {(showAllPages ? pageRows : pageRows.slice(0, 15)).map((p, pi) => (
-                                      <div
-                                        key={p.landingPage}
-                                        style={{
-                                          display: 'grid',
-                                          gridTemplateColumns: '1fr 70px 70px 80px',
-                                          padding: '6px 14px',
-                                          background: pi % 2 === 0 ? '#fff' : '#FAFBFD',
-                                          alignItems: 'center',
-                                          gap: 4,
-                                          transition: 'background 0.1s',
-                                        }}
-                                      >
-                                        {/* URL with revenue share bar */}
-                                        <div style={{ overflow: 'hidden' }}>
-                                          <div style={{ fontSize: 11.5, color: '#0A2540', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}
-                                            title={p.landingPage}>
-                                            {p.landingPage}
-                                          </div>
-                                          <div style={{ height: 3, borderRadius: 2, background: '#F1F5F9', overflow: 'hidden' }}>
-                                            <div style={{
-                                              height: '100%',
-                                              width: `${Math.min(100, (p.revenue / maxRevenue) * 100)}%`,
-                                              background: `linear-gradient(90deg, ${color}, ${color}88)`,
-                                              borderRadius: 2,
-                                              transition: 'width 0.4s ease',
-                                            }} />
-                                          </div>
-                                        </div>
-                                        <span style={{ fontSize: 12, color: '#64748B', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.sessions.toLocaleString()}</span>
-                                        <span style={{ fontSize: 12, fontWeight: p.purchases > 0 ? 600 : 400, color: p.purchases > 0 ? '#0A2540' : '#94A3B8', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.purchases || '—'}</span>
-                                        <span style={{ fontSize: 12, fontWeight: 600, color: p.revenue > 0 ? color : '#94A3B8', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>£{p.revenue.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                                  )
+                                })()}
+
+                                {/* ── Section 2: All Pages by Sessions ── */}
+                                {!pageLoading && !pageError && (() => {
+                                  const sorted = sortSessDir === 'desc'
+                                    ? [...allPages]
+                                    : [...allPages].reverse()
+                                  const visible = showAllSessions ? sorted : sorted.slice(0, 15)
+                                  const maxSess = allPages[0]?.sessions || 1
+                                  return (
+                                    <div>
+                                      {/* Section header */}
+                                      <div style={{ padding: '8px 14px 4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                        <span style={{ fontSize: 10, fontWeight: 700, color: '#64748B', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                          All Landing Pages by Sessions
+                                        </span>
+                                        <span style={{ fontSize: 10, color: '#94A3B8' }}>{allPages.length} pages</span>
                                       </div>
-                                    ))}
-                                    {pageRows.length > 15 && (
-                                      <div style={{ padding: '8px 14px', borderTop: '1px solid #F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); setShowAllPages(v => !v) }}
-                                          style={{
-                                            background: 'none', border: 'none', cursor: 'pointer',
-                                            fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
-                                            color: color, padding: '3px 0',
-                                            display: 'flex', alignItems: 'center', gap: 4,
-                                            transition: 'opacity 0.15s',
-                                          }}
-                                          onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
-                                          onMouseLeave={e => e.currentTarget.style.opacity = '1'}
-                                        >
-                                          {showAllPages
-                                            ? `↑ Show less`
-                                            : `↓ Show all ${pageRows.length} pages`}
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+                                      {allPages.length === 0 ? (
+                                        <div style={{ padding: '12px 14px', color: '#94A3B8', fontSize: 12 }}>No session data found.</div>
+                                      ) : (
+                                        <>
+                                          {/* Column headers — Sessions is clickable to toggle sort */}
+                                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px', padding: '4px 14px 5px', borderBottom: '1px solid #F1F5F9', borderTop: '1px solid #F1F5F9' }}>
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>Landing Page</span>
+                                            <span
+                                              onClick={(e) => { e.stopPropagation(); setSortSessDir(d => d === 'desc' ? 'asc' : 'desc') }}
+                                              style={{ fontSize: 10, fontWeight: 700, color: '#64748B', letterSpacing: '0.05em', textTransform: 'uppercase', textAlign: 'right', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3, userSelect: 'none' }}
+                                            >
+                                              Sessions <span style={{ fontSize: 9 }}>{sortSessDir === 'desc' ? '↓' : '↑'}</span>
+                                            </span>
+                                          </div>
+                                          {visible.map((p, pi) => (
+                                            <div key={p.landingPage} style={{ display: 'grid', gridTemplateColumns: '1fr 100px', padding: '7px 14px', background: pi % 2 === 0 ? '#fff' : '#FAFBFD', alignItems: 'center', borderBottom: '1px solid #F8FAFC' }}>
+                                              <div style={{ overflow: 'hidden', paddingRight: 8 }}>
+                                                <div style={{ fontSize: 12, color: '#0A2540', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }} title={p.landingPage}>{p.landingPage}</div>
+                                                <div style={{ height: 2, borderRadius: 2, background: '#F1F5F9', overflow: 'hidden' }}>
+                                                  <div style={{ height: '100%', width: `${Math.min(100, (p.sessions / maxSess) * 100)}%`, background: 'linear-gradient(90deg, #64748B, #94A3B8)', borderRadius: 2, transition: 'width 0.4s ease' }} />
+                                                </div>
+                                              </div>
+                                              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{p.sessions.toLocaleString()}</span>
+                                            </div>
+                                          ))}
+                                          {allPages.length > 15 && (
+                                            <div style={{ padding: '7px 14px', display: 'flex', justifyContent: 'flex-end' }}>
+                                              <button onClick={(e) => { e.stopPropagation(); setShowAllSessions(v => !v) }}
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#64748B', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 3 }}
+                                                onMouseEnter={e => e.currentTarget.style.opacity = '0.7'}
+                                                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
+                                                {showAllSessions ? '↑ Show less' : `↓ Show all ${allPages.length}`}
+                                              </button>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
                               </div>
                             </td>
                           </tr>

@@ -595,9 +595,12 @@ function buildRequests(page: string, dateRanges: object[], filters: any) {
   }
 
   if (page === 'llm-pages') {
-    // LLM purchase pages — same source filter as 'llm' but adds pagePath dimension.
-    // Returns which page URLs on the site had purchases attributed to LLM referral sessions.
-    // No sessionMedium filter — LLM traffic doesn't use the 'affiliates' medium.
+    // LLM landing pages — filters sessions by source, then breaks down by landingPage.
+    // IMPORTANT: sessionSource is kept ONLY in the dimensionFilter, NOT as a dimension.
+    // Adding it as a dimension alongside landingPage + purchase metrics causes GA4 to
+    // under-attribute purchases due to competing session-scoped dimensions. The filter
+    // alone is sufficient to scope the data to LLM traffic.
+    // metricFilter restricts rows to those with ≥1 transaction so the result is clean.
     const LLM_SOURCES = [
       'chatgpt.com',
       'gemini.google.com',
@@ -626,22 +629,42 @@ function buildRequests(page: string, dateRanges: object[], filters: any) {
       : llmSourceFilter
 
     return [
-      // report[0]: sessionSource × pagePath with purchase metrics, current period
+      // report[0]: pages with purchases — landingPage × sessions + transactions + revenue.
+      // sessionSource is in the dimensionFilter only (not as a dimension) to avoid
+      // GA4 over-segmentation that suppresses purchase attribution.
+      // metricFilter ensures only pages with ≥1 transaction are returned.
       {
         dateRanges: [dateRanges[0]],
         dimensionFilter: llmDimFilter,
         keepEmptyRows: false,
-        dimensions: [
-          { name: 'sessionSource' },
-          { name: 'landingPage' },
-        ],
+        dimensions: [{ name: 'landingPage' }],
         metrics: [
           { name: 'sessions' },
           { name: 'transactions' },
           { name: 'purchaseRevenue' },
         ],
+        metricFilter: {
+          filter: {
+            fieldName: 'transactions',
+            numericFilter: {
+              operation: 'GREATER_THAN',
+              value: { int64Value: '0' },
+            },
+          },
+        },
         orderBys: [{ metric: { metricName: 'purchaseRevenue' }, desc: true }],
-        limit: 200,
+        limit: 500,
+      },
+      // report[1]: ALL landing pages by sessions — no purchase filter.
+      // Used for the "All Pages" section sorted by sessions.
+      {
+        dateRanges: [dateRanges[0]],
+        dimensionFilter: llmDimFilter,
+        keepEmptyRows: false,
+        dimensions: [{ name: 'landingPage' }],
+        metrics: [{ name: 'sessions' }],
+        orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+        limit: 500,
       },
     ]
   }

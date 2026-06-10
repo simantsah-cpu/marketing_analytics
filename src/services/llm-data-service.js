@@ -298,21 +298,26 @@ export async function getLLMPageData(propertyId, sourceKeys = [], filters = {}) 
   if (error) throw new Error(`LLM page data fetch error: ${error.message}`)
   if (data?.error) throw new Error(`GA4 error: ${data.error}`)
 
-  const rows = data?.reports?.[0] ?? []
+  const purchaseRows = data?.reports?.[0] ?? []
+  const sessionRows  = data?.reports?.[1] ?? []
 
-  // Group by landingPage, summing across source variants (e.g. copilot.com + copilot.microsoft.com)
-  const pageMap = {}
-  rows.forEach(row => {
-    const path = row.landingPage || '/'
-    if (!pageMap[path]) {
-      pageMap[path] = { landingPage: path, sessions: 0, purchases: 0, revenue: 0 }
-    }
-    pageMap[path].sessions  += (row.sessions          || 0)
-    pageMap[path].purchases += (row.transactions       || 0)
-    pageMap[path].revenue   += (row.purchaseRevenue    || 0)
-  })
-
-  return Object.values(pageMap)
-    .map(p => ({ ...p, revenue: parseFloat(p.revenue.toFixed(2)) }))
+  // report[0]: pages with at least 1 purchase — sessions + purchases + revenue
+  const purchasePages = purchaseRows
+    .map(row => ({
+      landingPage: row.landingPage || '/',
+      sessions:    Math.round(row.sessions         || 0),
+      purchases:   Math.round(row.transactions     || 0),
+      revenue:     parseFloat((row.purchaseRevenue || 0).toFixed(2)),
+    }))
     .sort((a, b) => b.revenue - a.revenue)
+
+  // report[1]: all landing pages (any sessions) — sorted by sessions desc
+  const allPages = sessionRows
+    .map(row => ({
+      landingPage: row.landingPage || '/',
+      sessions:    Math.round(row.sessions || 0),
+    }))
+    .sort((a, b) => b.sessions - a.sessions)
+
+  return { purchasePages, allPages }
 }
