@@ -344,7 +344,7 @@ export default function LLMDeepDive() {
               <div style={{ fontSize: 13, fontWeight: 700, color: '#0A2540' }}>Summary by Source</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontSize: 11, color: '#94A3B8', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span style={{ fontSize: 13 }}>👆</span> Click a source row to see purchase pages
+                  <span style={{ fontSize: 13 }}>👆</span> Click a source row to see landing pages
                 </span>
                 <span style={{ fontSize: 11, color: '#94A3B8' }}>Aggregated over selected date range</span>
               </div>
@@ -418,9 +418,9 @@ export default function LLMDeepDive() {
                                 }}>
                                   <LLMDot name={row.llm} />
                                   <span style={{ fontSize: 11, fontWeight: 700, color: '#0A2540', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                                    {row.llm} — Purchase Pages
+                                    {row.llm} — Landing Pages
                                   </span>
-                                  <span style={{ fontSize: 10, color: '#94A3B8', marginLeft: 6 }}>pages where users completed a purchase after arriving from {row.llm}</span>
+                                  <span style={{ fontSize: 10, color: '#94A3B8', marginLeft: 6 }}>landing pages from sessions that arrived via {row.llm}</span>
                                 </div>
 
                                 {/* Loading */}
@@ -450,13 +450,13 @@ export default function LLMDeepDive() {
                                   <div style={{ padding: '6px 0 8px' }}>
                                     {/* Column headers */}
                                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 80px', padding: '4px 14px 6px', borderBottom: '1px solid #F1F5F9' }}>
-                                      {['Page URL', 'Sessions', 'Purchases', 'Revenue (£)'].map((h, i) => (
+                                      {['Landing Page', 'Sessions', 'Purchases', 'Revenue (£)'].map((h, i) => (
                                         <span key={h} style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', letterSpacing: '0.05em', textTransform: 'uppercase', textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
                                       ))}
                                     </div>
                                     {(showAllPages ? pageRows : pageRows.slice(0, 15)).map((p, pi) => (
                                       <div
-                                        key={p.pagePath}
+                                        key={p.landingPage}
                                         style={{
                                           display: 'grid',
                                           gridTemplateColumns: '1fr 70px 70px 80px',
@@ -470,8 +470,8 @@ export default function LLMDeepDive() {
                                         {/* URL with revenue share bar */}
                                         <div style={{ overflow: 'hidden' }}>
                                           <div style={{ fontSize: 11.5, color: '#0A2540', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}
-                                            title={p.pagePath}>
-                                            {p.pagePath}
+                                            title={p.landingPage}>
+                                            {p.landingPage}
                                           </div>
                                           <div style={{ height: 3, borderRadius: 2, background: '#F1F5F9', overflow: 'hidden' }}>
                                             <div style={{

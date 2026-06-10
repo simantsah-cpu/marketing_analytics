@@ -633,7 +633,7 @@ function buildRequests(page: string, dateRanges: object[], filters: any) {
         keepEmptyRows: false,
         dimensions: [
           { name: 'sessionSource' },
-          { name: 'pagePath' },
+          { name: 'landingPage' },
         ],
         metrics: [
           { name: 'sessions' },

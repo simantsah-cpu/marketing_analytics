@@ -300,12 +300,12 @@ export async function getLLMPageData(propertyId, sourceKeys = [], filters = {}) 
 
   const rows = data?.reports?.[0] ?? []
 
-  // Group by pagePath, summing across source variants (e.g. copilot.com + copilot.microsoft.com)
+  // Group by landingPage, summing across source variants (e.g. copilot.com + copilot.microsoft.com)
   const pageMap = {}
   rows.forEach(row => {
-    const path = row.pagePath || '/'
+    const path = row.landingPage || '/'
     if (!pageMap[path]) {
-      pageMap[path] = { pagePath: path, sessions: 0, purchases: 0, revenue: 0 }
+      pageMap[path] = { landingPage: path, sessions: 0, purchases: 0, revenue: 0 }
     }
     pageMap[path].sessions  += (row.sessions          || 0)
     pageMap[path].purchases += (row.transactions       || 0)
