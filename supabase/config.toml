@@ -408,3 +408,24 @@ entrypoint = "./functions/ai-invoke/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/ai-invoke/*.html" ]
+
+[functions.ga4-query_affiliates]
+enabled = true
+verify_jwt = true
+import_map = "./functions/ga4-query_affiliates/deno.json"
+entrypoint = "./functions/ga4-query_affiliates/index.ts"
+
+[functions.bigquery-report-109]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/bigquery-report-109/index.ts"
+
+[functions.ga4-ai-overview]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/ga4-ai-overview/index.ts"
+
+[functions.ga4-cache-warmer]
+enabled = true
+verify_jwt = false  # Uses x-warmer-secret header instead of JWT
+entrypoint = "./functions/ga4-cache-warmer/index.ts"

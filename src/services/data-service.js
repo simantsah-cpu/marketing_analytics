@@ -18,6 +18,7 @@
  */
 
 import { supabase } from './supabase'
+import { invokeGA4 } from './ga4-limiter'
 import { subDays, format, eachDayOfInterval } from 'date-fns'
 import { resolveAffiliateName, resolvePromotionMethod } from '../utils/affiliate-map'
 
@@ -27,6 +28,12 @@ const MOCK_MODE = false // Live GA4 data via Supabase Edge Function
 // ─── Supabase Edge Function caller ────────────────────────────────────────────
 
 async function callGA4(page, propertyId, filters) {
+  const result = await callGA4WithMeta(page, propertyId, filters)
+  return result.reports
+}
+
+// Full response including cache metadata — used where freshness needs to be surfaced in the UI
+async function callGA4WithMeta(page, propertyId, filters) {
   const dateRanges = buildGA4DateRanges(filters.dateRanges)
   // Strip frontend-only fields — the edge function only needs the filter dimensions.
   // Sending groupBy/granularity/anomalies etc. to the backend can cause unexpected failures.
@@ -35,13 +42,9 @@ async function callGA4(page, propertyId, filters) {
     countryFilter:   filters.countryFilter,
     deviceFilter:    filters.deviceFilter,
   }
-  const { data, error } = await supabase.functions.invoke('ga4-query_affiliates', {
-    body: { page, propertyId, dateRanges, filters: ga4Filters }
-  })
-  if (error) throw new Error(`ga4-query_affiliates error: ${error.message}`)
-  if (data.error) throw new Error(`GA4 error: ${data.error}`)
-  return data.reports // array of normalised report arrays
+  return invokeGA4(page, { page, propertyId, dateRanges, filters: ga4Filters })
 }
+
 
 // Convert FiltersContext dateRanges to GA4 API format
 function buildGA4DateRanges(dateRanges) {
@@ -64,12 +67,12 @@ export async function getFilterOptions(propertyId, dateRanges) {
     ? [{ startDate: dateRanges.primary.startDate, endDate: dateRanges.primary.endDate }]
     : [{ startDate: '30daysAgo', endDate: 'yesterday' }]
   try {
-    const { data, error } = await supabase.functions.invoke('ga4-query_affiliates', {
-      body: { page: 'filter-options', propertyId, dateRanges: dr, filters: {} }
+    const { reports } = await invokeGA4('filter-options', {
+      page: 'filter-options', propertyId, dateRanges: dr, filters: {}
     })
-    if (error || data?.error) return { affiliates: [], countries: [] }
-    const affiliateRows = data.reports?.[0] ?? []
-    const countryRows   = data.reports?.[1] ?? []
+    const affiliateRows = reports[0] ?? []
+    const countryRows   = reports[1] ?? []
+
 
     // Map raw sessionSource IDs to human-readable names using the affiliate map
     const affiliates = affiliateRows

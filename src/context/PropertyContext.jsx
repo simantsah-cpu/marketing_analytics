@@ -7,7 +7,7 @@ const PropertyContext = createContext(null)
 // Default properties — fetched from Supabase but seeded here as fallback
 const DEFAULT_PROPERTIES = [
   { id: 'hoppa', name: 'hoppa.com', ga4_property_id: '259261360', business: 'hoppa' },
-  { id: 'elife', name: 'elife transfer', ga4_property_id: 'TBC', business: 'elife' },
+  { id: 'elife', name: 'elife transfer', ga4_property_id: null, business: 'elife' },
 ]
 
 export function PropertyProvider({ children }) {

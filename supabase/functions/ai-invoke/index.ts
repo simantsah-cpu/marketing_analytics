@@ -6,7 +6,7 @@ const CORS = {
 }
 
 const ANTHROPIC_API = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-opus-4-5'
+const MODEL = 'claude-sonnet-4-6'
 
 // ─── Build system prompts per mode ───────────────────────────────────────────
 function buildSystemPrompt(mode: string): string {

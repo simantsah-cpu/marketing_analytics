@@ -28,6 +28,7 @@
  */
 
 import { supabase } from './supabase'
+import { invokeGA4 } from './ga4-limiter'
 
 // ─── LLM source definitions ───────────────────────────────────────────────────
 
@@ -221,14 +222,7 @@ export async function getLLMData(propertyId, filters) {
     deviceFilter:    filters.deviceFilter   ?? [],
   }
 
-  const { data, error } = await supabase.functions.invoke('ga4-query_affiliates', {
-    body: { page: 'llm', propertyId, dateRanges, filters: ga4Filters }
-  })
-
-  if (error) throw new Error(`LLM data fetch error: ${error.message}`)
-  if (data?.error) throw new Error(`GA4 error: ${data.error}`)
-
-  const reports = data.reports ?? []
+  const { reports } = await invokeGA4('llm', { page: 'llm', propertyId, dateRanges, filters: ga4Filters })
 
   // report[0] = current daily totals
   // report[1] = current per-source aggregates
@@ -291,15 +285,10 @@ export async function getLLMPageData(propertyId, sourceKeys = [], filters = {}) 
     deviceFilter:    filters.deviceFilter  ?? [],
   }
 
-  const { data, error } = await supabase.functions.invoke('ga4-query_affiliates', {
-    body: { page: 'llm-pages', propertyId, dateRanges, filters: ga4Filters }
-  })
+  const { reports } = await invokeGA4('llm-pages', { page: 'llm-pages', propertyId, dateRanges, filters: ga4Filters })
 
-  if (error) throw new Error(`LLM page data fetch error: ${error.message}`)
-  if (data?.error) throw new Error(`GA4 error: ${data.error}`)
-
-  const purchaseRows = data?.reports?.[0] ?? []
-  const sessionRows  = data?.reports?.[1] ?? []
+  const purchaseRows = reports[0] ?? []
+  const sessionRows  = reports[1] ?? []
 
   // report[0]: pages with at least 1 purchase — sessions + purchases + revenue
   const purchasePages = purchaseRows
