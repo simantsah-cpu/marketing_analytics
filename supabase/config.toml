@@ -429,3 +429,9 @@ entrypoint = "./functions/ga4-ai-overview/index.ts"
 enabled = true
 verify_jwt = false  # Uses x-warmer-secret header instead of JWT
 entrypoint = "./functions/ga4-cache-warmer/index.ts"
+
+[functions.destination-analysis]
+enabled = true
+verify_jwt = true
+import_map = "./functions/destination-analysis/deno.json"
+entrypoint = "./functions/destination-analysis/index.ts"

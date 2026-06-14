@@ -21,6 +21,7 @@ import LLMIntelligence from './pages/LLMIntelligence'
 import LLMDeepDive from './pages/LLMDeepDive'
 import AiOverviewPage from './pages/AiOverviewPage'
 import Report109 from './pages/Report109'
+import DestinationAnalysis from './pages/DestinationAnalysis'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -71,6 +72,7 @@ function SectionToggle() {
   const navigate = useNavigate()
   const isLLM = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview')
   const isReport109 = location.pathname.startsWith('/report-109')
+  const isDestAnalysis = location.pathname.startsWith('/destination-analysis')
   const { properties, selectedProperty, switchProperty } = useProperty()
 
   const activeStyle = {
@@ -133,6 +135,14 @@ function SectionToggle() {
         onMouseLeave={e => { if (!isReport109) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
       >
         Report — 109
+      </button>
+      <button
+        onClick={() => isDestAnalysis || navigate('/destination-analysis')}
+        style={isDestAnalysis ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (!isDestAnalysis) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (!isDestAnalysis) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+      >
+        Destination Analysis
       </button>
 
       {/* Property switcher — right corner of same bar */}
@@ -198,6 +208,7 @@ function DashboardShell({ onQueryOpen }) {
             <Route path="/llm-deep-dive" element={<LLMDeepDive />} />
             <Route path="/ai-overview" element={<AiOverviewPage />} />
             <Route path="/report-109" element={<Report109 />} />
+            <Route path="/destination-analysis" element={<DestinationAnalysis />} />
           </Routes>
         </div>
       </div>
