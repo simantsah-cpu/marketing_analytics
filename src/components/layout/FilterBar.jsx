@@ -138,7 +138,11 @@ export default function FilterBar() {
 
       {/* Report-109 BigQuery filters — shown only on /report-109 */}
       {isReport109 && (() => {
-        const PLATFORM_OPTIONS = ['WEB', 'APP', 'WLB']
+        const PLATFORM_OPTIONS = [
+          { label: 'Web',      value: ['WEB']        },
+          { label: 'App',      value: ['APP']        },
+          { label: 'Combined', value: ['APP', 'WEB'] },
+        ]
         const CHANNEL_OPTIONS = [
           'AI / LLM','Affiliates','Chatbot','Cross-network','Direct','Display',
           'Email','Organic Search','Other','Other Advertising','Paid Search',
@@ -148,28 +152,28 @@ export default function FilterBar() {
         const channels     = filters.r109Channel      ?? []
         const exchangeRate = filters.r109ExchangeRate ?? 0.744
 
-        const togglePlatform = (p) => {
-          const next = platforms.includes(p)
-            ? platforms.filter(x => x !== p)
-            : [...platforms, p]
-          if (next.length > 0) actions.setR109Platform(next)
-        }
+        // Determine which option is currently active (by matching the sorted arrays)
+        const sortedCurr = [...platforms].sort().join(',')
+        const activePlatformLabel = PLATFORM_OPTIONS.find(
+          o => [...o.value].sort().join(',') === sortedCurr
+        )?.label ?? 'Combined'
+
 
         return (
           <>
-            {/* Platform toggle (multi-select) */}
+            {/* Platform toggle (single-select) */}
             <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>Platform</span>
             <div style={{
               display: 'flex', alignItems: 'center',
               background: 'var(--bg)', border: '1px solid var(--border)',
               borderRadius: 6, padding: 2, gap: 1,
             }}>
-              {PLATFORM_OPTIONS.map(p => {
-                const active = platforms.includes(p)
+              {PLATFORM_OPTIONS.map(opt => {
+                const active = activePlatformLabel === opt.label
                 return (
                   <button
-                    key={p}
-                    onClick={() => togglePlatform(p)}
+                    key={opt.label}
+                    onClick={() => actions.setR109Platform(opt.value)}
                     style={{
                       padding: '4px 9px', border: 'none', borderRadius: 4,
                       background: active ? 'var(--teal)' : 'transparent',
@@ -177,7 +181,7 @@ export default function FilterBar() {
                       fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
                       cursor: 'pointer', transition: 'all 0.12s',
                     }}
-                  >{p}</button>
+                  >{opt.label}</button>
                 )
               })}
             </div>

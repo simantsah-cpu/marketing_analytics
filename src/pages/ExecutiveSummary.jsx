@@ -59,7 +59,7 @@ const revenueLineOpts = {
       grid: { color: '#F1F5F9' }, border: { display: false },
       ticks: {
         font: { family: 'DM Sans', size: 11 }, color: '#5A6A7A',
-        callback: (v) => v >= 1000 ? `£${Math.round(v / 1000)}K` : `£${v}`
+        callback: (v) => v >= 1e6 ? `£${(v/1e6).toFixed(1)}M` : v >= 1000 ? `£${Math.round(v / 1000)}K` : `£${v}`
       }
     },
   },
@@ -373,7 +373,7 @@ export default function ExecutiveSummary() {
         <div className="chart-row chart-row-2">
           <ChartCard title={barChartTitle.revenue} subtitle="Ranked by total purchase revenue (£) in period" tag="REVENUE">
             <div style={{ height: 380 }}>
-              <Bar data={revenueBarData} options={barOpts(topByRevenue.map(a => a.revenue), v => v >= 1000 ? `£${(v / 1000).toFixed(1)}K` : `£${v}`)} />
+              <Bar data={revenueBarData} options={barOpts(topByRevenue.map(a => a.revenue), v => v >= 1e6 ? `£${(v/1e6).toFixed(1)}M` : v >= 1000 ? `£${(v / 1000).toFixed(1)}K` : `£${v}`)} />
             </div>
           </ChartCard>
           <ChartCard title={barChartTitle.conv} subtitle="Sessions → Bookings conversion %" tag="QUALITY">

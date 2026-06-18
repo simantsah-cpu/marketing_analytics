@@ -12,7 +12,7 @@ function fmt(v, type) {
     case 'int':  return Math.round(v).toLocaleString()
     case 'pct1': return `${(v * 100).toFixed(1)}%`
     case 'pct2': return `${(v * 100).toFixed(2)}%`
-    case 'gbp':  return `£${v.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+    case 'gbp': { const a = Math.abs(v), s = v < 0 ? '-' : ''; if (a >= 1e6) return `${s}£${(a/1e6).toFixed(1)}M`; if (a >= 1e4) return `${s}£${Math.round(a/1e3)}K`; return `${s}£${Math.round(a).toLocaleString('en-GB')}` }
     case 'gbp2': return `£${v.toFixed(2)}`
     default: return String(v)
   }
@@ -239,7 +239,7 @@ export default function LLMDeepDive() {
 
   function fmtCell(v, metric) {
     if (!v) return '—'
-    if (metric === 'revenue') return `£${Math.round(v).toLocaleString('en-GB')}`
+    if (metric === 'revenue') { const a = Math.abs(v), s = v < 0 ? '-' : ''; return a >= 1e6 ? `${s}£${(a/1e6).toFixed(1)}M` : a >= 1e3 ? `${s}£${Math.round(a/1e3)}K` : `${s}£${Math.round(a)}` }
     return Math.round(v).toLocaleString()
   }
 

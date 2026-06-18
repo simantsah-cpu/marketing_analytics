@@ -19,7 +19,7 @@ function fmt(v, type) {
     case 'int':  return Math.round(v).toLocaleString()
     case 'pct1': return `${(v * 100).toFixed(1)}%`
     case 'pct2': return `${(v * 100).toFixed(2)}%`
-    case 'gbp':  return `£${v.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+    case 'gbp': { const a = Math.abs(v), s = v < 0 ? '-' : ''; if (a >= 1e6) return `${s}£${(a/1e6).toFixed(1)}M`; if (a >= 1e4) return `${s}£${Math.round(a/1e3)}K`; return `${s}£${Math.round(a).toLocaleString('en-GB')}` }
     case 'gbp2': return `£${v.toFixed(2)}`
     case 'dur': {
       const m = Math.floor(v / 60); const s = Math.round(v % 60)
@@ -325,7 +325,7 @@ const METRIC_OPTIONS = [
 const METRIC_FMT = {
   sessions: v => Math.round(v).toLocaleString(),
   bookings: v => v.toFixed(1),
-  revenue:  v => `£${v.toFixed(0)}`,
+  revenue:  v => { const a = Math.abs(v), s = v < 0 ? '-' : ''; return a >= 1e6 ? `${s}£${(a/1e6).toFixed(1)}M` : a >= 1e3 ? `${s}£${Math.round(a/1e3)}K` : `${s}£${Math.round(a)}` },
   cvr:      v => `${(v * 100).toFixed(2)}%`,
   aov:      v => `£${v.toFixed(0)}`,
   engagementRate: v => `${(v * 100).toFixed(1)}%`,

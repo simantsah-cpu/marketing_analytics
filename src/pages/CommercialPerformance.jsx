@@ -73,7 +73,7 @@ const revBookingOpts = {
       position: 'left',
       grid: { color: '#E2EAF0', borderDash: [4, 4] }, border: { display: false },
       ticks: { font: { family: 'DM Sans', size: 11 }, color: '#5A6A7A', maxTicksLimit: 6, padding: 12,
-        callback: v => `£${parseFloat((Math.round(v / 100) * 100 / 1000).toFixed(1))}K` },
+        callback: v => v >= 1e6 ? `£${(v/1e6).toFixed(1)}M` : `£${parseFloat((Math.round(v / 100) * 100 / 1000).toFixed(1))}K` },
     },
     y1: {
       type: 'linear',
@@ -358,7 +358,7 @@ export default function CommercialPerformance() {
               <div style={{ height: 260, paddingTop: 10, position: 'relative' }}>
                 <Doughnut data={donutData} options={donutOpts} />
                 <div style={{ position: 'absolute', top: '50%', left: '39%', transform: 'translate(-50%,-50%)', textAlign: 'center', pointerEvents: 'none' }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: '#0A2540' }}>£{Math.round(totalRev / 1000)}K</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#0A2540' }}>{totalRev >= 1e6 ? `£${(totalRev/1e6).toFixed(1)}M` : `£${Math.round(totalRev/1000)}K`}</div>
                   <div style={{ fontSize: 10, color: '#64748B' }}>Total</div>
                 </div>
               </div>
@@ -374,7 +374,7 @@ export default function CommercialPerformance() {
                   <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <div style={{ width: 10, height: 10, borderRadius: '50%', background: COLORS[i] || '#CBD5E1', flexShrink: 0 }} />
                     <div style={{ fontSize: 12, color: '#0A2540', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.label}</div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#0A2540' }}>£{Number(d.value).toLocaleString('en-GB', { maximumFractionDigits: 0 })}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#0A2540' }}>{d.value >= 1e6 ? `£${(d.value/1e6).toFixed(1)}M` : d.value >= 1e3 ? `£${Math.round(d.value/1e3)}K` : `£${Math.round(d.value)}`}</div>
                     <div style={{ fontSize: 11, color: '#64748B', width: 42, textAlign: 'right' }}>{((d.value / totalRev) * 100).toFixed(1)}%</div>
                   </div>
                 ))}

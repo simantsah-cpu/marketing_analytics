@@ -14,7 +14,7 @@ function fmt(v, type) {
     case 'int':  return Math.round(v).toLocaleString()
     case 'pct1': return `${(v * 100).toFixed(1)}%`
     case 'pct2': return `${(v * 100).toFixed(2)}%`
-    case 'gbp':  return `£${v.toLocaleString('en-GB', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+    case 'gbp': { const a = Math.abs(v), s = v < 0 ? '-' : ''; if (a >= 1e6) return `${s}£${(a/1e6).toFixed(1)}M`; if (a >= 1e4) return `${s}£${Math.round(a/1e3)}K`; return `${s}£${Math.round(a).toLocaleString('en-GB')}` }
     case 'gbp2': return `£${v.toFixed(2)}`
     case 'x1':   return v.toFixed(1)
     case 'dur': {

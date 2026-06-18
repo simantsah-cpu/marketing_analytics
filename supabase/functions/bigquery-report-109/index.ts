@@ -157,8 +157,14 @@ function buildSummarySQL(
       ROUND(SUM(ttv), 2)                                                                     AS ttv,
       ROUND(SAFE_DIVIDE(SUM(ttv), NULLIF(SUM(keyEvents), 0)), 2)                             AS atv,
       ROUND(SUM(Spend) / ${exchangeRate}, 2)                                                 AS spend_usd,
-      ROUND(SUM(actual_profit), 2)                                                           AS net_contribution,
-      ROUND(SAFE_DIVIDE(SUM(actual_profit), NULLIF(SUM(Spend) / ${exchangeRate}, 0)), 2)     AS roi
+      ROUND(SUM(IFNULL(actual_profit, 0) + IFNULL(estimate_profit, 0)), 2)                  AS estimated_profit,
+      ROUND(SUM(IFNULL(actual_profit, 0) + IFNULL(estimate_profit, 0)) - SUM(Spend) / ${exchangeRate}, 2)   AS net_contribution,
+      ROUND(
+        SAFE_DIVIDE(
+          SUM(IFNULL(actual_profit, 0) + IFNULL(estimate_profit, 0)) - SUM(Spend) / ${exchangeRate},
+          NULLIF(SUM(Spend) / ${exchangeRate}, 0)
+        ), 2
+      )                                                                                      AS roi
     FROM ${BQ_TABLE}
     WHERE booking_date BETWEEN '${startDate}' AND '${endDate}'
       ${filterClauses(platforms, channels)}
@@ -181,7 +187,7 @@ function buildTrendSQL(
       ROUND(SAFE_DIVIDE(SUM(keyEvents), NULLIF(SUM(overall_sessions), 0)) * 100, 2)          AS conv,
       ROUND(SUM(ttv), 2)                                                                     AS ttv,
       ROUND(SUM(Spend) / ${exchangeRate}, 2)                                                 AS sp,
-      ROUND(SUM(actual_profit), 2)                                                           AS np
+      ROUND(SUM(IFNULL(actual_profit, 0) + IFNULL(estimate_profit, 0)) - SUM(Spend) / ${exchangeRate}, 2) AS np
     FROM ${BQ_TABLE}
     WHERE booking_date BETWEEN '${startDate}' AND '${endDate}'
       ${filterClauses(platforms, channels)}
@@ -202,13 +208,26 @@ function buildChannelsSQL(
     SELECT
       COALESCE(marketing_channel, 'Untracked')                                               AS channel,
       ROUND(SUM(overall_sessions), 0)                                                        AS sessions,
-      ROUND(SUM(keyEvents), 0)                                                               AS bookings,
       ROUND(SAFE_DIVIDE(SUM(keyEvents), NULLIF(SUM(overall_sessions), 0)) * 100, 2)          AS conv_pct,
-      ROUND(SUM(ttv), 2)                                                                     AS ttv,
-      ROUND(SAFE_DIVIDE(SUM(ttv), NULLIF(SUM(keyEvents), 0)), 2)                             AS atv,
-      ROUND(SUM(Spend) / ${exchangeRate}, 2)                                                 AS spend_usd,
-      ROUND(SUM(actual_profit), 2)                                                           AS net_contribution,
-      ROUND(SAFE_DIVIDE(SUM(actual_profit), NULLIF(SUM(Spend) / ${exchangeRate}, 0)), 2)     AS roi
+      ROUND(SUM(keyEvents), 2)                                                               AS bookings,
+      ROUND(SUM(ttv), 0)                                                                     AS ttv,
+      ROUND(SUM(IFNULL(actual_profit, 0) + IFNULL(estimate_profit, 0)), 1)                  AS estimated_profit,
+      ROUND(SAFE_DIVIDE(SUM(ttv), NULLIF(SUM(keyEvents), 0)), 1)                             AS atv,
+      ROUND(SAFE_DIVIDE(SUM(IFNULL(actual_profit, 0) + IFNULL(estimate_profit, 0)), NULLIF(SUM(keyEvents), 0)), 1) AS amv,
+      ROUND(SUM(Spend) / ${exchangeRate}, 1)                                                 AS spend_usd,
+      ROUND(SUM(IFNULL(actual_profit, 0) + IFNULL(estimate_profit, 0)) - SUM(Spend) / ${exchangeRate}, 0) AS net_contribution,
+      ROUND(
+        SAFE_DIVIDE(
+          SUM(IFNULL(actual_profit, 0) + IFNULL(estimate_profit, 0)) - SUM(Spend) / ${exchangeRate},
+          NULLIF(SUM(Spend) / ${exchangeRate}, 0)
+        ), 2
+      )                                                                                      AS roi,
+      ROUND(
+        SAFE_DIVIDE(
+          SUM(IFNULL(actual_profit, 0) + IFNULL(estimate_profit, 0)) - SUM(Spend) / ${exchangeRate},
+          NULLIF(SUM(keyEvents), 0)
+        ), 0
+      )                                                                                      AS ncpb
     FROM ${BQ_TABLE}
     WHERE booking_date BETWEEN '${startDate}' AND '${endDate}'
       ${filterClauses(platforms, channels)}
@@ -274,13 +293,24 @@ serve(async (req) => {
 
     const accessToken = await getBQAccessToken(serviceAccountJson)
 
+    // ── Parse optional channel comparison range ──────────────────────────────
+    const chComp      = body.channelCompRange ?? {}
+    const chCompStart = chComp.startDate ?? chComp.start_date
+    const chCompEnd   = chComp.endDate   ?? chComp.end_date
+    const hasChComp   = !!(chCompStart && chCompEnd)
+
     // ── Run all queries in parallel ─────────────────────────────────────────
-    const [currRows, compRows, trendRows, channelRows] = await Promise.all([
+    const baseQueries = [
       runQuery(projectId, buildSummarySQL(currStart, currEnd, platforms, channels, exRate), accessToken),
       runQuery(projectId, buildSummarySQL(compStart, compEnd, platforms, channels, exRate), accessToken),
       runQuery(projectId, buildTrendSQL(currStart, currEnd, platforms, channels, exRate),   accessToken),
       runQuery(projectId, buildChannelsSQL(currStart, currEnd, platforms, channels, exRate), accessToken),
-    ])
+      runQuery(projectId, buildChannelsSQL(compStart, compEnd, platforms, channels, exRate), accessToken),
+    ]
+    if (hasChComp) {
+      baseQueries.push(runQuery(projectId, buildChannelsSQL(chCompStart, chCompEnd, platforms, channels, exRate), accessToken))
+    }
+    const [currRows, compRows, trendRows, channelRows, prevChannelRows, compChannelRows] = await Promise.all(baseQueries)
 
     const currKPIs = currRows[0] ?? {}
     const compKPIs = compRows[0] ?? {}
@@ -293,6 +323,7 @@ serve(async (req) => {
       ttv:              k.ttv,
       atv:              k.atv,
       spend_usd:        k.spend_usd,
+      estimated_profit: k.estimated_profit,
       net_contribution: k.net_contribution,
       roi:              k.roi,
     })
@@ -307,11 +338,13 @@ serve(async (req) => {
         platforms,
         channels,
       },
-      curr: kpiShape(currKPIs),
-      prev: compMode !== 'yoy' ? kpiShape(compKPIs) : null,
-      yoy:  compMode === 'yoy' ? kpiShape(compKPIs) : null,
-      trend:    trendRows,
-      channels: channelRows,
+      curr:         kpiShape(currKPIs),
+      prev:         compMode !== 'yoy' ? kpiShape(compKPIs) : null,
+      yoy:          compMode === 'yoy' ? kpiShape(compKPIs) : null,
+      trend:        trendRows,
+      channels:     channelRows,
+      prevChannels: prevChannelRows,
+      ...(hasChComp && compChannelRows ? { compChannels: compChannelRows } : {}),
     }
 
     return new Response(

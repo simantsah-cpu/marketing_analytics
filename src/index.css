@@ -186,6 +186,8 @@ html, body {
 .kpi-row-4 { grid-template-columns: repeat(4, 1fr); }
 .kpi-row-3 { grid-template-columns: repeat(3, 1fr); }
 .kpi-row-5 { grid-template-columns: repeat(5, 1fr); }
+.kpi-row-7 { grid-template-columns: repeat(7, 1fr); }
+@media (max-width: 1500px) { .kpi-row-7 { grid-template-columns: repeat(4, 1fr); } }
 @media (max-width: 1400px) { .kpi-row-5 { grid-template-columns: repeat(3, 1fr); } }
 
 .kpi-card {
