@@ -113,10 +113,10 @@ function SectionToggle() {
       padding: '10px 20px 0',
     }}>
       <button
-        onClick={() => (!isLLM && !isReport109) || navigate('/scorecard')}
-        style={!isLLM && !isReport109 ? activeStyle : inactiveStyle}
-        onMouseEnter={e => { if (isLLM || isReport109) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
-        onMouseLeave={e => { if (isLLM || isReport109) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+        onClick={() => (!isLLM && !isReport109 && !isDestAnalysis) || navigate('/scorecard')}
+        style={!isLLM && !isReport109 && !isDestAnalysis ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (isLLM || isReport109 || isDestAnalysis) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (isLLM || isReport109 || isDestAnalysis) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
       >
         Affiliates
       </button>
