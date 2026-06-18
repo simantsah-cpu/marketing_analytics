@@ -1,7 +1,14 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 
-const AFFILIATE_NAV_ITEMS = []
+const AFFILIATE_NAV_ITEMS = [
+  { to: '/scorecard', label: 'Affiliate Scorecard', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="3" rx="1" fill="currentColor" opacity=".8"/><rect x="1" y="6" width="14" height="2.5" rx="1" fill="currentColor" opacity=".5"/><rect x="1" y="10.5" width="14" height="2.5" rx="1" fill="currentColor" opacity=".3"/></svg> },
+  { to: '/', label: 'Executive Summary', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".8"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/></svg>, exact: true },
+  { to: '/traffic', label: 'Traffic & Engagement', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M2 12 L5 8 L8 10 L11 5 L14 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/><circle cx="14" cy="7" r="1.5" fill="currentColor"/></svg> },
+  { to: '/commercial', label: 'Commercial', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="9" width="3" height="5" rx="1" fill="currentColor" opacity=".4"/><rect x="6.5" y="6" width="3" height="8" rx="1" fill="currentColor" opacity=".6"/><rect x="11" y="3" width="3" height="11" rx="1" fill="currentColor"/></svg> },
+  { to: '/funnel', label: 'Funnel Analysis', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2 L8 14 M2 5 L14 5 M3 9 L13 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><polygon points="8,2 5,6 11,6" fill="currentColor" opacity=".6"/></svg> },
+  { to: '/destinations', label: 'Destination Intelligence', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 1.5C5.515 1.5 3.5 3.515 3.5 6c0 3.5 4.5 8.5 4.5 8.5s4.5-5 4.5-8.5c0-2.485-2.015-4.5-4.5-4.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/><circle cx="8" cy="6" r="1.5" fill="currentColor" opacity=".7"/></svg> },
+]
 
 const LLM_NAV_ITEMS = [
   { to: '/llm', label: 'LLM Intelligence', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" opacity=".8"/><path d="M5.5 6.5 Q8 4 10.5 6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".9"/><circle cx="6" cy="8" r="1" fill="currentColor" opacity=".8"/><circle cx="10" cy="8" r="1" fill="currentColor" opacity=".8"/><path d="M8 12 L8 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".6"/><path d="M6 14 L10 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".4"/></svg> },
