@@ -25,6 +25,9 @@ export function categorise(text) {
   // Travel timing (when to leave, pre-flight advice)
   if (/how early|hours? before|check.?in|before.{1,40}flight|before.{1,40}departure|recommended.{1,30}arriv|allow.{1,30}time|leave.{1,20}early|get.{1,15}early|domestic.{1,20}(flight|airport)|international.{1,20}(flight|airport)|boarding|security.{1,20}time|departure.{1,20}time|arrive.{1,30}airport.{1,30}(early|hour|time)|airport.{1,30}arrive.{1,30}(early|hour|time)/i.test(text)) return 'Travel timing'
 
+  // Luggage & Baggage — before Transfer times (luggage ON transfers is a sub-topic)
+  if (/\bluggage\b|\bbaggage\b|\bsuitcase\b|\bhand.?bag\b|\bhand luggage\b|\bcarry.?on\b|oversized|oversize.{0,10}(bag|item|luggage)|\bgolf bag\b|\bski(s|ing)?.{0,10}(bag|equipment)\b|baggage.{0,20}(allow|limit|rule|polic|fee|charge)|luggage.{0,20}(allow|limit|rule|polic|fee|charge)/i.test(text)) return 'Luggage & Baggage'
+
   // Transfer times (journey duration, transport options to/from airports)
   if (/\btaxi|\bcab\b|minicab|rideshare|private (car|vehicle)/i.test(text)) return 'Transfer times'
   if (/\btransfer\b|\bshuttle\b/i.test(text)) return 'Transfer times'
@@ -37,6 +40,18 @@ export function categorise(text) {
 
   // Hoppa booking (direct booking references)
   if (/hoppa|pre.?book|door.?to.?door|private transfer|book.{1,20}(taxi|cab|shuttle|transfer|ride)|compare.{1,20}transfer/i.test(text)) return 'Hoppa booking'
+
+  // Booking & Cancellation — after Hoppa booking to avoid stealing brand snippets
+  if (/\bcancel(lation)?\b|\brefund\b|\bamend(ment)?\b|\bmodif(y|ied|ication)\b|no.?show|free.{0,15}cancel|cancel.{0,15}free|book.{0,20}(ahead|in advance|before arrival)|\bpolic(y|ies)\b.{0,30}(transfer|transport|booking|travel)|\bterms?.{0,10}(condition|cancel|book)/i.test(text)) return 'Booking & Cancellation'
+
+  // Airport Information — terminals, parking, facilities, lounges
+  if (/\bterminal[s]?\b.{0,30}(airport|depart|arriv|flight|gate|number|T\d)|\b(T1|T2|T3|T4|T5)\b|airport.{0,25}(terminal|parking|lounge|facilit|map|layout|level|floor|exit|hall)|\bairport lounge\b|\bparking.{0,20}airport\b|\barrival(s)? hall\b|\bdeparture(s)? (hall|gate|lounge)\b|\bgate number\b|which terminal/i.test(text)) return 'Airport Information'
+
+  // Vehicle & Fleet Information — vehicle types, capacity, accessibility, child seats
+  if (/\bminivan\b|\bminibus\b|\b(\d+).?seater\b|\bseater\b|vehicle.{0,20}(type|option|class|size|capacit)|\bcar seat\b|\bchild.{0,10}seat\b|\bchild.?booster\b|\bwheelchair.{0,20}(access|vehicle|friendly)\b|\bwheelchair accessible\b|\baccessible.{0,20}(vehicle|transfer|taxi)\b|\bexecutive.{0,20}(car|vehicle|transfer)\b|\bluxury.{0,20}(car|vehicle|transfer)\b|\bgroup.{0,15}(vehicle|transfer|taxi|transport)\b|\bpassenger(s)?.{0,15}(capacity|max|limit)\b/i.test(text)) return 'Vehicle & Fleet'
+
+  // Flight Logistics — meet & greet, flight tracking, driver wait times, delays
+  if (/meet.{0,10}greet|flight.{0,20}(track|monitor|delay|cancel|late)|driver.{0,20}wait|wait.{0,20}(flight|delay|free|includ)|\bfree.{0,15}wait\b|\bwait(ing)? time\b.{0,15}(free|includ|flight)|name.{0,10}(sign|board|card|plac)|arrival.{0,20}(track|monitor)|pickup.{0,20}(delay|late|track)|flight.{0,20}(cancel|divert).{0,20}(wait|transfer|policy)/i.test(text)) return 'Flight Logistics'
 
   return 'Other'
 }
@@ -55,13 +70,18 @@ export function classifySnippet(text) {
 // ─── Category colour map ──────────────────────────────────────────────────────
 
 export const CATEGORY_COLORS = {
-  'Transfer times':   '#1D9E75',
-  'Travel timing':    '#378ADD',
-  'Transport tables': '#7F77DD',
-  'Pricing':          '#EF9F27',
-  'Destinations':     '#D85A30',
-  'Hoppa booking':    '#D4537E',
-  'Other':            '#B4B2A9',
+  'Transfer times':        '#1D9E75',
+  'Travel timing':         '#378ADD',
+  'Transport tables':      '#7F77DD',
+  'Pricing':               '#EF9F27',
+  'Destinations':          '#D85A30',
+  'Hoppa booking':         '#D4537E',
+  'Luggage & Baggage':     '#7C9EBF',
+  'Booking & Cancellation':'#A07BD8',
+  'Airport Information':   '#3ABCAD',
+  'Vehicle & Fleet':       '#D4875A',
+  'Flight Logistics':      '#5A8FD4',
+  'Other':                 '#B4B2A9',
 }
 
 // ─── Week label helper ────────────────────────────────────────────────────────
