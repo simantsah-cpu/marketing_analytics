@@ -196,29 +196,6 @@ export default function FilterBar() {
               onApply={actions.setR109Channel}
               minWidth={140}
             />
-
-            <SEP />
-
-            {/* GBP → USD exchange rate input */}
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>GBP→USD</span>
-            <input
-              type="number"
-              step="0.001"
-              min="0.1"
-              max="10"
-              value={exchangeRate}
-              onChange={e => {
-                const v = parseFloat(e.target.value)
-                if (!isNaN(v) && v > 0) actions.setR109ExchangeRate(v)
-              }}
-              title="Spend GBP → USD exchange rate (Spend ÷ rate)"
-              style={{
-                width: 60, padding: '4px 8px', fontSize: 11, fontFamily: 'inherit',
-                border: '1px solid var(--border)', borderRadius: 6,
-                background: 'var(--bg)', color: 'var(--text)',
-                outline: 'none', textAlign: 'right',
-              }}
-            />
           </>
         )
       })()}
