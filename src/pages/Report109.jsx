@@ -440,7 +440,13 @@ export default function Report109() {
   const r109Channel      = filters.r109Channel      ?? []
   const r109ExchangeRate = filters.r109ExchangeRate ?? 0.744
 
-  // ── Fetch from edge function ──────────────────────────────────────────────
+  // ── Extract date strings as primitives so useCallback deps compare by value ─
+  const currStart = filters.dateRanges?.primary?.startDate    ?? ''
+  const currEnd   = filters.dateRanges?.primary?.endDate      ?? ''
+  const compStart = filters.dateRanges?.comparison?.startDate ?? ''
+  const compEnd   = filters.dateRanges?.comparison?.endDate   ?? ''
+
+  // ── Fetch from edge function ──────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     if (!selectedProperty) return
     setLoading(true)
@@ -448,7 +454,9 @@ export default function Report109() {
     setChanCompType('off')
     setChanCompCache({})
     try {
-      const { primary, comparison: compRange } = filters.dateRanges ?? {}
+      // Build dateRanges from primitive strings captured in closure
+      const primary   = currStart && currEnd ? { startDate: currStart, endDate: currEnd } : null
+      const compRange = compStart && compEnd ? { startDate: compStart, endDate: compEnd } : null
       const dateRangesArray = [primary, compRange].filter(Boolean)
 
       const { data: result, error: fnError } = await supabase.functions.invoke('bigquery-report-109', {
@@ -473,7 +481,7 @@ export default function Report109() {
     } finally {
       setLoading(false)
     }
-  }, [selectedProperty, filters.dateRanges, compMode, r109Platform, r109Channel, r109ExchangeRate])
+  }, [selectedProperty, currStart, currEnd, compStart, compEnd, compMode, r109Platform, r109Channel, r109ExchangeRate])
 
   useEffect(() => {
     fetchData()
@@ -493,19 +501,17 @@ export default function Report109() {
     setChanCompType(type)
     if (type === 'off') { setChanCompDateRange(null); return }
     if (type === 'prev') {
-      const cr = filters.dateRanges?.comparison
-      setChanCompDateRange({ start: cr?.startDate ?? '—', end: cr?.endDate ?? '—' })
+      setChanCompDateRange({ start: compStart || '—', end: compEnd || '—' })
       return  // already cached from fetchData
     }
 
     // Compute comparison dates for yoy/mom/wow (needed for display + API call)
-    const { primary } = filters.dateRanges ?? {}
-    const s = primary?.startDate, e = primary?.endDate
+    const s = currStart, e = currEnd
     if (!s || !e) return
 
     let cStart, cEnd
-    if      (type === 'wow') { cStart = shiftDate(s, -7);      cEnd = shiftDate(e, -7)      }
-    else if (type === 'mom') { cStart = shiftDate(s, 0, -1);   cEnd = shiftDate(e, 0, -1)   }
+    if      (type === 'wow') { cStart = shiftDate(s, -7);       cEnd = shiftDate(e, -7)       }
+    else if (type === 'mom') { cStart = shiftDate(s, 0, -1);    cEnd = shiftDate(e, 0, -1)    }
     else if (type === 'yoy') { cStart = shiftDate(s, 0, 0, -1); cEnd = shiftDate(e, 0, 0, -1) }
     setChanCompDateRange({ start: cStart, end: cEnd })  // always update display
 
@@ -515,7 +521,7 @@ export default function Report109() {
     try {
       const { data: res } = await supabase.functions.invoke('bigquery-report-109', {
         body: {
-          dateRanges:       [primary],
+          dateRanges:       [{ startDate: s, endDate: e }],
           platformFilter:   r109Platform,
           channelFilter:    r109Channel,
           exchangeRate:     r109ExchangeRate,
