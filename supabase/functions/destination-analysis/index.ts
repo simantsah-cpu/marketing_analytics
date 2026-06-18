@@ -443,85 +443,6 @@ serve(async (req) => {
 
     const accessToken = await getBQAccessToken(serviceAccountJson)
 
-    // ── Schema probe (debug only) ──────────────────────────────────────────────
-    if (type === 'schema_probe') {
-      const pickupCode = typeof body.pickup === 'string' ? body.pickup : 'PMI'
-      const sql = `
-        SELECT
-          dropoff_airport_code3,
-          dropoff_zone_name,
-          dropoff_airport_name,
-          route_name,
-          COUNT(*) AS cnt,
-          SUM(elife_amount_usd) AS ttv
-        FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\`
-        WHERE pickup_airport_code3 = '${pickupCode}'
-          AND EXTRACT(YEAR FROM DATE(booking_date)) IN (2025, 2026)
-          AND EXTRACT(ISOWEEK FROM DATE(booking_date)) IN (19,20,21,22,23,24)
-          AND dispatch_stat NOT IN ('cancelled','failed')
-        GROUP BY 1,2,3,4
-        ORDER BY cnt DESC
-        LIMIT 30
-      `
-      const rows = await runQueryWithParams(projectId, sql, accessToken, [])
-      // Also probe dim_airport for zone codes relevant to this pickup
-      const dimSql = `
-        SELECT code3, TRIM(name) AS name
-        FROM \`elife-data-warehouse-prod.dim.dim_airport\`
-        WHERE code3 IN ('2QZ','PMN','PUP','PTA','1IB','1MG','27J','CFA','CAO','0FZ','PQT','CLR','0JR','2EP','SIL','YWQ','02U','0QY','0HY','2EX','CRU','SAN')
-        ORDER BY name
-      `
-      let dimRows: Record<string, unknown>[] = []
-      // Try multiple plausible zone/resort dimension tables
-      const tablesToTry = [
-        'elife-data-warehouse-prod.dim.dim_zone',
-        'elife-data-warehouse-prod.dim.dim_resort',
-        'elife-data-warehouse-prod.dim.dim_location',
-        'elife-data-warehouse-prod.ads.dim_dropoff',
-      ]
-      const dimResults: Record<string, unknown> = {}
-      for (const tbl of tablesToTry) {
-        try {
-          const testSql = `SELECT * FROM \`${tbl}\` LIMIT 3`
-          const testRows = await runQueryWithParams(projectId, testSql, accessToken, [])
-          dimResults[tbl] = testRows
-        } catch(e: any) {
-          dimResults[tbl] = { error: e.message?.slice(0, 120) }
-        }
-      }
-      return new Response(
-        JSON.stringify({ rows, dimResults }),
-        { headers: { ...CORS, 'Content-Type': 'application/json' } },
-      )
-    }
-
-    // ── Booking event probe ────────────────────────────────────────────────────
-    if (type === 'booking_probe') {
-      const pickupCode = typeof body.pickup === 'string' ? body.pickup : 'PMI'
-      const dropoffCode = typeof body.dropoffCode === 'string' ? body.dropoffCode : '2QZ'
-      const sql = `
-        SELECT
-          event_name,
-          COUNT(*) AS event_count
-        FROM \`elife-data-warehouse-prod.analytics_259261360.events_*\`,
-          UNNEST(event_params) AS ep_pickup,
-          UNNEST(event_params) AS ep_dropoff
-        WHERE _TABLE_SUFFIX BETWEEN '20260101' AND FORMAT_DATE('%Y%m%d', CURRENT_DATE())
-          AND ep_pickup.key  = 'pick_up_code'
-          AND ep_dropoff.key = 'drop_off_code'
-          AND ep_pickup.value.string_value  = '${pickupCode}'
-          AND ep_dropoff.value.string_value = '${dropoffCode}'
-          AND EXTRACT(ISOWEEK FROM PARSE_DATE('%Y%m%d', event_date)) IN (16,17,18,19,20,21)
-        GROUP BY 1
-        ORDER BY event_count DESC
-      `
-      const rows = await runQueryWithParams(projectId, sql, accessToken, [])
-      return new Response(
-        JSON.stringify({ rows }),
-        { headers: { ...CORS, 'Content-Type': 'application/json' } },
-      )
-    }
-
     // ── Airports ─────────────────────────────────────────────────────────────
     if (type === 'airports') {
       const rows = await runQueryWithParams(projectId, AIRPORTS_SQL, accessToken, [])
@@ -641,13 +562,13 @@ serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ error: `Unknown type: ${type}. Expected airports|searches|bookings|funnel` }),
+      JSON.stringify({ error: 'Invalid request type.' }),
       { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } },
     )
   } catch (err: any) {
     console.error('destination-analysis error:', err)
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: 'An internal error occurred.' }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } },
     )
   }

@@ -116,7 +116,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   const secret = req.headers.get('x-warmer-secret') ?? new URL(req.url).searchParams.get('secret')
-  if (WARMER_SECRET && secret !== WARMER_SECRET) {
+  if (!WARMER_SECRET || secret !== WARMER_SECRET) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401, headers: { ...CORS, 'Content-Type': 'application/json' },
     })

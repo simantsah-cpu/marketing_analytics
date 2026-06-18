@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import DOMPurify from 'dompurify'
 import { useFilters } from '../context/FiltersContext'
 
 // ── Per-chart-type suggested questions ────────────────────────────────────────
@@ -312,7 +313,7 @@ export default function ChatPanel({ open, onClose, chartTitle, chartType, chartD
               }
             >
               <span
-                dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMarkdown(msg.content)) }}
               />
               {msg.streaming && (
                 <span style={{

@@ -1,10 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { supabase } from '../services/supabase'
 
-// DEV BYPASS: set to false to use real Supabase auth
-const DEV_BYPASS = false
-const DEV_USER = { id: 'dev-user', email: 'dev@hoppa.com', user_metadata: { full_name: 'Dev User' } }
-
 // ─── Domain restriction ────────────────────────────────────────────────────────
 const ALLOWED_DOMAIN = 'elifetransfer.com'
 export const DOMAIN_ERROR = 'Access is restricted to @elifetransfer.com accounts only.'
@@ -28,13 +24,6 @@ export function AuthProvider({ children }) {
   const [domainError, setDomainError] = useState(null)
 
   useEffect(() => {
-    if (DEV_BYPASS) {
-      setUser(DEV_USER)
-      setSession({ user: DEV_USER })
-      setLoading(false)
-      return
-    }
-
     // getSession may return an error if the stored refresh token is stale/invalid.
     // When that happens ("Refresh Token Not Found"), clear the corrupted session
     // from localStorage so the user sees the login screen instead of a broken app.

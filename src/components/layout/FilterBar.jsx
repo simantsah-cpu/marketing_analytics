@@ -22,8 +22,9 @@ export default function FilterBar() {
   const { filters, actions } = useFilters()
   const { selectedProperty } = useProperty()
   const { pathname } = useLocation()
-  const isLLMPage    = pathname.startsWith('/llm') || pathname.startsWith('/ai-overview')
-  const isReport109  = pathname.startsWith('/report-109')
+  const isLLMPage      = pathname.startsWith('/llm') || pathname.startsWith('/ai-overview')
+  const isReport109    = pathname.startsWith('/report-109')
+  const isDestAnalysis = pathname.startsWith('/destination-analysis')
 
   // ── Load dynamic affiliate + country options whenever property or date range changes ──
   useEffect(() => {
@@ -91,10 +92,9 @@ export default function FilterBar() {
         })}
       </div>
 
-      <SEP />
-
-      {/* Group By toggle — hidden on /llm and /report-109 */}
-      {!isLLMPage && !isReport109 && (
+      {/* Separator + Group By — hidden on /llm, /report-109, /destination-analysis */}
+      {!isLLMPage && !isReport109 && !isDestAnalysis && <SEP />}
+      {!isLLMPage && !isReport109 && !isDestAnalysis && (
         <>
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>Group by</span>
           <div style={{

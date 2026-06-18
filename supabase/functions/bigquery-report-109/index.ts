@@ -354,7 +354,7 @@ serve(async (req) => {
   } catch (err: any) {
     console.error('bigquery-report-109 error:', err)
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: 'An internal error occurred.' }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } },
     )
   }

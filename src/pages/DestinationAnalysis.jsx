@@ -2,41 +2,56 @@
  * DestinationAnalysis.jsx
  * Route Intelligence — Destination Performance Dashboard
  *
- * Standalone component. Uses Canvas API for charts (not Chart.js).
- * All data fetched from the 'destination-analysis' Supabase edge function.
- *
- * BUG FIXES vs v1:
- *  - `years` is now in useState so it's a stable reference (was causing infinite
- *    useEffect loop — 7000+ re-fetches per session).
- *  - `fetchMain` useCallback deps are now stable (origin + destination strings only).
- *  - Chart drawArgs arrays are memoised with useMemo to avoid pointless redraws.
- *  - Abortable fetch: if origin/destination changes while a fetch is in-flight,
- *    the stale response is discarded.
+ * Redesigned to match the Orbit analytics design system:
+ *   - DM Sans font throughout
+ *   - Navy #0A2540 primary text, #5A6A7A subtext
+ *   - White cards with #E2E8F0 borders, 12px border-radius
+ *   - Teal #0D8A72 positive / Red #C0392B negative deltas
+ *   - Clean pill-style filter rows (no dark bars)
+ *   - Orbit KPI card style with large values + comparison badges
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import zoneMap from './zoneMap.json'
 import { supabase } from '../services/supabase'
 import { useFilters } from '../context/FiltersContext'
+import { IATA_NAMES } from '../utils/iataNames'
+
+// Resolve a clean English airport name.
+// If the code is a valid IATA code present in our OurAirports database,
+// always use that standard English name regardless of what hoppa's DB stores.
+function cleanAirportName(code, storedName) {
+  if (code && /^[A-Z]{3}$/.test(code) && IATA_NAMES[code]) {
+    return IATA_NAMES[code]
+  }
+  return storedName
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Design tokens
+// Orbit design tokens (matches Report 109 + global CSS variables)
 // ─────────────────────────────────────────────────────────────────────────────
-const C = {
-  darkGreen:   '#0E4314',
-  accentGreen: '#539A5B',
-  lightGreenBg:'#EAF5E6',
-  pageBg:      '#FFFFFF',
-  lightGrayBg: '#F7F7F7',
-  border:      '#DEDCD8',
-  muted:       '#7A8C7B',
-  body:        '#1A2E1B',
-  secondary:   '#5C6B5D',
-  darkCard:    '#4A5A4B',
-  red:         '#C0504A',
-  amber:       '#D97706',
-  amberLight:  '#FEF3C7',
+const O = {
+  navy:      '#0A2540',
+  blue:      '#0F5FA6',
+  blueMid:   '#1A7FD4',
+  blueLight: '#E8F3FC',
+  bluePale:  '#F0F7FF',
+  teal:      '#0D8A72',
+  tealLight: '#E6F5F2',
+  red:       '#C0392B',
+  redLight:  '#FDEDEB',
+  amber:     '#D97706',
+  amberLight:'#FEF3C7',
+  green:     '#166534',
+  greenLight:'#DCFCE7',
+  muted:     '#5A6A7A',
+  border:    '#E2E8F0',
+  bg:        '#F8FAFC',
+  white:     '#FFFFFF',
+  grid:      '#F1F5F9',
 }
+
+const FONT = "'DM Sans', sans-serif"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ISO week utilities
@@ -49,14 +64,8 @@ function getISOWeek(date = new Date()) {
   return { week, year: tmp.getUTCFullYear() }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Convert a { startDate, endDate } date range into { weeks, years } arrays
-// that the BigQuery ISO week queries understand.
-// Handles cross-year ranges by collecting all unique ISO years touched.
-// ─────────────────────────────────────────────────────────────────────────────
 function dateRangeToWeeksYears(startDate, endDate) {
   if (!startDate || !endDate) {
-    // Fallback: rolling 6 weeks
     const { week: cw, year: cy } = getISOWeek()
     const weeks = Array.from({ length: 6 }, (_, i) => { const w = cw - 5 + i; return w < 1 ? w + 52 : w })
     return { weeks, years: [cy - 1, cy] }
@@ -65,7 +74,6 @@ function dateRangeToWeeksYears(startDate, endDate) {
   const end   = new Date(endDate   + 'T00:00:00')
   const weeksSet = new Set()
   const yearsSet = new Set()
-  // Walk day by day and collect all ISO weeks touched
   const cursor = new Date(start)
   while (cursor <= end) {
     const { week, year } = getISOWeek(cursor)
@@ -74,14 +82,12 @@ function dateRangeToWeeksYears(startDate, endDate) {
     cursor.setDate(cursor.getDate() + 1)
   }
   const weeks = Array.from(weeksSet).sort((a, b) => a - b)
-  // Always include the prior year so YoY comparison works
   const years = Array.from(yearsSet).sort((a, b) => a - b)
   const minYear = years[0]
   if (!years.includes(minYear - 1)) years.unshift(minYear - 1)
   return { weeks, years }
 }
 
-// Fallback used if FiltersContext is not yet ready
 const DEFAULT_WY = dateRangeToWeeksYears(null, null)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +95,9 @@ const DEFAULT_WY = dateRangeToWeeksYears(null, null)
 // ─────────────────────────────────────────────────────────────────────────────
 function fmtNum(n) {
   if (n == null || isNaN(n)) return '—'
+  const a = Math.abs(n), s = n < 0 ? '-' : ''
+  if (a >= 1e6) return `${s}${(a / 1e6).toFixed(1)}M`
+  if (a >= 1e3) return `${s}${(a / 1e3).toFixed(1)}K`
   return Math.round(n).toLocaleString()
 }
 function fmtUSD(n) {
@@ -102,19 +111,10 @@ function fmtPct(n, dp = 2) {
   if (n == null || isNaN(n)) return '—'
   return `${(+n).toFixed(dp)}%`
 }
-function fmtDelta(delta, isPercent = false, isPP = false) {
-  if (delta == null || isNaN(delta)) return { text: '—', color: C.muted }
-  const color = delta > 0 ? C.accentGreen : delta < 0 ? C.red : C.muted
-  const sign = delta > 0 ? '+' : ''
-  if (isPP)      return { text: `${sign}${delta.toFixed(2)}pp`, color }
-  if (isPercent) return { text: `${sign}${delta.toFixed(2)}%`,  color }
-  return { text: `${sign}${Math.round(delta).toLocaleString()}`, color }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Aggregation helpers (pure — no side effects)
+// Aggregation helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
 function aggregateSearches(rows, { channel, device, weeks, years }) {
   const result = {}
   for (const r of rows) {
@@ -129,22 +129,18 @@ function aggregateSearches(rows, { channel, device, weeks, years }) {
 }
 
 function aggregateBookings(rows, { weeks, years }) {
-  // GA4 begin_checkout rows: { pickup_code, dropoff_code, iso_week, year, channel, device_category, booking_count }
-  // No vehicle_class, cohort, or ttv_usd — those were TGRS-only fields.
   const counts = {}, ttvs = {}
   for (const r of rows) {
     if (!weeks.includes(+r.iso_week)) continue
     if (!years.includes(+r.year))    continue
     const key = `${r.year}-${r.iso_week}`
     counts[key] = (counts[key] || 0) + (+r.booking_count || 0)
-    ttvs[key]   = 0  // TTV not available from GA4
+    ttvs[key]   = 0
   }
   return { counts, ttvs }
 }
 
 function aggregateByDestination(rows, { weeks, years }) {
-  // GA4 begin_checkout rows use zone code (2QZ, PMN, etc.) directly as dropoff_code.
-  // Look up human-readable name from zoneMap.
   const dest = {}
   const curYear = years[years.length - 1]
   for (const r of rows) {
@@ -152,7 +148,6 @@ function aggregateByDestination(rows, { weeks, years }) {
     if (!years.includes(+r.year))    continue
     const code = r.dropoff_code
     if (!code || code === '?') continue
-    // Get display name: check zoneMap first, fall back to code
     const name = (typeof zoneMap !== 'undefined' && zoneMap.codeToName?.[code]) || code
     if (!dest[code]) dest[code] = { b2026: 0, b2025: 0, name }
     if (+r.year === curYear) dest[code].b2026 += (+r.booking_count || 0)
@@ -160,7 +155,6 @@ function aggregateByDestination(rows, { weeks, years }) {
   }
   return dest
 }
-
 
 function aggregateFunnel(rows, { weeks, years, selectedWeek }) {
   const curYear = years[years.length - 1], prevYear = years[0]
@@ -182,9 +176,9 @@ function aggregateFunnel(rows, { weeks, years, selectedWeek }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Canvas chart primitives
+// Canvas chart primitives — updated to use Orbit colours
 // ─────────────────────────────────────────────────────────────────────────────
-const CHART_PAD = { left: 50, right: 12, top: 10, bottom: 26 }
+const CHART_PAD = { left: 54, right: 16, top: 14, bottom: 28 }
 
 function drawBarChart(canvas, weekLabels, data2025, data2026, yLabel = v => String(Math.round(v))) {
   if (!canvas) return
@@ -204,74 +198,68 @@ function drawBarChart(canvas, weekLabels, data2025, data2026, yLabel = v => Stri
   ctx.save()
   ctx.scale(dpr, dpr)
 
-  // Grid
-  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5
+  // Grid lines
+  ctx.strokeStyle = O.grid; ctx.lineWidth = 0.8
   for (let i = 0; i <= 4; i++) {
     const y = PT + plotH - (i / 4) * plotH
     ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + plotW, y); ctx.stroke()
-    ctx.fillStyle = C.muted; ctx.font = '9px Open Sans,sans-serif'; ctx.textAlign = 'right'
-    ctx.fillText(yLabel(maxVal * i / 4), PL - 4, y + 3)
+    ctx.fillStyle = O.muted; ctx.font = `10px ${FONT}`; ctx.textAlign = 'right'
+    ctx.fillText(yLabel(maxVal * i / 4), PL - 6, y + 3.5)
   }
 
   const groupW = plotW / n
-  const barW   = Math.min(groupW * 0.32, 22)
-  const gap    = 2
+  const barW   = Math.min(groupW * 0.34, 20)
+  const gap    = 3
 
   for (let i = 0; i < n; i++) {
     const cx  = PL + i * groupW + groupW / 2
     const x25 = cx - barW - gap / 2
     const x26 = cx + gap / 2
     const isLast = i === n - 1
+
+    // 2025 bar (prev year — muted grey)
     if (data2025[i] != null) {
       const bh = (data2025[i] / maxVal) * plotH
-      ctx.globalAlpha = isLast ? 0.55 : 0.75
-      ctx.fillStyle = C.border
-      ctx.fillRect(x25, PT + plotH - bh, barW, bh)
+      ctx.globalAlpha = 0.55
+      ctx.fillStyle = O.border
+      ctx.beginPath()
+      ctx.roundRect?.(x25, PT + plotH - bh, barW, bh, 2) || ctx.rect(x25, PT + plotH - bh, barW, bh)
+      ctx.fill()
       ctx.globalAlpha = 1
     }
+
+    // 2026 bar (current year — teal)
     if (data2026[i] != null) {
       const bh = (data2026[i] / maxVal) * plotH
-      ctx.fillStyle = isLast ? '#3A7A42' : C.accentGreen
-      ctx.fillRect(x26, PT + plotH - bh, barW, bh)
+      ctx.fillStyle = isLast ? O.blueMid : O.teal
+      ctx.globalAlpha = isLast ? 0.75 : 1
+      ctx.beginPath()
+      ctx.roundRect?.(x26, PT + plotH - bh, barW, bh, 2) || ctx.rect(x26, PT + plotH - bh, barW, bh)
+      ctx.fill()
+      ctx.globalAlpha = 1
     }
   }
 
-  // Trend lines
-  const drawTrend = (data, color) => {
-    const pts = data.map((v, i) => {
-      const cx = PL + i * groupW + groupW / 2
-      return v != null ? { x: cx, y: PT + plotH - (v / maxVal) * plotH } : null
-    }).filter(Boolean)
-    if (pts.length < 2) return
-    ctx.strokeStyle = color; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3])
-    ctx.beginPath()
-    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y))
-    ctx.stroke(); ctx.setLineDash([])
-  }
-  drawTrend(data2025, C.muted)
-  drawTrend(data2026, C.accentGreen)
-
   // X labels
-  ctx.fillStyle = C.muted; ctx.font = '9px Open Sans,sans-serif'; ctx.textAlign = 'center'
+  ctx.fillStyle = O.muted; ctx.font = `10px ${FONT}`; ctx.textAlign = 'center'
   weekLabels.forEach((lbl, i) => {
-    ctx.fillText(lbl, PL + i * groupW + groupW / 2, PT + plotH + 16)
+    ctx.fillText(lbl, PL + i * groupW + groupW / 2, PT + plotH + 18)
   })
 
   // Legend
   const legends = [
-    { label: '2025', color: C.border },
-    { label: '2026', color: C.accentGreen },
-    { label: 'last week', color: '#3A7A42', dot: true },
+    { label: 'Prev Year', color: O.border },
+    { label: 'This Year', color: O.teal },
   ]
   let lx = PL
-  const ly = H - 6
-  ctx.font = '8px Open Sans,sans-serif'; ctx.textAlign = 'left'
-  legends.forEach(({ label, color, dot }) => {
+  const ly = 10
+  ctx.font = `10px ${FONT}`; ctx.textAlign = 'left'
+  legends.forEach(({ label, color }) => {
     ctx.fillStyle = color
-    if (dot) { ctx.beginPath(); ctx.arc(lx + 4, ly - 3, 3, 0, Math.PI * 2); ctx.fill() }
-    else { ctx.fillRect(lx, ly - 7, 8, 6) }
-    ctx.fillStyle = C.muted; ctx.fillText(label, lx + 12, ly)
-    lx += ctx.measureText(label).width + 24
+    ctx.beginPath(); ctx.roundRect?.(lx, ly - 7, 10, 7, 2) || ctx.rect(lx, ly - 7, 10, 7)
+    ctx.fill()
+    ctx.fillStyle = O.muted; ctx.fillText(label, lx + 13, ly)
+    lx += ctx.measureText(label).width + 30
   })
 
   ctx.restore()
@@ -299,46 +287,61 @@ function drawLineChart(canvas, weekLabels, data2025, data2026) {
   ctx.scale(dpr, dpr)
 
   // Grid
-  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5
+  ctx.strokeStyle = O.grid; ctx.lineWidth = 0.8
   for (let i = 0; i <= 4; i++) {
     const y = PT + plotH - (i / 4) * plotH
     ctx.beginPath(); ctx.moveTo(PL, y); ctx.lineTo(PL + plotW, y); ctx.stroke()
-    ctx.fillStyle = C.muted; ctx.font = '9px Open Sans,sans-serif'; ctx.textAlign = 'right'
-    ctx.fillText(fmtPct(minVal + range * i / 4, 2), PL - 4, y + 3)
+    ctx.fillStyle = O.muted; ctx.font = `10px ${FONT}`; ctx.textAlign = 'right'
+    ctx.fillText(fmtPct(minVal + range * i / 4, 2), PL - 6, y + 3.5)
   }
 
   const groupW = plotW / Math.max(n - 1, 1)
 
-  const drawLine = (data, color, highlight = false) => {
+  const drawLine = (data, color, dashed = false) => {
     const pts = data.map((v, i) => ({ x: PL + i * groupW, y: v != null ? toY(v) : null }))
-    ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.setLineDash([])
+    ctx.strokeStyle = color; ctx.lineWidth = 2
+    if (dashed) ctx.setLineDash([5, 4])
+    else ctx.setLineDash([])
     ctx.beginPath(); let started = false
     pts.forEach(p => {
       if (p.y == null) { started = false; return }
       if (!started) { ctx.moveTo(p.x, p.y); started = true } else ctx.lineTo(p.x, p.y)
     })
     ctx.stroke()
+    ctx.setLineDash([])
     pts.forEach((p, i) => {
       if (p.y == null) return
-      const isLast = i === data.length - 1
-      ctx.beginPath(); ctx.arc(p.x, p.y, isLast ? 4 : 2.5, 0, Math.PI * 2)
-      ctx.fillStyle = isLast && highlight ? C.accentGreen : color; ctx.fill()
-      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke()
+      ctx.beginPath(); ctx.arc(p.x, p.y, i === data.length - 1 ? 4 : 3, 0, Math.PI * 2)
+      ctx.fillStyle = color; ctx.fill()
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke()
     })
   }
-  drawLine(data2025, C.border)
-  drawLine(data2026, C.darkGreen, true)
 
-  ctx.fillStyle = C.muted; ctx.font = '9px Open Sans,sans-serif'; ctx.textAlign = 'center'
-  weekLabels.forEach((lbl, i) => ctx.fillText(lbl, PL + i * groupW, PT + plotH + 16))
+  drawLine(data2025, O.border, true)
+  drawLine(data2026, O.teal)
+
+  ctx.fillStyle = O.muted; ctx.font = `10px ${FONT}`; ctx.textAlign = 'center'
+  weekLabels.forEach((lbl, i) => ctx.fillText(lbl, PL + i * groupW, PT + plotH + 18))
+
+  // Legend
+  const ly = 10; let lx = PL
+  ctx.font = `10px ${FONT}`; ctx.textAlign = 'left'
+  ;[{ label: 'Prev Year', color: O.border, dashed: true }, { label: 'This Year', color: O.teal }].forEach(({ label, color, dashed }) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5
+    if (dashed) ctx.setLineDash([4, 3]); else ctx.setLineDash([])
+    ctx.beginPath(); ctx.moveTo(lx, ly - 3); ctx.lineTo(lx + 14, ly - 3); ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = O.muted; ctx.fillText(label, lx + 17, ly)
+    lx += ctx.measureText(label).width + 36
+  })
 
   ctx.restore()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CanvasChart — renders one chart with a hover tooltip
+// CanvasChart component
 // ─────────────────────────────────────────────────────────────────────────────
-function CanvasChart({ drawFn, drawArgs, title, subtitle, height = 180, tooltipFn }) {
+function CanvasChart({ drawFn, drawArgs, title, subtitle, height = 200, tooltipFn }) {
   const canvasRef  = useRef(null)
   const tooltipRef = useRef(null)
 
@@ -351,7 +354,7 @@ function CanvasChart({ drawFn, drawArgs, title, subtitle, height = 180, tooltipF
     canvas.height = height * dpr
     canvas.style.height = `${height}px`
     drawFn(canvas, ...drawArgs)
-  }) // intentionally no dep array — redraws on every parent render (cheap Canvas op)
+  })
 
   const handleMouseMove = useCallback(e => {
     if (!tooltipFn || !canvasRef.current) return
@@ -360,8 +363,8 @@ function CanvasChart({ drawFn, drawArgs, title, subtitle, height = 180, tooltipF
     const content = tooltipFn(x, canvasRef.current.offsetWidth)
     if (content && tooltipRef.current) {
       tooltipRef.current.style.display = 'block'
-      tooltipRef.current.style.left = `${Math.min(x + 12, rect.width - 160)}px`
-      tooltipRef.current.style.top  = '20px'
+      tooltipRef.current.style.left = `${Math.min(x + 12, rect.width - 170)}px`
+      tooltipRef.current.style.top  = '28px'
       tooltipRef.current.innerHTML  = content
     }
   }, [tooltipFn])
@@ -371,20 +374,20 @@ function CanvasChart({ drawFn, drawArgs, title, subtitle, height = 180, tooltipF
   }, [])
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden', position: 'relative' }}>
+    <div style={{ background: O.white, border: `1px solid ${O.border}`, borderRadius: 12, overflow: 'hidden', position: 'relative', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
       {(title || subtitle) && (
-        <div style={{ padding: '10px 14px 6px', borderBottom: `1px solid ${C.lightGrayBg}` }}>
-          {title   && <div style={{ fontSize: 9, fontWeight: 600, color: C.secondary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{title}</div>}
-          {subtitle && <div style={{ fontSize: 9, color: C.muted, marginTop: 1 }}>{subtitle}</div>}
+        <div style={{ padding: '14px 18px 10px', borderBottom: `1px solid ${O.grid}` }}>
+          {title   && <div style={{ fontSize: 12, fontWeight: 700, color: O.navy }}>{title}</div>}
+          {subtitle && <div style={{ fontSize: 11, color: O.muted, marginTop: 2 }}>{subtitle}</div>}
         </div>
       )}
-      <div style={{ padding: '8px 6px 4px', position: 'relative' }}>
+      <div style={{ padding: '12px 8px 6px', position: 'relative' }}>
         <canvas ref={canvasRef} style={{ width: '100%', display: 'block' }}
           onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} />
         <div ref={tooltipRef} style={{
-          display: 'none', position: 'absolute', background: C.darkGreen, color: C.lightGreenBg,
-          borderRadius: 8, padding: '8px 12px', fontSize: 11, lineHeight: 1.6,
-          pointerEvents: 'none', zIndex: 10, minWidth: 140,
+          display: 'none', position: 'absolute', background: O.navy, color: '#fff',
+          borderRadius: 8, padding: '10px 14px', fontSize: 11, lineHeight: 1.7,
+          pointerEvents: 'none', zIndex: 10, minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
         }} />
       </div>
     </div>
@@ -392,135 +395,46 @@ function CanvasChart({ drawFn, drawArgs, title, subtitle, height = 180, tooltipF
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KPI Card
+// Orbit-style KPI Card
 // ─────────────────────────────────────────────────────────────────────────────
 function KpiCard({ label, val26, val25, yoy, format = 'number', isPP = false, curYear, prevYear }) {
   const fmt = format === 'currency' ? fmtUSD : format === 'pct' ? v => fmtPct(v, 2) : fmtNum
-  const delta  = fmtDelta(yoy, !isPP, isPP)
-  const topColor = yoy > 0 ? C.accentGreen : yoy < 0 ? C.red : C.border
+
+  const hasDelta = yoy != null && !isNaN(yoy)
+  const deltaUp  = yoy >= 0
+  const sign     = yoy >= 0 ? '+' : ''
+  const deltaText = isPP
+    ? `${sign}${yoy?.toFixed(2)}pp`
+    : hasDelta ? `${sign}${yoy?.toFixed(1)}%` : null
+
+  const badgeColor = !hasDelta ? O.muted : deltaUp ? O.green : O.red
+  const badgeBg    = !hasDelta ? O.bg    : deltaUp ? O.greenLight : O.redLight
+  const arrow      = !hasDelta ? '' : deltaUp ? '▲' : '▼'
 
   return (
     <div style={{
-      background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10,
-      boxShadow: '0 1px 4px rgba(14,67,20,0.06)', overflow: 'hidden',
-      borderTop: `4px solid ${topColor}`, flex: 1, minWidth: 0,
+      background: O.white, border: `1px solid ${O.border}`, borderRadius: 12,
+      padding: '20px 22px', boxShadow: '0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03)',
+      display: 'flex', flexDirection: 'column', minWidth: 0,
     }}>
-      <div style={{ padding: '10px 12px 8px' }}>
-        <div style={{ fontSize: 9, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>{label}</div>
-        <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', marginBottom: 4 }}>
-          <div>
-            <div style={{ fontSize: 8, color: C.muted, marginBottom: 1 }}>{curYear}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: C.body, lineHeight: 1 }}>{fmt(val26)}</div>
-          </div>
-          <div>
-            <div style={{ fontSize: 8, color: C.muted, marginBottom: 1 }}>{prevYear}</div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: C.muted, lineHeight: 1 }}>{fmt(val25)}</div>
-          </div>
-        </div>
-        <div style={{ borderTop: `1px solid ${C.lightGrayBg}`, paddingTop: 6, display: 'flex', gap: 10 }}>
-          <div>
-            <div style={{ fontSize: 8, color: C.muted }}>YoY</div>
-            <div style={{ fontSize: 10, fontWeight: 600, color: delta.color }}>{delta.text}</div>
-          </div>
-        </div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: O.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 10 }}>
+        {label}
       </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Funnel section
-// ─────────────────────────────────────────────────────────────────────────────
-const FUNNEL_STEPS = [
-  { key: 'view_search_results', label: 'STEP 1 SEARCHES' },
-  { key: 'begin_checkout',      label: 'STEP 2 VEHICLE SELECT' },
-  { key: 'checkout',            label: 'STEP 3 PAYMENT FORM' },
-  { key: 'purchase',            label: 'STEP 4 BOOKINGS' },
-]
-
-function FunnelSection({ funnelData, weeks, selectedWeek, onWeekChange }) {
-  if (!funnelData) return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: 24, textAlign: 'center', color: C.muted, fontSize: 12 }}>
-      No funnel data for this selection
-    </div>
-  )
-  const { steps, curYear, prevYear } = funnelData
-  const allCounts = FUNNEL_STEPS.flatMap(s => [steps[s.key]?.[curYear] || 0, steps[s.key]?.[prevYear] || 0])
-  const maxCount  = Math.max(...allCounts, 1)
-  const s2bCur    = (steps.view_search_results[curYear]  || 0) > 0 ? (steps.purchase[curYear]  / steps.view_search_results[curYear]  * 100) : 0
-  const s2bPrev   = (steps.view_search_results[prevYear] || 0) > 0 ? (steps.purchase[prevYear] / steps.view_search_results[prevYear] * 100) : 0
-
-  return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, padding: '14px 16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: C.secondary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Booking Funnel · All Channels · W{weeks[0]}–W{weeks[weeks.length - 1]}
-        </div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <span style={{ fontSize: 9, color: C.muted, marginRight: 4 }}>WEEK</span>
-          {[null, ...weeks].map(w => (
-            <button key={w ?? 'all'} onClick={() => onWeekChange(w)} style={{
-              padding: '2px 7px', fontSize: 9, fontWeight: 600, borderRadius: 4,
-              border: `1px solid ${selectedWeek === w ? C.darkGreen : C.border}`,
-              background: selectedWeek === w ? C.darkGreen : 'transparent',
-              color: selectedWeek === w ? '#fff' : C.muted, cursor: 'pointer', fontFamily: 'inherit',
-            }}>{w === null ? 'All' : `W${w}`}</button>
-          ))}
-        </div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: O.navy, letterSpacing: '-0.5px', lineHeight: 1, marginBottom: 12 }}>
+        {fmt(val26)}
       </div>
-      {FUNNEL_STEPS.map((step, idx) => {
-        const cur  = steps[step.key]?.[curYear]  || 0
-        const prev = steps[step.key]?.[prevYear] || 0
-        const delta    = cur - prev
-        const deltaPct = prev > 0 ? ((cur - prev) / prev * 100) : 0
-        const dc = fmtDelta(deltaPct, true)
-        let dropCur = null, dropPrev = null
-        if (idx < FUNNEL_STEPS.length - 1) {
-          const nk = FUNNEL_STEPS[idx + 1].key
-          const nc = steps[nk]?.[curYear]  || 0
-          const np = steps[nk]?.[prevYear] || 0
-          dropCur  = cur  > 0 ? ((cur  - nc) / cur  * -100) : null
-          dropPrev = prev > 0 ? ((prev - np) / prev * -100) : null
-        }
-        return (
-          <div key={step.key}>
-            <div style={{ marginBottom: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 9, fontWeight: 600, color: C.secondary, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{step.label}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, color: dc.color }}>{delta >= 0 ? '+' : ''}{Math.round(delta).toLocaleString()} ({dc.text})</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                <span style={{ width: 28, fontSize: 8, color: C.muted, textAlign: 'right', flexShrink: 0 }}>{prevYear}</span>
-                <div style={{ flex: 1, height: 14, background: C.lightGrayBg, borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ width: `${(prev / maxCount) * 100}%`, height: '100%', background: C.border, borderRadius: 2 }} />
-                </div>
-                <span style={{ width: 54, fontSize: 9, color: C.muted, flexShrink: 0, textAlign: 'right' }}>{Math.round(prev).toLocaleString()}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 28, fontSize: 8, color: C.body, textAlign: 'right', fontWeight: 600, flexShrink: 0 }}>{curYear}</span>
-                <div style={{ flex: 1, height: 14, background: C.lightGrayBg, borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ width: `${(cur / maxCount) * 100}%`, height: '100%', background: C.darkGreen, borderRadius: 2 }} />
-                </div>
-                <span style={{ width: 54, fontSize: 9, color: C.body, fontWeight: 700, flexShrink: 0, textAlign: 'right' }}>{Math.round(cur).toLocaleString()}</span>
-              </div>
-            </div>
-            {dropCur !== null && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: '3px 8px', background: C.lightGrayBg, borderRadius: 4, fontSize: 9, color: C.muted }}>
-                <span>↓</span>
-                <span>{prevYear} drop: <b style={{ color: C.red }}>{dropPrev?.toFixed(1)}%</b></span>
-                <span style={{ margin: '0 4px', color: C.border }}>|</span>
-                <span>{curYear} drop: <b style={{ color: C.red }}>{dropCur?.toFixed(1)}%</b></span>
-              </div>
-            )}
-          </div>
-        )
-      })}
-      <div style={{ borderTop: `2px solid ${C.border}`, paddingTop: 10, marginTop: 4, display: 'flex', gap: 18, alignItems: 'center' }}>
-        <span style={{ fontSize: 9, fontWeight: 600, color: C.secondary, textTransform: 'uppercase' }}>Overall Search to Book</span>
-        <span style={{ fontSize: 11, color: C.muted }}>{prevYear}: <b>{fmtPct(s2bPrev)}</b></span>
-        <span style={{ fontSize: 11, color: C.body, fontWeight: 700 }}>{curYear}: <b>{fmtPct(s2bCur)}</b></span>
-        <span style={{ fontSize: 10, fontWeight: 700, color: (s2bCur - s2bPrev) >= 0 ? C.accentGreen : C.red }}>
-          {(s2bCur - s2bPrev) >= 0 ? '+' : ''}{(s2bCur - s2bPrev).toFixed(2)}pp
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {deltaText && (
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+            padding: '3px 8px', borderRadius: 20, fontSize: 11, fontWeight: 600,
+            background: badgeBg, color: badgeColor,
+          }}>
+            {arrow} {deltaText}
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: O.muted }}>
+          {prevYear}: <span style={{ fontWeight: 600, color: O.muted }}>{fmt(val25)}</span>
         </span>
       </div>
     </div>
@@ -528,20 +442,147 @@ function FunnelSection({ funnelData, weeks, selectedWeek, onWeekChange }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Routes Table
+// Funnel section — Orbit-styled
+// ─────────────────────────────────────────────────────────────────────────────
+const FUNNEL_STEPS = [
+  { key: 'view_search_results', label: 'Searches', step: 1 },
+  { key: 'begin_checkout',      label: 'Vehicle Select', step: 2 },
+  { key: 'checkout',            label: 'Payment Form', step: 3 },
+  { key: 'purchase',            label: 'Bookings', step: 4 },
+]
+
+function FunnelSection({ funnelData, weeks, selectedWeek, onWeekChange }) {
+  if (!funnelData) return (
+    <div style={{ background: O.white, border: `1px solid ${O.border}`, borderRadius: 12, padding: 32, textAlign: 'center', color: O.muted, fontSize: 13, boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+      No funnel data for this selection
+    </div>
+  )
+
+  const { steps, curYear, prevYear } = funnelData
+  const allCounts = FUNNEL_STEPS.flatMap(s => [steps[s.key]?.[curYear] || 0, steps[s.key]?.[prevYear] || 0])
+  const maxCount  = Math.max(...allCounts, 1)
+  const s2bCur  = (steps.view_search_results[curYear]  || 0) > 0 ? (steps.purchase[curYear]  / steps.view_search_results[curYear]  * 100) : 0
+  const s2bPrev = (steps.view_search_results[prevYear] || 0) > 0 ? (steps.purchase[prevYear] / steps.view_search_results[prevYear] * 100) : 0
+  const s2bDelta = s2bCur - s2bPrev
+
+  return (
+    <div style={{ background: O.white, border: `1px solid ${O.border}`, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${O.grid}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: O.navy }}>Booking Funnel</div>
+          <div style={{ fontSize: 11, color: O.muted, marginTop: 2 }}>W{weeks[0]}–W{weeks[weeks.length-1]} · {curYear} vs {prevYear}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: O.muted, marginRight: 4 }}>Week</span>
+          {[null, ...weeks].map(w => {
+            const active = selectedWeek === w
+            return (
+              <button key={w ?? 'all'} onClick={() => onWeekChange(w)} style={{
+                padding: '3px 9px', fontSize: 11, fontWeight: 600, borderRadius: 6,
+                border: `1px solid ${active ? O.blue : O.border}`,
+                background: active ? O.blue : 'transparent',
+                color: active ? '#fff' : O.muted,
+                cursor: 'pointer', fontFamily: FONT, transition: 'all 0.12s',
+              }}>{w === null ? 'All' : `W${w}`}</button>
+            )
+          })}
+        </div>
+      </div>
+      <div style={{ padding: '16px 20px' }}>
+        {FUNNEL_STEPS.map((step, idx) => {
+          const cur  = steps[step.key]?.[curYear]  || 0
+          const prev = steps[step.key]?.[prevYear] || 0
+          const deltaPct = prev > 0 ? ((cur - prev) / prev * 100) : 0
+          const up = deltaPct >= 0
+          let dropCur = null
+          if (idx < FUNNEL_STEPS.length - 1) {
+            const nk = FUNNEL_STEPS[idx + 1].key
+            const nc = steps[nk]?.[curYear] || 0
+            dropCur = cur > 0 ? ((cur - nc) / cur * 100) : null
+          }
+          return (
+            <div key={step.key} style={{ marginBottom: idx < FUNNEL_STEPS.length - 1 ? 16 : 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 22, height: 22, borderRadius: '50%', background: O.bluePale, color: O.blue, fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {step.step}
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: O.navy }}>{step.label}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: O.navy }}>{fmtNum(cur)}</span>
+                  {prev > 0 && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
+                      background: up ? O.greenLight : O.redLight,
+                      color: up ? O.green : O.red,
+                    }}>
+                      {up ? '▲' : '▼'} {Math.abs(deltaPct).toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Bar pair */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 36, fontSize: 10, color: O.muted, textAlign: 'right', flexShrink: 0 }}>{prevYear}</span>
+                  <div style={{ flex: 1, height: 10, background: O.bg, borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ width: `${(prev / maxCount) * 100}%`, height: '100%', background: O.border, borderRadius: 4 }} />
+                  </div>
+                  <span style={{ width: 52, fontSize: 10, color: O.muted, textAlign: 'right', flexShrink: 0 }}>{fmtNum(prev)}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ width: 36, fontSize: 10, fontWeight: 600, color: O.navy, textAlign: 'right', flexShrink: 0 }}>{curYear}</span>
+                  <div style={{ flex: 1, height: 10, background: O.bg, borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ width: `${(cur / maxCount) * 100}%`, height: '100%', background: O.teal, borderRadius: 4 }} />
+                  </div>
+                  <span style={{ width: 52, fontSize: 10, fontWeight: 700, color: O.navy, textAlign: 'right', flexShrink: 0 }}>{fmtNum(cur)}</span>
+                </div>
+              </div>
+              {/* Drop-off arrow */}
+              {dropCur !== null && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, padding: '4px 10px', background: O.bg, borderRadius: 6 }}>
+                  <span style={{ color: O.muted, fontSize: 10 }}>↓ Drop-off:</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: dropCur > 50 ? O.red : O.amber }}>{dropCur.toFixed(1)}%</span>
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {/* S2B summary */}
+        <div style={{ marginTop: 18, padding: '12px 16px', background: O.bg, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: O.navy }}>Search → Book Rate</span>
+          <span style={{ fontSize: 12, color: O.muted }}>{prevYear}: <strong style={{ color: O.navy }}>{fmtPct(s2bPrev)}</strong></span>
+          <span style={{ fontSize: 12, color: O.navy }}>{curYear}: <strong>{fmtPct(s2bCur)}</strong></span>
+          <span style={{
+            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+            background: s2bDelta >= 0 ? O.greenLight : O.redLight,
+            color: s2bDelta >= 0 ? O.green : O.red,
+          }}>
+            {s2bDelta >= 0 ? '+' : ''}{s2bDelta.toFixed(2)}pp
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Routes Table — Orbit-styled
 // ─────────────────────────────────────────────────────────────────────────────
 function RoutesTable({ destData, airportMap, weeks, curYear, prevYear, selectedWeek, onWeekChange, onSelectDest, originName }) {
   const CY = curYear  || new Date().getFullYear()
   const PY = prevYear || CY - 1
   if (!destData) return null
+
   const rows = Object.entries(destData)
     .map(([code, { b2026, b2025 }]) => {
-      // If code is a 3-letter IATA code, look up the airport name.
-      // Otherwise (zone name like 'Port de Pollença'), the code IS the display name.
       const isIATA = /^[A-Z0-9]{2,4}$/.test(code)
       const name = isIATA ? (airportMap[code] || code) : code
       const displayCode = isIATA ? code : '—'
-      return { code, name, displayCode, b2026, b2025,
+      return {
+        code, name, displayCode, b2026, b2025,
         yoyPct: b2025 > 0 ? ((b2026 - b2025) / b2025 * 100) : null,
         yoyDelta: b2026 - b2025,
       }
@@ -550,57 +591,79 @@ function RoutesTable({ destData, airportMap, weeks, curYear, prevYear, selectedW
     .sort((a, b) => b.b2026 - a.b2026)
     .slice(0, 25)
 
-  const thStyle = { padding: '8px 10px', fontSize: 9, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: `1px solid ${C.border}`, background: C.lightGrayBg, whiteSpace: 'nowrap' }
+  const thStyle = {
+    padding: '10px 14px', fontSize: 11, fontWeight: 600, color: O.muted,
+    textTransform: 'uppercase', letterSpacing: '0.05em',
+    borderBottom: `2px solid ${O.border}`, background: O.bg,
+    whiteSpace: 'nowrap', userSelect: 'none',
+  }
 
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 10, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 14px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${C.lightGrayBg}` }}>
+    <div style={{ background: O.white, border: `1px solid ${O.border}`, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+      <div style={{ padding: '14px 20px', borderBottom: `1px solid ${O.grid}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: C.body }}>Top routes from {originName || '—'} · W{weeks[0]}–W{weeks[weeks.length - 1]} 2026</div>
-          <div style={{ fontSize: 9, color: C.muted, marginTop: 2 }}>Click a row to drill into that route</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: O.navy }}>Top Routes from {originName || '—'}</div>
+          <div style={{ fontSize: 11, color: O.muted, marginTop: 2 }}>Click a row to drill into that route · W{weeks[0]}–W{weeks[weeks.length-1]} {CY}</div>
         </div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <span style={{ fontSize: 9, color: C.muted, marginRight: 4 }}>WEEK</span>
-          {[null, ...weeks].map(w => (
-            <button key={w ?? 'all'} onClick={() => onWeekChange(w)} style={{
-              padding: '2px 7px', fontSize: 9, fontWeight: 600, borderRadius: 4,
-              border: `1px solid ${selectedWeek === w ? C.darkGreen : C.border}`,
-              background: selectedWeek === w ? C.darkGreen : 'transparent',
-              color: selectedWeek === w ? '#fff' : C.muted, cursor: 'pointer', fontFamily: 'inherit',
-            }}>{w === null ? 'All' : `W${w}`}</button>
-          ))}
+          <span style={{ fontSize: 11, color: O.muted, marginRight: 4 }}>Week</span>
+          {[null, ...weeks].map(w => {
+            const active = selectedWeek === w
+            return (
+              <button key={w ?? 'all'} onClick={() => onWeekChange(w)} style={{
+                padding: '3px 9px', fontSize: 11, fontWeight: 600, borderRadius: 6,
+                border: `1px solid ${active ? O.blue : O.border}`,
+                background: active ? O.blue : 'transparent',
+                color: active ? '#fff' : O.muted,
+                cursor: 'pointer', fontFamily: FONT, transition: 'all 0.12s',
+              }}>{w === null ? 'All' : `W${w}`}</button>
+            )
+          })}
         </div>
       </div>
       {rows.length === 0 ? (
-        <div style={{ padding: 24, textAlign: 'center', color: C.muted, fontSize: 12 }}>No destination data available.</div>
+        <div style={{ padding: 32, textAlign: 'center', color: O.muted, fontSize: 13 }}>No destination data available.</div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FONT }}>
             <thead>
               <tr>
                 <th style={{ ...thStyle, textAlign: 'left' }}>Destination</th>
                 <th style={{ ...thStyle, textAlign: 'left' }}>Code</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>W{weeks[0]}–W{weeks[weeks.length - 1]} {CY}</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>W{weeks[0]}–W{weeks[weeks.length - 1]} {PY}</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>YoY%</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>W{weeks[0]}–W{weeks[weeks.length-1]} {CY}</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>W{weeks[0]}–W{weeks[weeks.length-1]} {PY}</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>YoY %</th>
                 <th style={{ ...thStyle, textAlign: 'right' }}>YoY Δ</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => {
-                const yc = r.yoyPct > 0 ? C.accentGreen : r.yoyPct < 0 ? C.red : C.muted
+                const up = r.yoyPct >= 0
                 return (
-                  <tr key={r.code} onClick={() => onSelectDest(r.code)}
-                    style={{ borderBottom: `1px solid ${C.lightGrayBg}`, background: i % 2 === 0 ? '#fff' : C.lightGrayBg, cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.background = C.lightGreenBg}
-                    onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? '#fff' : C.lightGrayBg}
+                  <tr key={r.code}
+                    onClick={() => onSelectDest(r.code)}
+                    style={{ borderBottom: `1px solid ${O.grid}`, background: i % 2 === 0 ? '#fff' : O.bg, cursor: 'pointer', transition: 'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = O.bluePale}
+                    onMouseLeave={e => e.currentTarget.style.background = i % 2 === 0 ? '#fff' : O.bg}
                   >
-                    <td style={{ padding: '7px 10px', fontSize: 11, color: C.body, fontWeight: 500 }}>{r.name}</td>
-                    <td style={{ padding: '7px 10px', fontSize: 10, color: C.muted, fontFamily: 'monospace' }}>{r.displayCode}</td>
-                    <td style={{ padding: '7px 10px', fontSize: 11, color: C.darkGreen, fontWeight: 700, textAlign: 'right' }}>{Math.round(r.b2026).toLocaleString()}</td>
-                    <td style={{ padding: '7px 10px', fontSize: 11, color: C.muted, textAlign: 'right' }}>{Math.round(r.b2025).toLocaleString()}</td>
-                    <td style={{ padding: '7px 10px', fontSize: 11, fontWeight: 700, color: yc, textAlign: 'right' }}>{r.yoyPct != null ? `${r.yoyPct >= 0 ? '+' : ''}${r.yoyPct.toFixed(1)}%` : '—'}</td>
-                    <td style={{ padding: '7px 10px', fontSize: 11, fontWeight: 600, color: yc, textAlign: 'right' }}>{r.yoyDelta >= 0 ? '+' : ''}{Math.round(r.yoyDelta).toLocaleString()}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 12, color: O.navy, fontWeight: 500 }}>{r.name}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 11, color: O.muted, fontFamily: 'monospace' }}>{r.displayCode}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 12, color: O.teal, fontWeight: 700, textAlign: 'right' }}>{Math.round(r.b2026).toLocaleString()}</td>
+                    <td style={{ padding: '9px 14px', fontSize: 12, color: O.muted, textAlign: 'right' }}>{Math.round(r.b2025).toLocaleString()}</td>
+                    <td style={{ padding: '9px 14px', textAlign: 'right' }}>
+                      {r.yoyPct != null ? (
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 20,
+                          background: up ? O.greenLight : O.redLight,
+                          color: up ? O.green : O.red,
+                        }}>
+                          {up ? '▲' : '▼'} {Math.abs(r.yoyPct).toFixed(1)}%
+                        </span>
+                      ) : '—'}
+                    </td>
+                    <td style={{ padding: '9px 14px', fontSize: 12, fontWeight: 600, color: r.yoyDelta >= 0 ? O.teal : O.red, textAlign: 'right' }}>
+                      {r.yoyDelta >= 0 ? '+' : ''}{Math.round(r.yoyDelta).toLocaleString()}
+                    </td>
                   </tr>
                 )
               })}
@@ -613,43 +676,69 @@ function RoutesTable({ destData, airportMap, weeks, curYear, prevYear, selectedW
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AirportList sidebar
+// AirportList sidebar — Orbit-styled
 // ─────────────────────────────────────────────────────────────────────────────
-// query + onQueryChange are CONTROLLED from the parent so switching tabs
-// clears the search in both directions automatically.
 function AirportList({ airports, selected, onSelect, searchPlaceholder = 'Search...', topItem = null, query = '', onQueryChange }) {
   const filtered = airports.filter(a =>
     !query || a.name.toLowerCase().includes(query.toLowerCase()) || a.code.toLowerCase().includes(query.toLowerCase())
   )
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-      <div style={{ padding: '6px 10px', borderBottom: `1px solid ${C.border}` }}>
-        <input value={query} onChange={e => onQueryChange && onQueryChange(e.target.value)} placeholder={searchPlaceholder}
-          style={{ width: '100%', boxSizing: 'border-box', padding: '5px 8px', fontSize: 11, border: `1px solid ${C.border}`, borderRadius: 6, outline: 'none', fontFamily: 'inherit', color: C.body, background: C.lightGrayBg }} />
+      <div style={{ padding: '10px 12px', borderBottom: `1px solid ${O.border}` }}>
+        <div style={{ position: 'relative' }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={O.muted} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            value={query}
+            onChange={e => onQueryChange && onQueryChange(e.target.value)}
+            placeholder={searchPlaceholder}
+            style={{
+              width: '100%', boxSizing: 'border-box', padding: '7px 10px 7px 28px',
+              fontSize: 12, border: `1px solid ${O.border}`, borderRadius: 8,
+              outline: 'none', fontFamily: FONT, color: O.navy, background: O.bg,
+              transition: 'border-color 0.15s',
+            }}
+            onFocus={e => e.target.style.borderColor = O.blueMid}
+            onBlur={e => e.target.style.borderColor = O.border}
+          />
+        </div>
       </div>
       <div className="da-scroll" style={{ flex: 1, overflowY: 'auto' }}>
         {topItem && (
           <div onClick={() => onSelect(topItem.code)} style={{
-            padding: '7px 10px 7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            borderLeft: selected === topItem.code ? `2px solid ${C.accentGreen}` : '2px solid transparent',
-            background: selected === topItem.code ? C.lightGreenBg : 'transparent',
-            borderBottom: `1px solid ${C.border}`,
-          }}>
-            <span style={{ fontSize: 11, color: selected === topItem.code ? C.darkGreen : C.body, fontWeight: 600 }}>{topItem.name}</span>
-            <span style={{ fontSize: 9, color: C.muted, fontFamily: 'monospace' }}>{topItem.displayCode || ''}</span>
+            padding: '9px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderLeft: selected === topItem.code ? `3px solid ${O.teal}` : '3px solid transparent',
+            background: selected === topItem.code ? O.tealLight : 'transparent',
+            borderBottom: `1px solid ${O.border}`,
+            transition: 'background 0.1s',
+          }}
+            onMouseEnter={e => { if (selected !== topItem.code) e.currentTarget.style.background = O.bg }}
+            onMouseLeave={e => { if (selected !== topItem.code) e.currentTarget.style.background = 'transparent' }}
+          >
+            <span style={{ fontSize: 12, color: selected === topItem.code ? O.teal : O.navy, fontWeight: 600 }}>{topItem.name}</span>
           </div>
         )}
         {filtered.map(a => (
           <div key={a.code} onClick={() => onSelect(a.code)} style={{
-            padding: '6px 10px 6px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            borderLeft: selected === a.code ? `2px solid ${C.accentGreen}` : '2px solid transparent',
-            background: selected === a.code ? C.lightGreenBg : 'transparent',
+            padding: '8px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderLeft: selected === a.code ? `3px solid ${O.teal}` : '3px solid transparent',
+            background: selected === a.code ? O.tealLight : 'transparent',
+            transition: 'background 0.1s',
           }}
-            onMouseEnter={e => { if (selected !== a.code) e.currentTarget.style.background = C.lightGrayBg }}
+            onMouseEnter={e => { if (selected !== a.code) e.currentTarget.style.background = O.bg }}
             onMouseLeave={e => { if (selected !== a.code) e.currentTarget.style.background = 'transparent' }}
           >
-            <span style={{ fontSize: 11, color: selected === a.code ? C.darkGreen : C.darkCard, fontWeight: selected === a.code ? 600 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>{a.name}</span>
-            <span style={{ fontSize: 9, color: C.muted, fontFamily: 'monospace', marginLeft: 4, flexShrink: 0 }}>{a.displayCode ?? a.code}</span>
+            <span style={{
+              fontSize: 12, color: selected === a.code ? O.teal : O.navy,
+              fontWeight: selected === a.code ? 600 : 400,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160,
+            }}>
+              {a.name}
+            </span>
+            <span style={{ fontSize: 10, color: O.muted, fontFamily: 'monospace', marginLeft: 6, flexShrink: 0 }}>
+              {a.displayCode ?? a.code}
+            </span>
           </div>
         ))}
       </div>
@@ -657,14 +746,18 @@ function AirportList({ airports, selected, onSelect, searchPlaceholder = 'Search
   )
 }
 
-function FilterBtn({ label, active, onClick, dark = false }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Filter Pill button — Orbit-style
+// ─────────────────────────────────────────────────────────────────────────────
+function FilterPill({ label, active, onClick, color = O.blue }) {
   return (
     <button onClick={onClick} style={{
-      padding: '4px 12px', fontSize: 11, fontWeight: active ? 700 : 500, borderRadius: 5,
-      border: `1px solid ${active ? (dark ? C.accentGreen : C.darkGreen) : 'transparent'}`,
-      background: active ? (dark ? C.darkGreen : C.accentGreen) : 'transparent',
-      color: active ? '#fff' : dark ? 'rgba(255,255,255,0.75)' : C.body,
-      cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s', whiteSpace: 'nowrap',
+      padding: '4px 12px', fontSize: 11, fontWeight: active ? 700 : 500, borderRadius: 20,
+      border: `1.5px solid ${active ? color : O.border}`,
+      background: active ? color : '#fff',
+      color: active ? '#fff' : O.muted,
+      cursor: 'pointer', fontFamily: FONT, transition: 'all 0.12s', whiteSpace: 'nowrap',
+      boxShadow: active ? `0 2px 6px ${color}30` : 'none',
     }}>{label}</button>
   )
 }
@@ -673,18 +766,12 @@ function FilterBtn({ label, active, onClick, dark = false }) {
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DestinationAnalysis() {
-  // ── Font + scrollbar injection (once) ──────────────────────────────────────
+  // ── Inject scrollbar style once ────────────────────────────────────────────
   useEffect(() => {
-    if (!document.getElementById('da-open-sans-font')) {
-      const link = document.createElement('link')
-      link.id = 'da-open-sans-font'; link.rel = 'stylesheet'
-      link.href = 'https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap'
-      document.head.appendChild(link)
-    }
     if (!document.getElementById('da-scrollbar-style')) {
       const s = document.createElement('style')
       s.id = 'da-scrollbar-style'
-      s.textContent = `.da-scroll::-webkit-scrollbar{width:5px}.da-scroll::-webkit-scrollbar-track{background:#F7F7F7}.da-scroll::-webkit-scrollbar-thumb{background:#539A5B;border-radius:3px}`
+      s.textContent = `.da-scroll::-webkit-scrollbar{width:5px}.da-scroll::-webkit-scrollbar-track{background:transparent}.da-scroll::-webkit-scrollbar-thumb{background:${O.border};border-radius:4px}.da-scroll::-webkit-scrollbar-thumb:hover{background:#c5d0dc}`
       document.head.appendChild(s)
     }
   }, [])
@@ -698,37 +785,28 @@ export default function DestinationAnalysis() {
   const [cohort,      setCohortState]  = useState('all')
   const [week,        setWeek]         = useState(null)
   const [sidebarTab,  setSidebarTab]   = useState('pickup')
-  // Separate search queries for each tab — cleared when switching tabs
   const [pickupQuery,  setPickupQuery]  = useState('')
   const [dropoffQuery, setDropoffQuery] = useState('')
 
-  // Tab switcher: always clear the OTHER tab's search box on switch
   const handleTabSwitch = (tab) => {
     setSidebarTab(tab)
     if (tab === 'pickup') setDropoffQuery('')
     else                  setPickupQuery('')
   }
 
-  // On destination select: clear search, then auto-switch to pickup tab so the
-  // user lands on the data view (not the empty sidebar).
-  // 'All destinations' stays on drop-off tab so user can keep browsing.
   const handleDestSelect = (code) => {
     setDest(code)
     setDropoffQuery('')
     if (code !== '__all__') setSidebarTab('pickup')
   }
 
-  // On origin select: clear search, switch to drop-off tab, stay gated.
-  // setOrigin() already resets destState to '__all__' internally via setDestState
-  // (the raw setter) — so we must NOT call setDest() here as that would
-  // set readyToFetch=true and trigger an immediate data load.
   const handleOriginSelect = (code) => {
-    setOrigin(code)        // resets dest + readyToFetch=false + clears rows
+    setOrigin(code)
     setPickupQuery('')
     setSidebarTab('dropoff')
   }
 
-  // ── Date range → ISO weeks/years (driven by the global filter bar) ──────────
+  // ── Date range → ISO weeks/years ───────────────────────────────────────────
   const { filters } = useFilters()
   const primaryRange    = filters?.dateRanges?.primary
   const comparisonRange = filters?.dateRanges?.comparison
@@ -737,8 +815,6 @@ export default function DestinationAnalysis() {
     () => dateRangeToWeeksYears(primaryRange?.startDate, primaryRange?.endDate),
     [primaryRange?.startDate, primaryRange?.endDate]
   )
-
-  // If there's a comparison range, derive its weeks/years; otherwise use prior year
   const { weeks: compWeeks, years: compYears } = useMemo(
     () => comparisonRange
       ? dateRangeToWeeksYears(comparisonRange.startDate, comparisonRange.endDate)
@@ -747,29 +823,24 @@ export default function DestinationAnalysis() {
   )
 
   const curYear  = primaryYears[primaryYears.length - 1]
-  const prevYear = curYear - 1   // always YoY: same ISO weeks, one year back
+  const prevYear = curYear - 1
   const lastWeek = primaryWeeks[primaryWeeks.length - 1]
-
-  // weeks + years sent to ALL queries: primary period weeks, both years
-  const weeks = primaryWeeks
-  const years = useMemo(() => [prevYear, curYear], [prevYear, curYear])
+  const weeks    = primaryWeeks
+  const years    = useMemo(() => [prevYear, curYear], [prevYear, curYear])
 
   // ── Data ───────────────────────────────────────────────────────────────────
-  const [airports,    setAirports]    = useState([])
-  const [airportMap,  setAirportMap]  = useState({})
-  const [searchRows,  setSearchRows]  = useState([])
-  const [bookingRows, setBookingRows] = useState([])
-  const [funnelRows,  setFunnelRows]  = useState([])
-  const [loading,     setLoading]     = useState(false)
-  const [error,       setError]       = useState(null)
-  // Two-step selection gate: dashboard data only fetches after BOTH pick-up AND drop-off chosen
-  const [readyToFetch, setReadyToFetch] = useState(false)
-  // Sidebar rows: fetched immediately on origin select to populate the drop-off list.
-  // Completely separate from bookingRows (which is for the dashboard).
-  const [sidebarRows,  setSidebarRows]  = useState([])
+  const [airports,       setAirports]       = useState([])
+  const [airportMap,     setAirportMap]     = useState({})
+  const [searchRows,     setSearchRows]     = useState([])
+  const [bookingRows,    setBookingRows]    = useState([])
+  const [funnelRows,     setFunnelRows]     = useState([])
+  const [loading,        setLoading]        = useState(false)
+  const [error,          setError]          = useState(null)
+  const [readyToFetch,   setReadyToFetch]   = useState(false)
+  const [sidebarRows,    setSidebarRows]    = useState([])
   const [sidebarLoading, setSidebarLoading] = useState(false)
 
-  // ── Fetch airports once on mount ───────────────────────────────────────────
+  // ── Fetch airports ─────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -780,17 +851,18 @@ export default function DestinationAnalysis() {
         if (cancelled) return
         if (fnErr) throw new Error(fnErr.message)
         const rawList = data?.airports || []
-        // Client-side guard: strip airports with missing/numeric/garbage names
-        const list = rawList.filter(a => {
-          const n = a.name
-          if (!n || typeof n !== 'string') return false
-          const trimmed = n.trim()
-          if (trimmed.length < 4) return false
-          if (!isNaN(Number(trimmed))) return false          // pure-number name
-          if (/^[?]+$/.test(trimmed)) return false           // ??? placeholder
-          if (!/[A-Za-z]/.test(trimmed)) return false        // must have at least one Latin letter
-          return true
-        })
+        const list = rawList
+          .filter(a => {
+            const n = a.name
+            if (!n || typeof n !== 'string') return false
+            const trimmed = n.trim()
+            if (trimmed.length < 4) return false
+            if (!isNaN(Number(trimmed))) return false
+            if (/^[?]+$/.test(trimmed)) return false
+            if (!/[A-Za-z]/.test(trimmed)) return false
+            return true
+          })
+          .map(a => ({ ...a, name: cleanAirportName(a.code, a.name) }))
         setAirports(list)
         const map = {}
         list.forEach(a => { map[a.code] = a.name })
@@ -800,11 +872,9 @@ export default function DestinationAnalysis() {
       }
     })()
     return () => { cancelled = true }
-  }, []) // runs exactly once
+  }, [])
 
-  // ── Fetch sidebar destinations (fires on origin change, ungated) ─────────────
-  // This is a lightweight bookings query (no dropoff filter, just to get the dest list).
-  // Stored in sidebarRows — completely separate from bookingRows.
+  // ── Fetch sidebar destinations ─────────────────────────────────────────────
   const fetchSidebarDests = useCallback(async (originCode) => {
     if (!originCode) return
     setSidebarLoading(true)
@@ -823,19 +893,14 @@ export default function DestinationAnalysis() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weeks, years])
 
-  // Fire fetchSidebarDests whenever origin changes
   useEffect(() => {
     fetchSidebarDests(origin)
   }, [origin, fetchSidebarDests])
 
-  // ── Fetch searches + bookings + funnel (gated — fires only after drop-off chosen) ──
+  // ── Main fetch ─────────────────────────────────────────────────────────────
   const fetchMain = useCallback(async () => {
     setLoading(true)
     setError(null)
-
-    // For zone destinations (e.g. "Cala Millor"), GA4 stores the zone code ("2QZ") in
-    // drop_off_code, while TGRS stores the zone name in dropoff_zone_name.
-    // Compute the zone code so the edge function can use the right filter per query type.
     const normDestName = (s) => s.trim().toLowerCase()
       .replace(/['']/g, '').replace(/ç/g,'c').replace(/[úù]/g,'u')
       .replace(/[óò]/g,'o').replace(/[àâ]/g,'a').replace(/[èê]/g,'e')
@@ -843,22 +908,13 @@ export default function DestinationAnalysis() {
       .replace(/[áä]/g,'a').replace(/[éë]/g,'e').replace(/ü/g,'u')
       .replace(/&/g,'and').replace(/,/g,'').replace(/-/g,' ')
       .replace(/\s+/g,' ').trim()
-
     const isIATAAirport = destination && /^[A-Z]{3}$/.test(destination)
     const dropoffZoneCode = destination
-      ? (isIATAAirport
-          ? destination  // IATA codes are their own zone code in GA4
-          : (zoneMap.normToCode[normDestName(destination)] || destination))
+      ? (isIATAAirport ? destination : (zoneMap.normToCode[normDestName(destination)] || destination))
       : undefined
-
-    // Human-readable name for the destination — used by the edge function to filter
-    // the historical (ads_ride_dispatch_v) table by dropoff_zone_name or airport name.
     const dropoffName = destination && destination !== '__all__'
-      ? (isIATAAirport
-          ? (airportMap[destination] || destination)
-          : (zoneMap.codeToName?.[destination] || destination))
+      ? (isIATAAirport ? (airportMap[destination] || destination) : (zoneMap.codeToName?.[destination] || destination))
       : undefined
-
     const body = { pickup: origin, dropoff: destination, dropoffZoneCode, dropoffName, weeks, years }
     try {
       const [sRes, bRes, fRes] = await Promise.all([
@@ -882,47 +938,23 @@ export default function DestinationAnalysis() {
   }, [origin, destination, weeks, years])
 
   useEffect(() => {
-    if (!readyToFetch) return  // wait until both pick-up AND drop-off are chosen
+    if (!readyToFetch) return
     fetchMain()
   }, [fetchMain, readyToFetch])
 
-  // ── Handlers (mutex: device/vehicle/cohort are mutually exclusive) ─────────
+  // ── Handlers ───────────────────────────────────────────────────────────────
   const setOrigin = useCallback(code => {
-    setOriginState(code)
-    setDestState('__all__')
-    setWeek(null)
-    // Reset gate and clear stale data — user must now pick a drop-off
-    setReadyToFetch(false)
-    setSearchRows([])
-    setBookingRows([])
-    setFunnelRows([])
-    setError(null)
+    setOriginState(code); setDestState('__all__'); setWeek(null)
+    setReadyToFetch(false); setSearchRows([]); setBookingRows([]); setFunnelRows([]); setError(null)
   }, [])
-  const setDest = useCallback(code => {
-    setDestState(code)
-    setReadyToFetch(true)  // both sides confirmed — trigger data load
-  }, [])
-  const setDevice = useCallback(d => {
-    setDeviceState(d)
-    if (d !== 'all') { setVehicleState('all'); setCohortState('all') }
-  }, [])
-  const setVehicle = useCallback(v => {
-    setVehicleState(v)
-    if (v !== 'all') { setDeviceState('all'); setCohortState('all') }
-  }, [])
-  const setCohort = useCallback(c => {
-    setCohortState(c)
-    if (c !== 'all') { setDeviceState('all'); setVehicleState('all') }
-  }, [])
+  const setDest = useCallback(code => { setDestState(code); setReadyToFetch(true) }, [])
+  const setDevice = useCallback(d => { setDeviceState(d); if (d !== 'all') { setVehicleState('all'); setCohortState('all') } }, [])
+  const setVehicle = useCallback(v => { setVehicleState(v); if (v !== 'all') { setDeviceState('all'); setCohortState('all') } }, [])
+  const setCohort = useCallback(c => { setCohortState(c); if (c !== 'all') { setDeviceState('all'); setVehicleState('all') } }, [])
 
-  // ── Derived aggregations (memoised) ────────────────────────────────────────
-  const searchByWkYr = useMemo(() =>
-    aggregateSearches(searchRows, { channel, device, weeks, years }),
-  [searchRows, channel, device, weeks, years])
-
-  const { counts: bookByWkYr, ttvs: ttvByWkYr } = useMemo(() =>
-    aggregateBookings(bookingRows, { weeks, years }),
-  [bookingRows, weeks, years])
+  // ── Derived aggregations ───────────────────────────────────────────────────
+  const searchByWkYr = useMemo(() => aggregateSearches(searchRows, { channel, device, weeks, years }), [searchRows, channel, device, weeks, years])
+  const { counts: bookByWkYr, ttvs: ttvByWkYr } = useMemo(() => aggregateBookings(bookingRows, { weeks, years }), [bookingRows, weeks, years])
 
   const sv = (yr, wk) => searchByWkYr[`${yr}-${wk}`] || 0
   const bv = (yr, wk) => bookByWkYr[`${yr}-${wk}`]   || 0
@@ -935,24 +967,14 @@ export default function DestinationAnalysis() {
   const tSum26 = useMemo(() => primaryWeeks.reduce((a, w) => a + tv(curYear,  w), 0), [ttvByWkYr,    primaryWeeks, curYear])
   const tSum25 = useMemo(() => primaryWeeks.reduce((a, w) => a + tv(prevYear, w), 0), [ttvByWkYr,    primaryWeeks, prevYear])
 
-  const sLast26 = sv(curYear,  lastWeek), sLast25 = sv(prevYear, lastWeek)
-  const bLast26 = bv(curYear,  lastWeek), bLast25 = bv(prevYear, lastWeek)
-  const tLast26 = tv(curYear,  lastWeek), tLast25 = tv(prevYear, lastWeek)
-
-  const aLast26 = bLast26 > 0 ? tLast26 / bLast26 : null
-  const aLast25 = bLast25 > 0 ? tLast25 / bLast25 : null
-  const aSum26  = bSum26  > 0 ? tSum26  / bSum26   : null
-  const aSum25  = bSum25  > 0 ? tSum25  / bSum25   : null
-
-  const s2bLast26 = sLast26 > 0 ? bLast26 / sLast26 * 100 : null
-  const s2bLast25 = sLast25 > 0 ? bLast25 / sLast25 * 100 : null
-  const s2bSum26  = sSum26  > 0 ? bSum26  / sSum26  * 100 : null
-  const s2bSum25  = sSum25  > 0 ? bSum25  / sSum25  * 100 : null
+  const aSum26 = bSum26 > 0 ? tSum26 / bSum26 : null
+  const aSum25 = bSum25 > 0 ? tSum25 / bSum25 : null
+  const s2bSum26 = sSum26 > 0 ? bSum26 / sSum26 * 100 : null
+  const s2bSum25 = sSum25 > 0 ? bSum25 / sSum25 * 100 : null
 
   const wYoY  = (a, b) => b > 0 ? (a - b) / b * 100 : null
   const ppDiff = (a, b) => (a != null && b != null) ? a - b : null
 
-  // KPI cards show RANGE totals only (no single-week point). Charts use primaryWeeks.
   const wkLabels = useMemo(() => primaryWeeks.map(w => `W${w}`), [primaryWeeks])
   const s25 = useMemo(() => primaryWeeks.map(w => sv(prevYear, w)), [searchByWkYr, primaryWeeks, prevYear])
   const s26 = useMemo(() => primaryWeeks.map(w => sv(curYear,  w)), [searchByWkYr, primaryWeeks, curYear])
@@ -969,16 +991,11 @@ export default function DestinationAnalysis() {
     destination === '__all__' ? aggregateByDestination(bookingRows, { weeks: week ? [week] : weeks, years }) : null,
   [bookingRows, destination, week, weeks, years])
 
-  // sidebarDestAgg: aggregates from sidebarRows which are fetched immediately
-  // when origin is selected (via fetchSidebarDests) — completely decoupled from
-  // the main dashboard bookingRows so the drop-off list is always populated.
   const sidebarDestAgg = useMemo(() =>
     aggregateByDestination(sidebarRows, { weeks, years }),
   [sidebarRows, weeks, years])
 
-
   const dropoffAirports = useMemo(() => {
-    // Normalize a zone name for fuzzy lookup in zoneMap
     const normZoneName = (s) => s.trim().toLowerCase()
       .replace(/['']/g, '').replace(/ç/g,'c').replace(/[úù]/g,'u')
       .replace(/[óò]/g,'o').replace(/[àâ]/g,'a').replace(/[èê]/g,'e')
@@ -986,30 +1003,18 @@ export default function DestinationAnalysis() {
       .replace(/[áä]/g,'a').replace(/[éë]/g,'e').replace(/ü/g,'u')
       .replace(/&/g,'and').replace(/,/g,'').replace(/-/g,' ')
       .replace(/\s+/g,' ').trim()
-
-    // Look up the real zone code from the original report's name map
-    const getZoneCode = (zoneName) => {
-      const key = normZoneName(zoneName)
-      return (zoneMap.normToCode)[key] || null
-    }
-
+    const getZoneCode = (zoneName) => (zoneMap.normToCode)[normZoneName(zoneName)] || null
     return Object.entries(sidebarDestAgg)
       .filter(([, { b2026, b2025 }]) => b2026 + b2025 > 0)
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([code, { name }]) => {
         const isIATAAirport = /^[A-Z]{3}$/.test(code) && airportMap[code]
-        if (isIATAAirport) {
-          return { code, displayCode: code, name: airportMap[code] || name || code }
-        }
-        // Zone: look up real code from zone map, fall back to short generated tag
+        if (isIATAAirport) return { code, displayCode: code, name: airportMap[code] || name || code }
         const displayName = name || code
         const realCode = getZoneCode(displayName)
         return { code, displayCode: realCode || '', name: displayName }
       })
   }, [sidebarDestAgg, airportMap])
-
-
-
 
   // Tooltip factories
   const barTooltipFn = useCallback((s25arr, s26arr) => (mouseX, canvasW) => {
@@ -1018,11 +1023,12 @@ export default function DestinationAnalysis() {
     const idx = Math.min(Math.max(Math.floor((mouseX - CHART_PAD.left) / groupW), 0), weeks.length - 1)
     const w = weeks[idx], v25 = s25arr[idx] ?? 0, v26 = s26arr[idx] ?? 0
     const diff = v26 - v25, pct = v25 > 0 ? ((diff / v25) * 100).toFixed(1) : '—'
-    return `<div style="font-size:10px;font-weight:600;margin-bottom:4px">W${w}</div>
-      <div>2026: <b>${Math.round(v26).toLocaleString()}</b></div>
-      <div>2025: ${Math.round(v25).toLocaleString()}</div>
-      <div style="margin-top:4px;color:${diff >= 0 ? C.lightGreenBg : '#ffaaaa'}">${diff >= 0 ? '+' : ''}${Math.round(diff).toLocaleString()} (${pct}%)</div>`
-  }, [weeks])
+    const up = diff >= 0
+    return `<div style="font-size:11px;font-weight:700;margin-bottom:5px;color:#94A3B8">W${w}</div>
+      <div style="margin-bottom:2px">${curYear}: <b style="color:#fff">${Math.round(v26).toLocaleString()}</b></div>
+      <div style="margin-bottom:4px;color:#94A3B8">${prevYear}: ${Math.round(v25).toLocaleString()}</div>
+      <div style="color:${up ? '#4ADE80' : '#F87171'}">${up ? '▲' : '▼'} ${Math.abs(+diff).toLocaleString()} (${pct}%)</div>`
+  }, [weeks, curYear, prevYear])
 
   const s2bTooltipFn = useCallback((mouseX, canvasW) => {
     const plotW = canvasW - CHART_PAD.left - CHART_PAD.right
@@ -1030,11 +1036,12 @@ export default function DestinationAnalysis() {
     const idx = Math.min(Math.max(Math.round((mouseX - CHART_PAD.left) / groupW), 0), weeks.length - 1)
     const w = weeks[idx], v25 = c25[idx], v26 = c26[idx]
     const diff = v26 != null && v25 != null ? v26 - v25 : null
-    return `<div style="font-size:10px;font-weight:600;margin-bottom:4px">W${w}</div>
-      <div>2026: <b>${v26 != null ? fmtPct(v26) : '—'}</b></div>
-      <div>2025: ${v25 != null ? fmtPct(v25) : '—'}</div>
-      ${diff != null ? `<div style="margin-top:4px;color:${diff >= 0 ? C.lightGreenBg : '#ffaaaa'}">${diff >= 0 ? '+' : ''}${diff.toFixed(2)}pp</div>` : ''}`
-  }, [weeks, c25, c26])
+    const up = diff >= 0
+    return `<div style="font-size:11px;font-weight:700;margin-bottom:5px;color:#94A3B8">W${w}</div>
+      <div style="margin-bottom:2px">${curYear}: <b style="color:#fff">${v26 != null ? fmtPct(v26) : '—'}</b></div>
+      <div style="margin-bottom:4px;color:#94A3B8">${prevYear}: ${v25 != null ? fmtPct(v25) : '—'}</div>
+      ${diff != null ? `<div style="color:${up ? '#4ADE80' : '#F87171'}">${up ? '▲' : '▼'} ${Math.abs(diff).toFixed(2)}pp</div>` : ''}`
+  }, [weeks, c25, c26, curYear, prevYear])
 
   const originName = airportMap[origin] || origin
   const destName   = destination === '__all__' ? 'All destinations' : (airportMap[destination] || destination)
@@ -1044,110 +1051,112 @@ export default function DestinationAnalysis() {
   // Render
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ fontFamily: "'Open Sans', sans-serif", display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: C.pageBg, color: C.body }}>
+    <div style={{ fontFamily: FONT, display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, background: O.bg, color: O.navy }}>
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '8px 16px', borderBottom: `1px solid ${C.border}`, background: '#fff', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ fontSize: 11, color: C.muted, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Route Intelligence</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.darkGreen }}>Destination Performance</div>
-        </div>
-        <div style={{ marginLeft: 'auto', fontSize: 10, color: C.muted }}>
-          GA4 &amp; GA4·&nbsp;
-          <span style={{ fontWeight: 600, color: C.body }}>W{primaryWeeks[0]}–W{primaryWeeks[primaryWeeks.length-1]} {curYear} vs {prevYear}</span>
-        </div>
-      </div>
-
-      {/* Channel filter bar */}
-      <div style={{ background: C.darkGreen, padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.6)', textTransform: 'uppercase', letterSpacing: '0.07em', marginRight: 6 }}>Channel</span>
-        {[
-          { key: 'all', label: 'All channels' }, { key: 'search', label: 'Search (CPC + Organic)' },
-          { key: 'email', label: 'Email' }, { key: 'affiliates', label: 'Affiliates' },
-          { key: 'direct', label: 'Direct' }, { key: 'other', label: 'Other' },
-        ].map(({ key, label }) => (
-          <FilterBtn key={key} label={label} active={channel === key} onClick={() => setChannel(key)} dark />
+      {/* ── DA filter bar — single row ── */}
+      <div style={{
+        background: O.white, borderBottom: `1px solid ${O.border}`,
+        padding: '20px 24px 10px', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 8,
+        overflowX: 'auto', flexWrap: 'nowrap',
+      }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: O.muted, whiteSpace: 'nowrap' }}>Channel</span>
+        {[{ key: 'all', label: 'All channels' }, { key: 'search', label: 'Search' }, { key: 'email', label: 'Email' }, { key: 'affiliates', label: 'Affiliates' }, { key: 'direct', label: 'Direct' }, { key: 'other', label: 'Other' }].map(({ key, label }) => (
+          <FilterPill key={key} label={label} active={channel === key} onClick={() => setChannel(key)} color={O.teal} />
+        ))}
+        <div style={{ width: 1, height: 18, background: O.border, flexShrink: 0, margin: '0 4px' }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: O.muted, whiteSpace: 'nowrap' }}>Device</span>
+        {[{ key: 'all', label: 'All' }, { key: 'mobile', label: 'Mobile' }, { key: 'desktop', label: 'Desktop' }, { key: 'tablet', label: 'Tablet' }].map(({ key, label }) => (
+          <FilterPill key={key} label={label} active={device === key} onClick={() => setDevice(key)} />
+        ))}
+        <div style={{ width: 1, height: 18, background: O.border, flexShrink: 0, margin: '0 4px' }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: O.muted, whiteSpace: 'nowrap' }}>Vehicle</span>
+        {[{ key: 'all', label: 'All' }, { key: 'private', label: 'Private' }, { key: 'shuttle', label: 'Shuttle' }, { key: 'minibus', label: 'Mini Bus' }].map(({ key, label }) => (
+          <FilterPill key={key} label={label} active={vehicle === key} onClick={() => setVehicle(key)} />
+        ))}
+        <div style={{ width: 1, height: 18, background: O.border, flexShrink: 0, margin: '0 4px' }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: O.muted, whiteSpace: 'nowrap' }}>Cohort</span>
+        {[{ key: 'all', label: 'All' }, { key: 'solo', label: 'Solo' }, { key: 'couple', label: 'Couple' }, { key: 'adult_group', label: 'Adult Group' }, { key: 'family', label: 'Family' }].map(({ key, label }) => (
+          <FilterPill key={key} label={label} active={cohort === key} onClick={() => setCohort(key)} />
         ))}
       </div>
 
-      {/* Device / Vehicle / Cohort bar */}
-      <div style={{ background: C.lightGrayBg, padding: '5px 14px', display: 'flex', alignItems: 'center', gap: 14, borderBottom: `1px solid ${C.border}`, flexShrink: 0, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ fontSize: 9, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Device</span>
-          {[{ key: 'all', label: 'All devices' }, { key: 'mobile', label: 'Mobile' }, { key: 'desktop', label: 'Desktop' }, { key: 'tablet', label: 'Tablet' }].map(({ key, label }) => (
-            <FilterBtn key={key} label={label} active={device === key} onClick={() => setDevice(key)} />
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ fontSize: 9, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Vehicle</span>
-          {[{ key: 'all', label: 'All vehicles' }, { key: 'private', label: 'Private' }, { key: 'shuttle', label: 'Shuttle' }, { key: 'minibus', label: 'Mini Bus' }, { key: 'other', label: 'Other' }].map(({ key, label }) => (
-            <FilterBtn key={key} label={label} active={vehicle === key} onClick={() => setVehicle(key)} />
-          ))}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <span style={{ fontSize: 9, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 4 }}>Cohort</span>
-          {[{ key: 'all', label: 'All cohorts' }, { key: 'solo', label: 'Solo' }, { key: 'couple', label: 'Couple' }, { key: 'adult_group', label: 'Adult Group' }, { key: 'family', label: 'Family' }].map(({ key, label }) => (
-            <FilterBtn key={key} label={label} active={cohort === key} onClick={() => setCohort(key)} />
-          ))}
-        </div>
-      </div>
+
 
       {/* Notice banner */}
       {showNotice && (
-        <div style={{ background: C.amberLight, borderBottom: `1px solid ${C.amber}`, padding: '6px 16px', fontSize: 11, color: C.amber, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <span>ℹ</span>
-          <span>Vehicle &amp; Cohort filters apply to <b>Bookings and TTV only</b>. GA4 Search events (funnel steps 1–3) do not carry vehicle or cohort data and remain unfiltered.</span>
+        <div style={{ background: O.amberLight, borderBottom: `1px solid #FCD34D`, padding: '8px 24px', fontSize: 11, color: O.amber, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={O.amber} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>Vehicle &amp; Cohort filters apply to <b>Bookings only</b> — GA4 search events do not carry vehicle or cohort data.</span>
         </div>
       )}
 
-      {/* Body */}
+      {/* ── Body: sidebar + main panel ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
         {/* Sidebar */}
-        <div style={{ width: 270, flexShrink: 0, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', background: '#fff' }}>
-          <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
-            {[['pickup', 'PICK-UP'], ['dropoff', 'DROP-OFF']].map(([tab, label]) => (
+        <div style={{ width: 268, flexShrink: 0, borderRight: `1px solid ${O.border}`, display: 'flex', flexDirection: 'column', background: O.white }}>
+
+          {/* Tabs */}
+          <div style={{ display: 'flex', borderBottom: `1px solid ${O.border}` }}>
+            {[['pickup', 'Pick-Up'], ['dropoff', 'Drop-Off']].map(([tab, label]) => (
               <button key={tab} onClick={() => handleTabSwitch(tab)} style={{
-                flex: 1, padding: '9px 0', fontSize: 10, fontWeight: 700, border: 'none', background: 'transparent', fontFamily: 'inherit',
-                color: sidebarTab === tab ? C.darkGreen : C.muted,
-                borderBottom: sidebarTab === tab ? `2px solid ${C.darkGreen}` : '2px solid transparent', cursor: 'pointer', letterSpacing: '0.06em',
+                flex: 1, padding: '11px 0', fontSize: 11, fontWeight: 700, border: 'none', background: 'transparent',
+                fontFamily: FONT, cursor: 'pointer', letterSpacing: '0.04em',
+                color: sidebarTab === tab ? O.teal : O.muted,
+                borderBottom: sidebarTab === tab ? `2px solid ${O.teal}` : '2px solid transparent',
+                transition: 'all 0.15s',
               }}>{label}</button>
             ))}
           </div>
+
+          {/* Airport list */}
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {sidebarTab === 'pickup' ? (
               <AirportList
                 airports={[...airports].sort((a, b) => a.name.localeCompare(b.name))}
                 selected={origin}
                 onSelect={handleOriginSelect}
-                searchPlaceholder="Search origins..."
+                searchPlaceholder="Search origins…"
                 query={pickupQuery}
                 onQueryChange={setPickupQuery}
               />
             ) : sidebarLoading ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 8, color: C.muted }}>
-                <div style={{ width: 20, height: 20, border: `2px solid ${C.border}`, borderTopColor: C.accentGreen, borderRadius: '50%', animation: 'da-spin 0.8s linear infinite' }} />
-                <span style={{ fontSize: 11 }}>Loading destinations…</span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 10, color: O.muted }}>
+                <div style={{ width: 24, height: 24, border: `2px solid ${O.border}`, borderTopColor: O.teal, borderRadius: '50%', animation: 'da-spin 0.8s linear infinite' }} />
+                <span style={{ fontSize: 12 }}>Loading destinations…</span>
               </div>
             ) : (
               <AirportList
                 airports={[...dropoffAirports].sort((a, b) => a.name.localeCompare(b.name))}
                 selected={destination}
                 onSelect={handleDestSelect}
-                searchPlaceholder="Search destinations..."
+                searchPlaceholder="Search destinations…"
                 topItem={{ code: '__all__', name: 'All destinations' }}
                 query={dropoffQuery}
                 onQueryChange={setDropoffQuery}
               />
             )}
           </div>
-          {/* Route pill */}
-          <div style={{ padding: '10px 12px', borderTop: `1px solid ${C.border}`, background: C.lightGrayBg }}>
-            <div style={{ fontSize: 8, fontWeight: 600, color: C.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Selected Route</div>
+
+          {/* Selected Route pill */}
+          <div style={{ padding: '12px 16px', borderTop: `1px solid ${O.border}`, background: O.bg }}>
+            <div style={{ fontSize: 10, fontWeight: 600, color: O.muted, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>Selected Route</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 18, fontWeight: 700, color: C.darkGreen, fontFamily: 'monospace' }}>{origin}</span>
-              <span style={{ fontSize: 14, color: C.border, fontWeight: 300 }}>→</span>
-              <span style={{ fontSize: 18, fontWeight: 700, color: destination === '__all__' ? C.muted : C.darkGreen, fontFamily: 'monospace' }}>
+              <span style={{
+                background: O.tealLight, color: O.teal,
+                padding: '3px 10px', borderRadius: 8, fontSize: 14, fontWeight: 700, fontFamily: 'monospace',
+                border: `1px solid ${O.teal}30`,
+              }}>
+                {origin}
+              </span>
+              <span style={{ color: O.muted, fontSize: 16 }}>→</span>
+              <span style={{
+                background: destination === '__all__' ? O.bg : O.tealLight,
+                color: destination === '__all__' ? O.muted : O.teal,
+                padding: '3px 10px', borderRadius: 8, fontSize: 14, fontWeight: 700, fontFamily: 'monospace',
+                border: `1px solid ${destination === '__all__' ? O.border : O.teal + '30'}`,
+              }}>
                 {destination === '__all__' ? 'ALL' : destination}
               </span>
             </div>
@@ -1155,108 +1164,144 @@ export default function DestinationAnalysis() {
         </div>
 
         {/* Main panel */}
-        <div className="da-scroll" style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', position: 'relative' }}>
+        <div className="da-scroll" style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', position: 'relative' }}>
+          <style>{`@keyframes da-spin{to{transform:rotate(360deg)}} @keyframes da-fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}`}</style>
+
           {/* Loading overlay */}
           {loading && (
-            <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, flexDirection: 'column', gap: 12 }}>
-              <div style={{ width: 32, height: 32, border: `3px solid ${C.border}`, borderTopColor: C.accentGreen, borderRadius: '50%', animation: 'da-spin 0.8s linear infinite' }} />
-              <div style={{ fontSize: 12, color: C.muted }}>Loading data…</div>
-              <style>{`@keyframes da-spin{to{transform:rotate(360deg)}}`}</style>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(248,250,252,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 20, flexDirection: 'column', gap: 14, backdropFilter: 'blur(2px)' }}>
+              <div style={{ width: 36, height: 36, border: `3px solid ${O.border}`, borderTopColor: O.teal, borderRadius: '50%', animation: 'da-spin 0.8s linear infinite' }} />
+              <div style={{ fontSize: 13, color: O.muted, fontWeight: 500 }}>Loading route data…</div>
             </div>
           )}
 
-          {/* Waiting for drop-off selection */}
+          {/* ── Empty / prompt state ── */}
           {!readyToFetch && !loading && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 420, gap: 16, textAlign: 'center' }}>
-              <div style={{ fontSize: 48, lineHeight: 1 }}>✈️</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: C.darkCard }}>
-                Now select a destination
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 480, gap: 20, textAlign: 'center', animation: 'da-fade 0.3s ease' }}>
+              <div style={{
+                width: 80, height: 80, borderRadius: '50%', background: O.tealLight,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36,
+              }}>
+                ✈️
               </div>
-              <div style={{ fontSize: 13, color: C.muted, maxWidth: 320 }}>
-                You've selected <strong style={{ color: C.darkGreen }}>{airportMap[origin] || origin}</strong> as your pick-up.
-                Choose a drop-off destination from the <strong>DROP-OFF</strong> tab on the left to load the dashboard.
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: O.navy, marginBottom: 8 }}>Select a destination</div>
+                <div style={{ fontSize: 13, color: O.muted, maxWidth: 340, lineHeight: 1.7 }}>
+                  You've picked <strong style={{ color: O.teal }}>{airportMap[origin] || origin}</strong> as your origin.
+                  Switch to the <strong>Drop-Off</strong> tab to choose a destination and load the dashboard.
+                </div>
               </div>
               <button
                 onClick={() => { setSidebarTab('dropoff'); setDropoffQuery('') }}
-                style={{ marginTop: 8, background: C.darkGreen, color: '#fff', border: 'none', borderRadius: 8, padding: '10px 24px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 8 }}
+                style={{
+                  background: O.teal, color: '#fff', border: 'none', borderRadius: 10,
+                  padding: '11px 28px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                  fontFamily: FONT, display: 'flex', alignItems: 'center', gap: 8,
+                  boxShadow: '0 4px 14px rgba(13,138,114,0.25)', transition: 'transform 0.15s, box-shadow 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(13,138,114,0.35)' }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 4px 14px rgba(13,138,114,0.25)' }}
               >
-                ← Go to DROP-OFF tab
+                Go to Drop-Off tab →
               </button>
             </div>
           )}
 
-          {/* Error */}
+          {/* Error banner */}
           {error && (
-            <div style={{ background: '#FEF2F2', border: `1px solid ${C.red}`, borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: C.red, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ background: O.redLight, border: `1px solid ${O.red}`, borderRadius: 10, padding: '12px 18px', marginBottom: 16, fontSize: 12, color: O.red, display: 'flex', alignItems: 'center', gap: 10 }}>
               <span>⚠</span>
               <span style={{ flex: 1 }}>{error}</span>
-              <button onClick={fetchMain} style={{ background: C.red, color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>Retry</button>
+              <button onClick={fetchMain} style={{ background: O.red, color: '#fff', border: 'none', borderRadius: 7, padding: '5px 12px', fontSize: 11, cursor: 'pointer', fontFamily: FONT, fontWeight: 600 }}>Retry</button>
             </div>
           )}
 
-          {/* Dashboard content — only shown after both pick-up AND drop-off are selected */}
-          {readyToFetch && (<>
+          {/* ── Dashboard content ── */}
+          {readyToFetch && (
+            <div style={{ animation: 'da-fade 0.25s ease' }}>
 
-          {/* Route heading */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 17, fontWeight: 700, color: C.darkGreen }}>{originName}</span>
-              <span style={{ fontSize: 15, color: C.accentGreen }}>→</span>
-              <span style={{ fontSize: 17, fontWeight: 700, color: destination === '__all__' ? C.muted : C.darkGreen }}>{destName}</span>
-            </div>
-            <div style={{ fontSize: 11, color: C.secondary, marginTop: 2 }}>
-              GA4 · {channel === 'all' ? 'All channels' : channel}
-              &nbsp;·&nbsp;
-              <span style={{ fontWeight: 600, color: C.body }}>W{primaryWeeks[0]}–W{primaryWeeks[primaryWeeks.length-1]} {curYear} vs {prevYear}</span>
-            </div>
-          </div>
+              {/* Route heading */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 8 }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: O.navy }}>{originName}</span>
+                    <span style={{ fontSize: 16, color: O.teal, fontWeight: 300 }}>→</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: destination === '__all__' ? O.muted : O.navy }}>{destName}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: O.muted, marginTop: 3 }}>
+                    {channel === 'all' ? 'All channels' : channel} · GA4 · W{primaryWeeks[0]}–W{primaryWeeks[primaryWeeks.length-1]}&nbsp;
+                    <span style={{ fontWeight: 600, color: O.navy }}>{curYear}</span> vs <span style={{ fontWeight: 600 }}>{prevYear}</span>
+                  </div>
+                </div>
+              </div>
 
-          {/* KPI Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 }}>
-            <KpiCard label="Searches"    val26={sSum26} val25={sSum25} yoy={wYoY(sSum26, sSum25)} format="number"   curYear={curYear} prevYear={prevYear} />
-            <KpiCard label="Bookings"    val26={bSum26} val25={bSum25} yoy={wYoY(bSum26, bSum25)} format="number"   curYear={curYear} prevYear={prevYear} />
-            <KpiCard label="TTV (USD)"   val26={tSum26} val25={tSum25} yoy={wYoY(tSum26, tSum25)} format="currency" curYear={curYear} prevYear={prevYear} />
-            <KpiCard label="Avg Sell"    val26={aSum26} val25={aSum25} yoy={wYoY(aSum26, aSum25)} format="currency" curYear={curYear} prevYear={prevYear} />
-            <KpiCard label="Search→Book" val26={s2bSum26} val25={s2bSum25} yoy={ppDiff(s2bSum26, s2bSum25)} format="pct" isPP curYear={curYear} prevYear={prevYear} />
-          </div>
+              {/* KPI Cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 16 }}>
+                <KpiCard label="Searches"    val26={sSum26} val25={sSum25} yoy={wYoY(sSum26, sSum25)} format="number"   curYear={curYear} prevYear={prevYear} />
+                <KpiCard label="Bookings"    val26={bSum26} val25={bSum25} yoy={wYoY(bSum26, bSum25)} format="number"   curYear={curYear} prevYear={prevYear} />
+                <KpiCard label="TTV (USD)"   val26={tSum26} val25={tSum25} yoy={wYoY(tSum26, tSum25)} format="currency" curYear={curYear} prevYear={prevYear} />
+                <KpiCard label="Avg Sell"    val26={aSum26} val25={aSum25} yoy={wYoY(aSum26, aSum25)} format="currency" curYear={curYear} prevYear={prevYear} />
+                <KpiCard label="Search→Book" val26={s2bSum26} val25={s2bSum25} yoy={ppDiff(s2bSum26, s2bSum25)} format="pct" isPP curYear={curYear} prevYear={prevYear} />
+              </div>
 
-          {/* Charts */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 12 }}>
-            <CanvasChart drawFn={drawBarChart} drawArgs={[wkLabels, s25, s26, v => v >= 1000 ? `${(v/1000).toFixed(0)}K` : Math.round(v)]}
-              title="Searches · All Channels"
-              subtitle={`${channel !== 'all' ? channel : 'All channels'} · ${device !== 'all' ? device : 'All devices'} · ${curYear} vs ${prevYear}`}
-              height={180} tooltipFn={barTooltipFn(s25, s26)} />
-            <CanvasChart drawFn={drawBarChart} drawArgs={[wkLabels, b25, b26, v => Math.round(v).toString()]}
-              title={`Bookings · ${curYear} vs ${prevYear}`}
-              subtitle={`${vehicle !== 'all' ? vehicle : 'All vehicles'} · ${cohort !== 'all' ? cohort : 'All cohorts'}`}
-              height={180} tooltipFn={barTooltipFn(b25, b26)} />
-            <CanvasChart drawFn={drawLineChart} drawArgs={[wkLabels, c25, c26]}
-              title="Search to Book · All Channels"
-              subtitle={`${curYear} vs ${prevYear}`}
-              height={180} tooltipFn={s2bTooltipFn} />
-          </div>
+              {/* Charts */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginBottom: 16 }}>
+                <CanvasChart
+                  drawFn={drawBarChart}
+                  drawArgs={[wkLabels, s25, s26, v => v >= 1000 ? `${(v/1000).toFixed(0)}K` : Math.round(v)]}
+                  title="Searches"
+                  subtitle={`${channel !== 'all' ? channel : 'All channels'} · ${device !== 'all' ? device : 'All devices'} · ${curYear} vs ${prevYear}`}
+                  height={200}
+                  tooltipFn={barTooltipFn(s25, s26)}
+                />
+                <CanvasChart
+                  drawFn={drawBarChart}
+                  drawArgs={[wkLabels, b25, b26, v => Math.round(v).toString()]}
+                  title="Bookings"
+                  subtitle={`${vehicle !== 'all' ? vehicle : 'All vehicles'} · ${cohort !== 'all' ? cohort : 'All cohorts'}`}
+                  height={200}
+                  tooltipFn={barTooltipFn(b25, b26)}
+                />
+                <CanvasChart
+                  drawFn={drawLineChart}
+                  drawArgs={[wkLabels, c25, c26]}
+                  title="Search → Book Rate"
+                  subtitle={`${curYear} vs ${prevYear}`}
+                  height={200}
+                  tooltipFn={s2bTooltipFn}
+                />
+              </div>
 
-          {/* Funnel + Routes */}
-          <div style={{ display: 'grid', gridTemplateColumns: destination === '__all__' ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 14 }}>
-            <FunnelSection funnelData={funnelData} weeks={primaryWeeks} selectedWeek={week} onWeekChange={setWeek} />
-            {destination === '__all__' && (
-              <RoutesTable destData={destAgg} airportMap={airportMap} weeks={primaryWeeks} curYear={curYear} prevYear={prevYear} selectedWeek={week}
-                onWeekChange={setWeek} onSelectDest={code => { setDest(code) }}
-                originName={originName} />
-            )}
-          </div>
+              {/* Funnel + Routes Table */}
+              <div style={{ display: 'grid', gridTemplateColumns: destination === '__all__' ? '1fr 1fr' : '1fr', gap: 14, marginBottom: 16 }}>
+                <FunnelSection funnelData={funnelData} weeks={primaryWeeks} selectedWeek={week} onWeekChange={setWeek} />
+                {destination === '__all__' && (
+                  <RoutesTable
+                    destData={destAgg}
+                    airportMap={airportMap}
+                    weeks={primaryWeeks}
+                    curYear={curYear}
+                    prevYear={prevYear}
+                    selectedWeek={week}
+                    onWeekChange={setWeek}
+                    onSelectDest={code => setDest(code)}
+                    originName={originName}
+                  />
+                )}
+              </div>
 
-          {/* Empty state — only after confirmed selection with no data returned */}
-          {!loading && !error && searchRows.length === 0 && bookingRows.length === 0 && (
-            <div style={{ textAlign: 'center', padding: '40px 20px', color: C.muted }}>
-              <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: C.body, marginBottom: 6 }}>No data for this selection</div>
-              <div style={{ fontSize: 12 }}>Try changing the origin or check that the edge function is deployed.</div>
-              <button onClick={fetchMain} style={{ marginTop: 16, background: C.darkGreen, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 20px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>↻ Retry</button>
+              {/* Empty state after selection */}
+              {!loading && !error && searchRows.length === 0 && bookingRows.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: O.muted }}>
+                  <div style={{ fontSize: 36, marginBottom: 14 }}>📭</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: O.navy, marginBottom: 6 }}>No data for this selection</div>
+                  <div style={{ fontSize: 12 }}>Try a different origin or extend your date range.</div>
+                  <button onClick={fetchMain} style={{ marginTop: 16, background: O.teal, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: FONT }}>↻ Retry</button>
+                </div>
+              )}
+
             </div>
           )}
-
-          </>)}{/* end readyToFetch */}
         </div>
       </div>
     </div>

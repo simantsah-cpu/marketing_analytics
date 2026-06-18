@@ -134,10 +134,22 @@ serve(async (req) => {
     const contextText = formatContext(context)
 
     // Build messages array — include history for multi-turn chat
+    // Validate each entry to prevent prompt injection via crafted history
     const messages: object[] = []
 
-    if (conversationHistory?.length) {
-      messages.push(...conversationHistory)
+    if (Array.isArray(conversationHistory)) {
+      const ALLOWED_ROLES = new Set(['user', 'assistant'])
+      for (const entry of conversationHistory) {
+        if (
+          entry &&
+          typeof entry === 'object' &&
+          ALLOWED_ROLES.has(entry.role) &&
+          typeof entry.content === 'string' &&
+          entry.content.length <= 8000
+        ) {
+          messages.push({ role: entry.role, content: entry.content })
+        }
+      }
     }
 
     // Add context to the current user message
@@ -178,7 +190,7 @@ serve(async (req) => {
   } catch (err: any) {
     console.error('ai-invoke error:', err)
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: 'An internal error occurred.' }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } }
     )
   }

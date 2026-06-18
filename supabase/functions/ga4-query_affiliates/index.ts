@@ -1065,7 +1065,7 @@ serve(async (req) => {
   } catch (err: any) {
     console.error('ga4-query_affiliates error:', err)
     return new Response(
-      JSON.stringify({ error: err.message }),
+      JSON.stringify({ error: 'An internal error occurred.' }),
       { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } }
     )
   }

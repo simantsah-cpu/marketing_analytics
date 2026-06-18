@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import DOMPurify from 'dompurify'
 
 export default function QueryBar({ open, onClose }) {
   const [query, setQuery] = useState('')
@@ -95,7 +96,7 @@ export default function QueryBar({ open, onClose }) {
               ✦ AI Analysis
             </div>
             <div style={{ fontSize: 13, color: 'var(--navy)', lineHeight: 1.7 }}
-              dangerouslySetInnerHTML={{ __html: result.answer.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>') }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(result.answer.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>')) }}
             />
           </div>
         )}

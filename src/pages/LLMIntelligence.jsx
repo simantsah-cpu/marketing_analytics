@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import DOMPurify from 'dompurify'
 import { format, parseISO } from 'date-fns'
 import { Line } from 'react-chartjs-2'
 import {
@@ -210,7 +211,7 @@ function LLMChat({ tableData, filters }) {
             <div style={{ maxHeight: 320, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {messages.map((msg, i) => (
                 <div key={i} style={msg.role === 'user' ? { alignSelf: 'flex-end', background: '#0F5FA6', color: '#fff', borderRadius: '12px 12px 2px 12px', padding: '8px 12px', maxWidth: '80%', fontSize: 12.5, lineHeight: 1.55 } : { alignSelf: 'flex-start', background: '#F0F7FF', border: '1px solid #DBEAFE', borderRadius: '2px 12px 12px 12px', padding: '8px 12px', maxWidth: '90%', fontSize: 12.5, lineHeight: 1.55, color: '#0A2540' }}>
-                  <span dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }} />
+                  <span dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(renderMd(msg.content)) }} />
                   {msg.streaming && <span style={{ display: 'inline-block', width: 2, height: 13, background: '#1A7FD4', marginLeft: 2, verticalAlign: 'middle', animation: 'llm-blink 1s step-end infinite' }} />}
                 </div>
               ))}
