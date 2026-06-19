@@ -1,4 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { requireAuth } from '../_shared/requireAuth.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -502,6 +503,9 @@ function buildRequests(page: string, dateRanges: object[], filters: any) {
 // ─── Main handler ────────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+
+  const authResult = await requireAuth(req)
+  if (authResult instanceof Response) return authResult
 
   try {
     const { page, propertyId, dateRanges, filters } = await req.json()

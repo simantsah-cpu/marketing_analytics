@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import DOMPurify from 'dompurify'
 import { useFilters } from '../context/FiltersContext'
+import { supabase } from '../services/supabase'
 
 // ── Per-chart-type suggested questions ────────────────────────────────────────
 const CHART_QUESTIONS = {
@@ -83,7 +84,7 @@ export default function ChatPanel({ open, onClose, chartTitle, chartType, chartD
     abortRef.current = ctrl
 
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    const { data: { session } } = await supabase.auth.getSession()
 
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/ai-invoke`, {
@@ -91,7 +92,7 @@ export default function ChatPanel({ open, onClose, chartTitle, chartType, chartD
         signal: ctrl.signal,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
+          'Authorization': `Bearer ${session?.access_token ?? ''}`,
         },
         body: JSON.stringify({
           mode: 'chat',
