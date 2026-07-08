@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Blog Banner Funnel — hoppa.com GA4</title>
+  <meta name="description" content="GA4 funnel report: blog_banner_click event, transfers_banner attribution, www.hoppa.com. Live data pulled 5 Jul 2026." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha512-ZwR1/gSZM3ai6vCdI+LVF1zSq/5HznD3oD+sCoJrzXJ+yKen8jWgi2cRbnn7sc7m0JDEERXFujznE/1lM7Cgw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #F5F7FA;
+      --surface: #FFFFFF;
+      --border: #E2E8F0;
+      --border-light: #EEF2F7;
+      --text: #0F1E2E;
+      --text-sub: #4A5568;
+      --text-muted: #8A9BAD;
+      --accent: #1A56DB;
+      --accent-mid: #2563EB;
+      --accent-light: #EFF6FF;
+      --teal: #0D9488;
+      --green: #15803D;
+      --green-bg: #F0FDF4;
+      --red: #B91C1C;
+      --red-bg: #FEF2F2;
+      --warn-bg: #FFF7ED;
+      --warn-border: #FDBA74;
+      --warn-text: #7C2D12;
+      --radius: 10px;
+      --shadow: 0 1px 3px rgba(15,30,46,0.07), 0 1px 2px rgba(15,30,46,0.05);
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ── */
+    .hdr {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      position: sticky; top: 0; z-index: 50;
+    }
+    .hdr-inner {
+      max-width: 1160px; margin: 0 auto;
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 16px; flex-wrap: wrap;
+    }
+    .hdr-eyebrow {
+      font-size: 10px; font-weight: 700; letter-spacing: .09em;
+      text-transform: uppercase; color: var(--accent-mid); margin-bottom: 2px;
+    }
+    .hdr-title { font-size: 20px; font-weight: 800; letter-spacing: -.02em; line-height: 1.2; }
+    .hdr-sub { font-size: 11.5px; color: var(--text-sub); margin-top: 3px; }
+    .hdr-pills { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 20px; font-size: 10.5px; font-weight: 600;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text-sub); white-space: nowrap;
+    }
+    .pill-live { background: #F0FDF4; border-color: #86EFAC; color: #15803D; }
+    .pill-live::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%;
+      background: #22C55E; display: inline-block; animation: blink 2s ease-in-out infinite;
+    }
+    .pill-data { background: var(--accent-light); border-color: #BFDBFE; color: var(--accent); }
+    @keyframes blink { 0%,100% { opacity:1 } 50% { opacity:.35 } }
+
+    /* ── Layout ── */
+    .wrap { max-width: 1160px; margin: 0 auto; padding: 0 20px 56px; }
+    .sec-hdr { display: flex; align-items: baseline; justify-content: space-between; margin: 28px 0 14px; gap: 12px; flex-wrap: wrap; }
+    .sec-title { font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); }
+    .sec-note { font-size: 10.5px; color: var(--text-muted); }
+
+    /* ── Card ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .card-pad { padding: 20px 22px; }
+
+    /* ── KPI ── */
+    .kpi-row { display: grid; grid-template-columns: repeat(6,1fr); gap: 10px; }
+    @media (max-width: 960px) { .kpi-row { grid-template-columns: repeat(3,1fr); } }
+    @media (max-width: 560px) { .kpi-row { grid-template-columns: repeat(2,1fr); } }
+    .kpi {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); padding: 15px 16px;
+    }
+    .kpi-lbl { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 6px; }
+    .kpi-val { font-size: 26px; font-weight: 800; letter-spacing: -.025em; line-height: 1; color: var(--text); }
+    .kpi-sub { font-size: 10.5px; color: var(--text-muted); margin-top: 4px; }
+
+    /* ── Alert ── */
+    .alert {
+      border-radius: var(--radius); padding: 18px 20px; margin-top: 20px;
+      background: var(--warn-bg); border: 1px solid var(--warn-border);
+    }
+    .alert-title {
+      display: flex; align-items: center; gap: 9px;
+      font-size: 13px; font-weight: 700; color: var(--warn-text); margin-bottom: 10px;
+    }
+    .alert-body { font-size: 12.5px; color: #431407; line-height: 1.65; }
+    .alert-body p { margin-bottom: 8px; }
+    .alert-body p:last-child { margin-bottom: 0; }
+    .alert-code {
+      background: #FFF3E0; border: 1px solid #FDBA74; border-radius: 6px;
+      padding: 9px 12px; font-family: 'Menlo','Consolas',monospace; font-size: 11px;
+      color: #7C2D12; margin: 8px 0; line-height: 1.75;
+    }
+    code {
+      font-family: 'Menlo','Consolas',monospace; font-size: 11px;
+      background: rgba(0,0,0,0.055); padding: 1px 4px; border-radius: 3px;
+    }
+
+    /* ── Funnel ── */
+    .funnel-table { width: 100%; border-collapse: collapse; }
+    .funnel-row { border-bottom: 1px solid var(--border-light); }
+    .funnel-row:last-child { border-bottom: none; }
+    .funnel-row td { padding: 13px 16px; vertical-align: middle; }
+    .f-name { font-size: 13px; font-weight: 700; color: var(--text); }
+    .f-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+    .f-bar-cell { width: 52%; padding-right: 16px !important; }
+    .f-bar-track { background: var(--border-light); border-radius: 4px; height: 28px; overflow: hidden; position: relative; }
+    .f-bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 9px; font-size: 11px; font-weight: 600; color: #fff; white-space: nowrap; transition: width .6s cubic-bezier(.4,0,.2,1); }
+    .f-bar-blue { background: var(--accent); }
+    .f-bar-teal { background: var(--teal); }
+    .f-bar-stripe {
+      background: repeating-linear-gradient(45deg,#CBD5E1,#CBD5E1 6px,#B0BCC8 6px,#B0BCC8 12px);
+      color: var(--text-sub) !important;
+    }
+    .f-count { font-size: 15px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+    .f-rate { font-size: 10.5px; font-weight: 600; margin-top: 2px; }
+    .f-rate-green { color: var(--green); }
+    .f-rate-red { color: var(--red); }
+    .f-rate-muted { color: var(--text-muted); }
+    .f-count-cell { text-align: right; white-space: nowrap; min-width: 100px; padding-right: 20px !important; }
+    .f-footnote { font-size: 10.5px; color: var(--text-muted); padding: 9px 16px 13px; font-style: italic; line-height: 1.6; }
+
+    /* ── Data table ── */
+    .dt { width: 100%; border-collapse: collapse; }
+    .dt thead th {
+      font-size: 9.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+      color: var(--text-muted); padding: 9px 14px; text-align: left;
+      background: #FAFBFC; border-bottom: 1px solid var(--border);
+    }
+    .dt tbody td { padding: 11px 14px; font-size: 12.5px; color: var(--text); border-bottom: 1px solid var(--border-light); vertical-align: middle; }
+    .dt tbody tr:last-child td { border-bottom: none; }
+    .dt tfoot td { padding: 11px 14px; font-size: 11.5px; color: var(--text-sub); background: var(--accent-light); border-top: 1px solid var(--border); line-height: 1.6; }
+
+    /* ── Charts grid ── */
+    .g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 680px) { .g2 { grid-template-columns: 1fr; } }
+    .chart-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 14px; }
+    /* CRITICAL: explicit height wrapper — Chart.js reads this, not the canvas attribute */
+    .ch-wrap { position: relative; height: 220px; width: 100%; }
+    .ch-wrap canvas { display: block; }
+    .ch-wrap-tall { position: relative; height: 290px; width: 100%; }
+    .ch-wrap-tall canvas { display: block; }
+
+    /* ── Page table ── */
+    .pt { width: 100%; border-collapse: collapse; }
+    .pt thead th {
+      font-size: 9.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+      color: var(--text-muted); padding: 8px 12px; text-align: left;
+      background: #FAFBFC; border-bottom: 1px solid var(--border);
+    }
+    .pt thead th:not(:first-child) { text-align: right; }
+    .pt tbody td { padding: 9px 12px; font-size: 11.5px; color: var(--text); border-bottom: 1px solid var(--border-light); vertical-align: middle; }
+    .pt tbody tr:last-child td { border-bottom: none; }
+    .pt tbody td:not(:first-child) { text-align: right; font-variant-numeric: tabular-nums; }
+    .pg-path { font-family: 'Menlo','Consolas',monospace; font-size: 10.5px; color: var(--accent-mid); }
+    .pg-bar-track { height: 3px; background: var(--border-light); border-radius: 2px; margin-top: 4px; overflow: hidden; }
+    .pg-bar-fill { height: 100%; background: var(--accent-mid); border-radius: 2px; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex; align-items: center; padding: 3px 9px;
+      border-radius: 20px; font-size: 10.5px; font-weight: 700; white-space: nowrap;
+    }
+    .badge-red { background: var(--red-bg); color: var(--red); border: 1px solid #FECACA; }
+    .badge-green { background: var(--green-bg); color: var(--green); border: 1px solid #86EFAC; }
+    .badge-orange { background: #FFF7ED; color: #C2410C; border: 1px solid #FDBA74; }
+
+    /* ── Insights ── */
+    .insight-list { display: flex; flex-direction: column; gap: 10px; }
+    .insight {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow); padding: 15px 18px;
+      display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start;
+    }
+    .itag {
+      font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+      padding: 4px 8px; border-radius: 5px; white-space: nowrap; display: inline-block; margin-top: 1px;
+    }
+    .itag-fix   { background: #FEE2E2; color: #991B1B; }
+    .itag-vol   { background: #FEF3C7; color: #92400E; }
+    .itag-sig   { background: #DBEAFE; color: #1D4ED8; }
+    .itag-risk  { background: #FEF9C3; color: #854D0E; }
+    .itag-mob   { background: #F0FDF4; color: #166534; }
+    .itag-ch    { background: #F5F3FF; color: #4C1D95; }
+    .ibody { font-size: 12.5px; color: var(--text-sub); line-height: 1.65; }
+    .ibody strong { color: var(--text); }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 32px; padding: 16px 0; border-top: 1px solid var(--border);
+      font-size: 10.5px; color: var(--text-muted); line-height: 1.7;
+    }
+    .footer strong { color: var(--text-sub); }
+    .footer .live-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: #F0FDF4; border: 1px solid #86EFAC; color: #15803D;
+      padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700;
+      margin-left: 6px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 560px) {
+      .hdr-title { font-size: 16px; }
+      .kpi-val { font-size: 22px; }
+      .funnel-row td { padding: 10px 10px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ HEADER ═══ -->
+<header class="hdr">
+  <div class="hdr-inner">
+    <div>
+      <div class="hdr-eyebrow">hoppa.com &middot; GA4 Property 259261360</div>
+      <div class="hdr-title">Blog banner &rarr; funnel performance</div>
+      <div class="hdr-sub"><code>blog_banner_click</code> &middot; <code>internal_referrer = transfers_banner</code></div>
+      <div class="hdr-pills">
+        <span class="pill pill-live">Tracking live</span>
+        <span class="pill pill-data">30-day window &middot; 6 Jun &ndash; 5 Jul 2026</span>
+        <span class="pill">Pulled live from GA4 &middot; 5 Jul 2026</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ═══ TOP-OF-FUNNEL KPIs ═══ -->
+  <div class="sec-hdr">
+    <span class="sec-title">Top of funnel &mdash; banner engagement (30 days)</span>
+    <span class="sec-note">All blog pages carrying the banner</span>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-lbl">Banner clicks</div>
+      <div class="kpi-val">76</div>
+      <div class="kpi-sub">67 sessions &middot; 65 users</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-lbl">Attributed sessions</div>
+      <div class="kpi-val">62</div>
+      <div class="kpi-sub">internal_referrer = transfers_banner</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-lbl">Pages with banner</div>
+      <div class="kpi-val">15</div>
+      <div class="kpi-sub">unique URLs in 30 days</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-lbl">Mobile share</div>
+      <div class="kpi-val">64%</div>
+      <div class="kpi-sub">43 of 67 sessions</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-lbl">Top channel</div>
+      <div class="kpi-val" style="font-size:20px;">58%</div>
+      <div class="kpi-sub">Organic Search &middot; 39 sessions</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-lbl">Click &rarr; Search rate</div>
+      <div class="kpi-val" style="font-size:20px;">85.5%</div>
+      <div class="kpi-sub">53 of 62 attributed sessions</div>
+    </div>
+  </div>
+
+  <!-- ═══ DATA QUALITY ALERT ═══ -->
+  <div class="alert">
+    <div class="alert-title">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Data-quality finding &mdash; purchase tagging gap confirmed site-wide (live pull)
+    </div>
+    <div class="alert-body">
+      <p>
+        The <code>internal_referrer</code> parameter is passed correctly through <code>begin_checkout</code>. It partially reaches <code>checkout</code> (3 events / 3 sessions attributed, but with reduced fidelity), and it is <strong>completely absent from purchase events site-wide</strong>. This was verified against the full event population for the last 30 days &mdash; not just the banner&rsquo;s traffic:
+      </p>
+      <div class="alert-code">
+checkout events (site-wide, 30d, all traffic):
+  &bull; (not set)           15,923 events / 11,560 sessions
+  &bull; "" (blank)              39 events /     20 sessions
+  &bull; transfers_banner          3 events /      3 sessions   &larr; partial signal only
+
+purchase events (site-wide, 30d, all traffic):
+  &bull; (not set)            9,300 events /  7,377 sessions
+  &bull; "" (blank)              36 events /     14 sessions
+  &bull; transfers_banner     NOT PRESENT &mdash; zero rows returned at this stage
+      </div>
+      <p>
+        <strong>What this means:</strong> The <code>purchase</code> GTM tag does not pass <code>internal_referrer</code> at all, for any traffic source. The 3 checkout sessions attributed to <code>transfers_banner</code> are a partial/inconsistent signal. Zero attributable revenue is a tagging limitation, not evidence that banner traffic didn&rsquo;t convert &mdash; we simply cannot know from GA4 alone until the purchase tag is fixed.
+      </p>
+    </div>
+  </div>
+
+  <!-- ═══ FULL FUNNEL ═══ -->
+  <div class="sec-hdr">
+    <span class="sec-title">Full funnel &mdash; attributed sessions (transfers_banner)</span>
+    <span class="sec-note">Filtered to <code>internal_referrer = transfers_banner</code> at each step</span>
+  </div>
+  <div class="card">
+    <table class="funnel-table">
+      <tbody>
+        <!-- Stage 0 -->
+        <tr class="funnel-row">
+          <td style="width:190px;padding-left:20px;">
+            <div class="f-name">Banner click</div>
+            <div class="f-sub">stage 0 &middot; entry</div>
+          </td>
+          <td class="f-bar-cell">
+            <div class="f-bar-track">
+              <div class="f-bar-fill f-bar-blue" style="width:100%">62 sessions</div>
+            </div>
+          </td>
+          <td class="f-count-cell">
+            <div class="f-count">62</div>
+            <div class="f-rate f-rate-muted">baseline</div>
+          </td>
+        </tr>
+        <!-- Stage 1 -->
+        <tr class="funnel-row">
+          <td style="padding-left:20px;">
+            <div class="f-name">View search results</div>
+            <div class="f-sub">stage 1</div>
+          </td>
+          <td class="f-bar-cell">
+            <div class="f-bar-track">
+              <div class="f-bar-fill f-bar-blue" style="width:85.5%">53 sessions</div>
+            </div>
+          </td>
+          <td class="f-count-cell">
+            <div class="f-count">53</div>
+            <div class="f-rate f-rate-green">85.5% of clicks</div>
+          </td>
+        </tr>
+        <!-- Stage 2 -->
+        <tr class="funnel-row">
+          <td style="padding-left:20px;">
+            <div class="f-name">Begin checkout</div>
+            <div class="f-sub">stage 2</div>
+          </td>
+          <td class="f-bar-cell">
+            <div class="f-bar-track">
+              <div class="f-bar-fill f-bar-blue" style="width:19.4%">12 sessions</div>
+            </div>
+          </td>
+          <td class="f-count-cell">
+            <div class="f-count">12</div>
+            <div class="f-rate f-rate-green">22.6% of search</div>
+          </td>
+        </tr>
+        <!-- Stage 3 — partial signal -->
+        <tr class="funnel-row">
+          <td style="padding-left:20px;">
+            <div class="f-name">Checkout</div>
+            <div class="f-sub">stage 3 &middot; partial signal only</div>
+          </td>
+          <td class="f-bar-cell">
+            <div class="f-bar-track">
+              <div class="f-bar-fill f-bar-teal" style="width:4.8%">3 sessions</div>
+            </div>
+          </td>
+          <td class="f-count-cell">
+            <div class="f-count">3*</div>
+            <div class="f-rate f-rate-red">partial — see alert</div>
+          </td>
+        </tr>
+        <!-- Stage 4 — unattributable -->
+        <tr class="funnel-row">
+          <td style="padding-left:20px;">
+            <div class="f-name">Purchase</div>
+            <div class="f-sub">stage 4 &middot; tag gap at this step</div>
+          </td>
+          <td class="f-bar-cell">
+            <div class="f-bar-track">
+              <div class="f-bar-fill f-bar-stripe" style="width:100%">unattributable</div>
+            </div>
+          </td>
+          <td class="f-count-cell">
+            <div class="f-count">&pound;0*</div>
+            <div class="f-rate f-rate-red">tag absent at purchase</div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="f-footnote">
+      * Checkout: 3 sessions carry <code>transfers_banner</code> but total checkout volume (15,962 non-attributed sessions) suggests significant leakage. Purchase: zero rows for <code>transfers_banner</code> returned site-wide &mdash; the GTM tag does not send the parameter at this step for any traffic. Revenue shown as £0 is a tagging absence, not a confirmed zero.
+    </div>
+  </div>
+
+  <!-- ═══ EXPECTED VS OBSERVED ═══ -->
+  <div class="sec-hdr">
+    <span class="sec-title">Expected vs. observed (modelled)</span>
+    <span class="sec-note">Applying site-wide rates to banner&rsquo;s 12 begin_checkout sessions</span>
+  </div>
+  <div class="card">
+    <table class="dt">
+      <thead>
+        <tr>
+          <th>Step</th>
+          <th>Site-wide rate (30d)</th>
+          <th>Applied to 12 begin_checkout sessions</th>
+          <th>Attributable in GA4</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="font-weight:600;">Begin checkout &rarr; Checkout</td>
+          <td>46.4%</td>
+          <td style="font-weight:600;">&approx; 5.6 sessions expected</td>
+          <td><span class="badge badge-orange">3 (partial signal)</span></td>
+        </tr>
+        <tr>
+          <td style="font-weight:600;">Checkout &rarr; Purchase</td>
+          <td>63.8%</td>
+          <td style="font-weight:600;">&approx; 3.6 purchases expected</td>
+          <td><span class="badge badge-red">0 (tag absent)</span></td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4">
+            At site-average rates, the banner&rsquo;s 12 begin_checkout sessions would generate roughly <strong>3–4 purchases</strong>. We cannot confirm or disprove this from GA4 until the purchase tag is fixed. Rates computed from live GA4 data: 347,877 site sessions; 120,891 reach search (34.75%); 25,045 begin_checkout (20.72% of search); 11,626 checkout (46.4% of begin_checkout); 7,416 purchase (63.8% of checkout); revenue £563,344.32; AOV £76.02.
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- ═══ CHARTS ROW 1 ═══ -->
+  <div class="sec-hdr">
+    <span class="sec-title">Volume &amp; mix</span>
+  </div>
+  <div class="g2">
+    <div class="card card-pad">
+      <div class="chart-title">Daily banner clicks (30 days)</div>
+      <div class="ch-wrap"><canvas id="dailyChart"></canvas></div>
+    </div>
+    <div class="card card-pad">
+      <div class="chart-title">Device split (sessions)</div>
+      <div class="ch-wrap"><canvas id="deviceChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ═══ CHARTS ROW 2 ═══ -->
+  <div class="g2" style="margin-top:12px;">
+    <!-- Page table -->
+    <div class="card card-pad">
+      <div class="chart-title">Clicks by page &mdash; <code>last_internal_page</code> (30 days, grouped by slug)</div>
+      <table class="pt">
+        <thead>
+          <tr><th>Page slug</th><th>Events</th><th>Sessions</th></tr>
+        </thead>
+        <tbody id="pageTableBody"></tbody>
+      </table>
+    </div>
+    <!-- Channel chart -->
+    <div class="card card-pad">
+      <div class="chart-title">Acquisition channel (sessions, 30 days)</div>
+      <div class="ch-wrap-tall"><canvas id="channelChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ═══ BENCHMARK TABLE ═══ -->
+  <div class="sec-hdr">
+    <span class="sec-title">Banner engagement vs. site average</span>
+    <span class="sec-note">Where attribution is intact (click &rarr; begin_checkout)</span>
+  </div>
+  <div class="card">
+    <table class="dt">
+      <thead>
+        <tr>
+          <th>Funnel step</th>
+          <th>Banner traffic</th>
+          <th>Site-wide average</th>
+          <th>Signal</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="font-weight:600;">Session &rarr; View search results</td>
+          <td style="font-weight:700;">85.5%</td>
+          <td>34.7%</td>
+          <td><span class="badge badge-green">~2.5&times; site average</span></td>
+        </tr>
+        <tr>
+          <td style="font-weight:600;">Search &rarr; Begin checkout</td>
+          <td style="font-weight:700;">22.6%</td>
+          <td>20.7%</td>
+          <td><span class="badge badge-green">On par / slightly above</span></td>
+        </tr>
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4">
+            Site-wide baseline (live, 30 days): 347,877 sessions &rarr; 120,891 reach search (34.75%) &rarr; 25,045 begin_checkout (20.72% of search) &rarr; 11,626 checkout (46.42%) &rarr; 7,416 purchase (63.79%) &rarr; £563,344 revenue &middot; £76.02 AOV.
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- ═══ INSIGHTS ═══ -->
+  <div class="sec-hdr">
+    <span class="sec-title">Insights &amp; recommended actions</span>
+  </div>
+  <div class="insight-list">
+
+    <div class="insight">
+      <div><span class="itag itag-fix">Fix first</span></div>
+      <div class="ibody">
+        <strong>The purchase GTM tag does not pass <code>internal_referrer</code> at all</strong> &mdash; confirmed across the full site (zero rows for <code>transfers_banner</code> in 9,336 purchase events, 30 days). The checkout tag passes it partially (3 of 15,962 attributed non-banner checkout sessions carry it). Until both tags are fixed, banner-to-revenue attribution is impossible for this or any future campaign using this parameter.
+      </div>
+    </div>
+
+    <div class="insight">
+      <div><span class="itag itag-sig">Strong signal</span></div>
+      <div class="ibody">
+        Banner sessions convert from click to search at <strong>85.5%</strong> vs. the site average of <strong>34.7%</strong> &mdash; 2.5&times; higher. This is a robust, already-visible signal over 30 days across 62 attributed sessions. Banner clickers are meaningfully higher-intent than the typical blog visitor. This is independent of the tagging issue.
+      </div>
+    </div>
+
+    <div class="insight">
+      <div><span class="itag itag-vol">Volume caveat</span></div>
+      <div class="ibody">
+        Even once the purchase tag is fixed, 12 begin_checkout sessions is thin. At the site&rsquo;s 2.13% overall conversion rate (session to purchase), reliably detecting a signal requires roughly <strong>150&ndash;200 attributed sessions</strong> so that 3&ndash;5+ purchases become statistically likely. Re-evaluate when volume crosses that threshold.
+      </div>
+    </div>
+
+    <div class="insight">
+      <div><span class="itag itag-risk">Concentration risk</span></div>
+      <div class="ibody">
+        The Alicante&rarr;Benidorm page dominates click volume. Over 30 days, 15 unique URLs have triggered the banner but the top page still accounts for a disproportionate share. Results so far are not representative of the banner concept across the site &mdash; treat overall conclusions as provisional until volume spreads to more pages.
+      </div>
+    </div>
+
+    <div class="insight">
+      <div><span class="itag itag-mob">Mobile-majority</span></div>
+      <div class="ibody">
+        64% of banner sessions (43 of 67) are on mobile. Worth a QA pass to confirm the banner renders above the fold, loads quickly, and is easily tappable on small screens, since that&rsquo;s where the bulk of the traffic sits.
+      </div>
+    </div>
+
+    <div class="insight">
+      <div><span class="itag itag-ch">Channel mix</span></div>
+      <div class="ibody">
+        58% of sessions come from Organic Search (39/67), followed by Paid Search (14, 21%). This is a warm, already-engaged audience reading transfer guides &mdash; a strong fit for the banner intent. Paid Search share has grown (5 sessions &rarr; 14 in 30-day window vs. the 7-day reference) &mdash; worth monitoring whether that&rsquo;s expanding to more pages or concentrating on the same ones.
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ═══ FOOTER ═══ -->
+  <div class="footer">
+    <strong>Data source:</strong> GA4 property 259261360 (www.hoppa.com), queried live via GA4 Data API using a service account on 5 Jul 2026.
+    <span class="live-badge">&#9679; Live pull</span>
+    All figures &mdash; top-of-funnel, funnel steps, device, channel, page, and benchmark sections &mdash; are direct GA4 query results with no modelling.
+    The <em>Expected vs. Observed</em> section applies live site-wide conversion rates to the banner&rsquo;s begin_checkout count as a proxy; it is the only section containing derived/modelled numbers.
+    Period: 6 Jun &ndash; 5 Jul 2026 (30 days, ending pull date). Query run: 2026-07-05.
+  </div>
+
+</div><!-- /wrap -->
+
+<script>
+  // ── ALL DATA IS FROM LIVE GA4 PULL (5 Jul 2026, property 259261360) ──────────
+
+  // Q2: Daily trend — 11 days with events (30-day window, sparse)
+  // Full daily data from GA4 (only days with >0 events are returned)
+  // Daily data — live pull 5 Jul 2026 (GA4 Data API, property 259261360)
+  // Note: Jul 2–5 values updated from fresh pull; GA4 reprocesses recent days
+  const DAILY_RAW = [
+    { date: '20260625', eventCount: 4,  sessions: 4 },
+    { date: '20260626', eventCount: 6,  sessions: 6 },
+    { date: '20260627', eventCount: 4,  sessions: 4 },
+    { date: '20260628', eventCount: 10, sessions: 8 },
+    { date: '20260629', eventCount: 10, sessions: 7 },
+    { date: '20260630', eventCount: 5,  sessions: 5 },
+    { date: '20260701', eventCount: 7,  sessions: 7 },
+    { date: '20260702', eventCount: 15, sessions: 13 },
+    { date: '20260703', eventCount: 11, sessions: 9 },
+    { date: '20260704', eventCount: 3,  sessions: 3 },
+    { date: '20260705', eventCount: 1,  sessions: 1 },
+  ]
+
+  // Q3: Pages — grouped by canonical slug (full URLs from GA4, deduplicated by slug)
+  // Raw: 15 URL variants collapsed to canonical slugs by removing query strings/anchors
+  const PAGE_DATA = [
+    { slug: '/en/discover/transportation/alicante-to-benidorm',                      events: 38, sessions: 27 },
+    { slug: '/en/discover/top-picks/best-airport-transfers-tenerife',                events:  9, sessions:  8 },
+    { slug: '/en/discover/top-picks/best-punta-cana-airport-transfers',              events:  7, sessions:  6 },
+    { slug: '/en/discover/transportation/krakow-airport-to-city-centre',             events:  6, sessions:  5 },
+    { slug: '/en/discover/transportation/how-to-get-from-barcelona-airport',         events:  2, sessions:  2 },
+    { slug: '/en/discover/transportation/prague-airport-to-city-centre',             events:  3, sessions:  3 },
+    { slug: '/en/discover/transportation/metlife-stadium-from-nyc',                  events:  2, sessions:  2 },
+    { slug: '/en/discover/top-picks/best-punta-cana-airport-transfers (chatgpt ref)',events:  1, sessions:  1 },
+    { slug: '/en/discover/transportation/alicante-to-benidorm (chatgpt ref)',        events:  1, sessions:  1 },
+  ]
+
+  // Q4: Device split (live)
+  const DEVICE_DATA = [
+    { label: 'Mobile — 43 sessions', sessions: 43 },
+    { label: 'Desktop — 24 sessions', sessions: 24 },
+  ]
+
+  // Q5: Channel split (live, sessions)
+  const CHANNEL_DATA = [
+    { label: 'Organic Search', sessions: 39 },
+    { label: 'Paid Search',    sessions: 14 },
+    { label: 'Direct',         sessions:  3 },
+    { label: 'Referral',       sessions:  3 },
+    { label: 'AI Assistant',   sessions:  2 },
+    { label: 'Paid Other',     sessions:  2 },
+    { label: 'Organic Social', sessions:  1 },
+    { label: 'Display',        sessions:  1 },
+    { label: 'Email',          sessions:  1 },
+    { label: 'Organic Shopping', sessions: 1 },
+  ]
+
+  // ── Page table ──────────────────────────────────────────────────────────────
+  const ptBody = document.getElementById('pageTableBody')
+  const maxE = PAGE_DATA[0].events
+  PAGE_DATA.forEach(row => {
+    const pct = (row.events / maxE * 100).toFixed(1)
+    ptBody.innerHTML += `
+      <tr>
+        <td>
+          <span class="pg-path">${row.slug}</span>
+          <div class="pg-bar-track"><div class="pg-bar-fill" style="width:${pct}%"></div></div>
+        </td>
+        <td>${row.events}</td>
+        <td>${row.sessions}</td>
+      </tr>`
+  })
+
+  // ── Chart.js defaults ────────────────────────────────────────────────────────
+  Chart.defaults.font.family = "'Inter', system-ui, sans-serif"
+  Chart.defaults.color = '#8A9BAD'
+
+  const TOOLTIP = {
+    backgroundColor: '#0F1E2E', titleColor: '#94A3B8',
+    bodyColor: '#fff', padding: 10, cornerRadius: 7,
+  }
+
+  // ── Daily bar chart ──────────────────────────────────────────────────────────
+  // Labels: format YYYYMMDD → "D Mon"
+  function fmtDate(d) {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    return `${parseInt(d.slice(6))} ${months[parseInt(d.slice(4,6))-1]}`
+  }
+
+  new Chart(document.getElementById('dailyChart'), {
+    type: 'bar',
+    data: {
+      labels: DAILY_RAW.map(d => fmtDate(d.date)),
+      datasets: [{
+        label: 'Events',
+        data: DAILY_RAW.map(d => d.eventCount),
+        backgroundColor: '#1A56DB',
+        borderRadius: 4, borderSkipped: false,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: TOOLTIP },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { grid: { color: '#EEF2F7' }, ticks: { stepSize: 2, font: { size: 10 } }, beginAtZero: true },
+      },
+    },
+  })
+
+  // ── Device doughnut ──────────────────────────────────────────────────────────
+  new Chart(document.getElementById('deviceChart'), {
+    type: 'doughnut',
+    data: {
+      labels: DEVICE_DATA.map(d => d.label),
+      datasets: [{
+        data: DEVICE_DATA.map(d => d.sessions),
+        backgroundColor: ['#1A56DB', '#CBD5E1'],
+        borderWidth: 2, borderColor: '#fff',
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '62%',
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: { boxWidth: 12, padding: 14, font: { size: 11, weight: '600' }, color: '#4A5568' },
+        },
+        tooltip: { ...TOOLTIP, titleColor: undefined },
+      },
+    },
+  })
+
+  // ── Channel horizontal bar ───────────────────────────────────────────────────
+  new Chart(document.getElementById('channelChart'), {
+    type: 'bar',
+    data: {
+      labels: CHANNEL_DATA.map(d => d.label),
+      datasets: [{
+        label: 'Sessions',
+        data: CHANNEL_DATA.map(d => d.sessions),
+        backgroundColor: '#0D9488',
+        borderRadius: 3, borderSkipped: false,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: TOOLTIP },
+      scales: {
+        x: { grid: { color: '#EEF2F7' }, ticks: { font: { size: 10 }, stepSize: 5 }, beginAtZero: true },
+        y: { grid: { display: false }, ticks: { font: { size: 10 } } },
+      },
+    },
+  })
+</script>
+</body>
+</html>

@@ -16,9 +16,10 @@ const EV = `\`${BQ_PROJECT}.${BQ_DATASET}.events_daily\``
 // Funnel event names — single source of truth used in every events_daily query
 const FUNNEL_EVENTS = `'view_search_results','form_submit','begin_checkout','purchase','payment_failure'`
 
-// Pages handled by BigQuery; ai-overview is still served by GA4
+// Pages handled by BigQuery; ai-overview and blog-banner-funnel are served by GA4
 const BQ_PAGES  = new Set(['executive','traffic','commercial','scorecard','funnel','destinations','filter-options','llm','llm-pages'])
-const ALL_PAGES = new Set([...BQ_PAGES, 'ai-overview'])
+const GA4_PAGES = new Set(['ai-overview', 'blog-banner-funnel'])
+const ALL_PAGES = new Set([...BQ_PAGES, ...GA4_PAGES])
 
 // ─── New env var required in Supabase dashboard ───────────────────────────────
 // BIGQUERY_SERVICE_ACCOUNT_JSON — same service account as GA4_SERVICE_ACCOUNT_JSON
@@ -283,6 +284,10 @@ function buildCacheKey(page: string, propertyId: string, dateRanges: any[], filt
     a: [...(filters?.affiliateFilter ?? [])].sort(),
     c: [...(filters?.countryFilter   ?? [])].sort(),
     d: [...(filters?.deviceFilter    ?? [])].sort(),
+    // queryType MUST be included so different query types never share a cache entry.
+    // Without this, all blog-banner-funnel queryTypes collide on the same key and
+    // the first result is returned for all subsequent queryTypes (cache poisoning).
+    q: filters?.queryType ?? '',
   }
   const dateKey = dateRanges.map((r: any) => `${r.startDate}_${r.endDate}`).join(':')
   return `${page}:${propertyId}:${dateKey}:${JSON.stringify(canonical)}`
@@ -859,7 +864,109 @@ async function executeBQPage(
   }
 }
 
-// ─── GA4 request builder (ai-overview only — unchanged from original) ─────────
+// ─── GA4 request builder — blog-banner-funnel ────────────────────────────────
+//
+// Builds GA4 batchRunReports requests for the blog_banner_click funnel.
+// queryType:'all' returns all 9 reports in one call (preferred — avoids cache
+// collision when 5 separate calls share the same cache key).
+//
+// Report slot order for 'all':
+//   [0]  funnel — blog_banner_click  (sessions, eventCount)
+//   [1]  funnel — view_search_results
+//   [2]  funnel — begin_checkout
+//   [3]  funnel — checkout
+//   [4]  funnel — purchase
+//   [5]  daily  — date × eventCount × sessions
+//   [6]  pages  — last_internal_page × eventCount × sessions
+//   [7]  channels — sessionDefaultChannelGroup × sessions
+//   [8]  devices  — deviceCategory × sessions
+
+const BANNER_FILTER = {
+  filter: {
+    fieldName: 'customEvent:internal_referrer',
+    stringFilter: { matchType: 'EXACT', value: 'transfers_banner' },
+  },
+}
+
+function buildBannerFunnelRequests(dateRanges: object[], filters: any): object[] {
+  const queryType: string = filters?.queryType ?? 'all'
+  const dr = [dateRanges[0]]
+
+  const eventFilter = (eventName: string) => ({
+    andGroup: {
+      expressions: [
+        { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: eventName } } },
+        BANNER_FILTER,
+      ],
+    },
+  })
+
+  const funnelRequests = ['blog_banner_click', 'view_search_results', 'begin_checkout', 'checkout', 'purchase']
+    .map(eventName => ({
+      dateRanges: dr,
+      dimensions: [{ name: 'eventName' }],
+      metrics: [{ name: 'sessions' }, { name: 'eventCount' }],
+      dimensionFilter: eventFilter(eventName),
+      keepEmptyRows: false,
+      limit: 1,
+    }))
+
+  const dailyRequest = {
+    dateRanges: dr,
+    dimensions: [{ name: 'date' }],
+    metrics: [{ name: 'eventCount' }, { name: 'sessions' }],
+    dimensionFilter: eventFilter('blog_banner_click'),
+    orderBys: [{ dimension: { dimensionName: 'date' } }],
+    keepEmptyRows: false,
+    limit: 500,
+  }
+
+  const pagesRequest = {
+    dateRanges: dr,
+    dimensions: [{ name: 'customEvent:last_internal_page' }],
+    metrics: [{ name: 'eventCount' }, { name: 'sessions' }],
+    dimensionFilter: eventFilter('blog_banner_click'),
+    orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+    keepEmptyRows: false,
+    limit: 100,
+  }
+
+  const channelsRequest = {
+    dateRanges: dr,
+    dimensions: [{ name: 'sessionDefaultChannelGroup' }],
+    metrics: [{ name: 'sessions' }],
+    dimensionFilter: eventFilter('blog_banner_click'),
+    orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+    keepEmptyRows: false,
+    limit: 50,
+  }
+
+  const devicesRequest = {
+    dateRanges: dr,
+    dimensions: [{ name: 'deviceCategory' }],
+    metrics: [{ name: 'sessions' }],
+    dimensionFilter: eventFilter('blog_banner_click'),
+    orderBys: [{ metric: { metricName: 'sessions' }, desc: true }],
+    keepEmptyRows: false,
+    limit: 10,
+  }
+
+  // 'all' — single call, 9 reports, slots [0-4]=funnel, [5]=daily, [6]=pages, [7]=channels, [8]=devices
+  if (queryType === 'all') {
+    return [...funnelRequests, dailyRequest, pagesRequest, channelsRequest, devicesRequest]
+  }
+
+  // Individual queryTypes kept for backward-compat / debugging
+  if (queryType === 'funnel')   return funnelRequests
+  if (queryType === 'daily')    return [dailyRequest]
+  if (queryType === 'pages')    return [pagesRequest]
+  if (queryType === 'channels') return [channelsRequest]
+  if (queryType === 'devices')  return [devicesRequest]
+
+  throw new Error(`Unknown blog-banner-funnel queryType: '${queryType}'`)
+}
+
+// ─── GA4 request builder (ai-overview — unchanged) ────────────────────────────
 function buildAiOverviewRequests(dateRanges: object[], filters: any): object[] {
   const deviceValues: string[] = Array.isArray(filters?.deviceFilter)
     ? filters.deviceFilter
@@ -964,11 +1071,13 @@ async function fetchAndCache(
     // BigQuery path — all affiliate/LLM dashboard pages
     const token = await getBQToken(bqSaJson)
     allReports  = await executeBQPage(page, dateRanges, filters, token)
-  } else if (page === 'ai-overview') {
-    // GA4 path — ai-overview remains on GA4 (separate workstream)
-    if (!ga4SaJson) throw new Error('GA4_SERVICE_ACCOUNT_JSON not configured for ai-overview')
-    const requests = buildAiOverviewRequests(dateRanges, filters)
-    if (!requests.length) throw new Error(`Unknown ai-overview queryType: '${filters?.queryType}'`)
+  } else if (GA4_PAGES.has(page)) {
+    // GA4 Data API path — ai-overview and blog-banner-funnel
+    if (!ga4SaJson) throw new Error('GA4_SERVICE_ACCOUNT_JSON not configured for GA4 pages')
+    const requests = page === 'ai-overview'
+      ? buildAiOverviewRequests(dateRanges, filters)
+      : buildBannerFunnelRequests(dateRanges, filters)
+    if (!requests.length) throw new Error(`No requests built for page '${page}' queryType '${filters?.queryType}'`)
     const accessToken = await getGA4Token(ga4SaJson)
     const BATCH_LIMIT = 5
     allReports = []

@@ -14,6 +14,7 @@ const LLM_NAV_ITEMS = [
   { to: '/llm', label: 'LLM Intelligence', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" opacity=".8"/><path d="M5.5 6.5 Q8 4 10.5 6.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".9"/><circle cx="6" cy="8" r="1" fill="currentColor" opacity=".8"/><circle cx="10" cy="8" r="1" fill="currentColor" opacity=".8"/><path d="M8 12 L8 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".6"/><path d="M6 14 L10 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".4"/></svg> },
   { to: '/llm-deep-dive', label: 'LLM Deep Dive', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="2" rx="1" fill="currentColor" opacity=".8"/><rect x="1" y="7" width="14" height="2" rx="1" fill="currentColor" opacity=".5"/><rect x="1" y="11" width="14" height="2" rx="1" fill="currentColor" opacity=".3"/><rect x="11" y="1" width="4" height="14" rx="1" fill="currentColor" opacity=".12"/></svg> },
   { to: '/ai-overview', label: 'AI Overview Click Events', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="3" stroke="currentColor" strokeWidth="1.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".6"/><path d="M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M11.1 4.9l1.4-1.4M3.5 12.5l1.4-1.4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".4"/></svg> },
+  { to: '/blog-banner-funnel', label: 'Blog Banner Funnel', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v2.5L9.5 9v4.5l-3-1.5V9L2 5.5V3z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" opacity=".8"/><path d="M2 3h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity=".4"/></svg> },
 ]
 
 const REPORT109_NAV_ITEMS = [
@@ -25,7 +26,7 @@ const DEST_NAV_ITEMS = []
 export default function Sidebar() {
   const { user, signOut } = useAuth()
   const location = useLocation()
-  const isLLM         = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview')
+  const isLLM         = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview') || location.pathname.startsWith('/blog-banner-funnel')
   const isReport109   = location.pathname.startsWith('/report-109')
   const isDestAnalysis = location.pathname.startsWith('/destination-analysis')
   const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : AFFILIATE_NAV_ITEMS

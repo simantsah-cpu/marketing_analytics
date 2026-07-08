@@ -20,6 +20,7 @@ import DestinationIntelligence from './pages/DestinationIntelligence'
 import LLMIntelligence from './pages/LLMIntelligence'
 import LLMDeepDive from './pages/LLMDeepDive'
 import AiOverviewPage from './pages/AiOverviewPage'
+import BlogBannerFunnel from './pages/BlogBannerFunnel'
 import Report109 from './pages/Report109'
 import DestinationAnalysis from './pages/DestinationAnalysis'
 
@@ -70,7 +71,7 @@ function ProtectedLayout() {
 function SectionToggle() {
   const location = useLocation()
   const navigate = useNavigate()
-  const isLLM = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview')
+  const isLLM = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview') || location.pathname.startsWith('/blog-banner-funnel')
   const isReport109 = location.pathname.startsWith('/report-109')
   const isDestAnalysis = location.pathname.startsWith('/destination-analysis')
   const { properties, selectedProperty, switchProperty } = useProperty()
@@ -207,6 +208,7 @@ function DashboardShell({ onQueryOpen }) {
             <Route path="/llm" element={<LLMIntelligence />} />
             <Route path="/llm-deep-dive" element={<LLMDeepDive />} />
             <Route path="/ai-overview" element={<AiOverviewPage />} />
+            <Route path="/blog-banner-funnel" element={<BlogBannerFunnel />} />
             <Route path="/report-109" element={<Report109 />} />
             <Route path="/destination-analysis" element={<DestinationAnalysis />} />
           </Routes>

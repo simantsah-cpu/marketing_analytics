@@ -22,7 +22,7 @@ export default function FilterBar() {
   const { filters, actions } = useFilters()
   const { selectedProperty } = useProperty()
   const { pathname } = useLocation()
-  const isLLMPage      = pathname.startsWith('/llm') || pathname.startsWith('/ai-overview')
+  const isLLMPage      = pathname.startsWith('/llm') || pathname.startsWith('/ai-overview') || pathname.startsWith('/blog-banner-funnel')
   const isReport109    = pathname.startsWith('/report-109')
   const isDestAnalysis = pathname.startsWith('/destination-analysis')
 
@@ -66,31 +66,33 @@ export default function FilterBar() {
       {/* Date Range */}
       <DateRangePicker filters={filters} actions={actions} />
 
-      {/* Comparison pill toggle */}
-      <div style={{
-        display: 'flex', alignItems: 'center',
-        background: 'var(--bg)', border: '1px solid var(--border)',
-        borderRadius: 6, padding: 2, gap: 1,
-      }}>
-        {COMPARISON_PILLS.map(({ value, label }) => {
-          const active = filters.comparison === value
-          return (
-            <button
-              key={value}
-              onClick={() => actions.setComparison(value)}
-              style={{
-                padding: '4px 10px', border: 'none', borderRadius: 4,
-                background: active ? (value === 'off' ? 'var(--navy)' : 'var(--blue)') : 'transparent',
-                color: active ? '#fff' : 'var(--subtext)',
-                fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
-                cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap',
-              }}
-            >
-              {label}
-            </button>
-          )
-        })}
-      </div>
+      {/* Comparison pill toggle — hidden on LLM / blog-banner-funnel pages */}
+      {!isLLMPage && (
+        <div style={{
+          display: 'flex', alignItems: 'center',
+          background: 'var(--bg)', border: '1px solid var(--border)',
+          borderRadius: 6, padding: 2, gap: 1,
+        }}>
+          {COMPARISON_PILLS.map(({ value, label }) => {
+            const active = filters.comparison === value
+            return (
+              <button
+                key={value}
+                onClick={() => actions.setComparison(value)}
+                style={{
+                  padding: '4px 10px', border: 'none', borderRadius: 4,
+                  background: active ? (value === 'off' ? 'var(--navy)' : 'var(--blue)') : 'transparent',
+                  color: active ? '#fff' : 'var(--subtext)',
+                  fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                  cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap',
+                }}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Separator + Group By — hidden on /llm, /report-109, /destination-analysis */}
       {!isLLMPage && !isReport109 && !isDestAnalysis && <SEP />}
