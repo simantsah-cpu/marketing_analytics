@@ -776,7 +776,7 @@ export default function BlogBannerFunnel() {
         {/* Events / sessions / users */}
         <div className="chart-card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)' }}>
-            <div className="chart-title">Banner click events</div>
+            <div className="chart-title">Clicks by new vs. returning users</div>
           </div>
           <div className="data-table-container" style={{ border: 'none', margin: 0, borderRadius: 0 }}>
             <table className="data-table" style={{ minWidth: 0 }}>
@@ -817,7 +817,7 @@ export default function BlogBannerFunnel() {
         {/* begin_checkout conversion */}
         <div className="chart-card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '16px 20px 12px', borderBottom: '1px solid var(--border)' }}>
-            <div className="chart-title">Begin_checkout rate, banner-labelled sessions</div>
+            <div className="chart-title">Checkout intent rate by user type</div>
           </div>
           <div className="data-table-container" style={{ border: 'none', margin: 0, borderRadius: 0 }}>
             <table className="data-table" style={{ minWidth: 0 }}>
