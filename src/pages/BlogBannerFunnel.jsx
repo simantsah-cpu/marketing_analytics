@@ -190,6 +190,39 @@ function Note({ children }) {
   )
 }
 
+// ─── Sortable table helpers ────────────────────────────────────────────────────
+
+function useSortState(defaultCol, defaultDir = 'desc') {
+  const [sortCol, setSortCol] = useState(defaultCol)
+  const [sortDir, setSortDir] = useState(defaultDir)
+  const toggle = col => {
+    if (col === sortCol) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('desc') }
+  }
+  const sort = (rows, getters) => [...rows].sort((a, b) => {
+    const va = getters[sortCol]?.(a) ?? 0
+    const vb = getters[sortCol]?.(b) ?? 0
+    const cmp = typeof va === 'string' ? va.localeCompare(vb) : va - vb
+    return sortDir === 'asc' ? cmp : -cmp
+  })
+  return { sortCol, sortDir, toggle, sort }
+}
+
+function STh({ col, label, sc, sd, onSort, style = {} }) {
+  const active = sc === col
+  return (
+    <th
+      onClick={() => onSort(col)}
+      style={{ cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap', ...style }}
+    >
+      {label}
+      <span style={{ marginLeft: 4, fontSize: 9, opacity: active ? 1 : 0.25, color: active ? 'var(--blue)' : 'inherit' }}>
+        {active ? (sd === 'asc' ? '▲' : '▼') : '⬍'}
+      </span>
+    </th>
+  )
+}
+
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
 export default function BlogBannerFunnel() {
@@ -199,6 +232,13 @@ export default function BlogBannerFunnel() {
   const [error, setError]            = useState(null)
   const [refreshed, setRefreshed]    = useState(null)
   const [clickGranularity, setClickGranularity] = useState('day')
+
+  // Per-table sort states
+  const ctrSort     = useSortState('ctr',     'desc')
+  const srcMedSort  = useSortState('sessions','desc')
+  const geoSort     = useSortState('sessions','desc')
+  const originSort  = useSortState('sessions','desc')
+  const midSort     = useSortState('sessions','desc')
 
   const startDate = filters.dateRanges?.primary?.startDate ?? '2026-06-25'
   const endDate   = filters.dateRanges?.primary?.endDate   ?? 'today'
@@ -486,14 +526,19 @@ export default function BlogBannerFunnel() {
             <table className="data-table" style={{ minWidth: 0 }}>
               <thead>
                 <tr>
-                  <th>Page</th>
-                  <th style={{ textAlign: 'right' }}>Sessions</th>
-                  <th style={{ textAlign: 'right' }}>Clicked</th>
-                  <th style={{ textAlign: 'right' }}>CTR</th>
+                  <STh col="short" label="Page"     sc={ctrSort.sortCol} sd={ctrSort.sortDir} onSort={ctrSort.toggle} />
+                  <STh col="allSessions" label="Sessions" sc={ctrSort.sortCol} sd={ctrSort.sortDir} onSort={ctrSort.toggle} style={{ textAlign: 'right' }} />
+                  <STh col="clicked"     label="Clicked"  sc={ctrSort.sortCol} sd={ctrSort.sortDir} onSort={ctrSort.toggle} style={{ textAlign: 'right' }} />
+                  <STh col="ctr"         label="CTR"      sc={ctrSort.sortCol} sd={ctrSort.sortDir} onSort={ctrSort.toggle} style={{ textAlign: 'right' }} />
                 </tr>
               </thead>
               <tbody>
-                {ctrRows.map(r => (
+                {ctrSort.sort(ctrRows, {
+                  short:       r => r.short,
+                  allSessions: r => r.allSessions,
+                  clicked:     r => r.clicked,
+                  ctr:         r => r.ctr,
+                }).map(r => (
                   <tr key={r.path}>
                     <td>
                       <a href={`https://www.hoppa.com${r.path}`} target="_blank" rel="noreferrer" className="bb-link">
@@ -684,14 +729,19 @@ export default function BlogBannerFunnel() {
             <table className="data-table" style={{ minWidth: 0 }}>
               <thead>
                 <tr>
-                  <th>Source</th>
-                  <th>Medium</th>
-                  <th style={{ textAlign: 'right' }}>Events</th>
-                  <th style={{ textAlign: 'right' }}>Sessions</th>
+                  <STh col="sessionSource" label="Source"  sc={srcMedSort.sortCol} sd={srcMedSort.sortDir} onSort={srcMedSort.toggle} />
+                  <STh col="sessionMedium" label="Medium"  sc={srcMedSort.sortCol} sd={srcMedSort.sortDir} onSort={srcMedSort.toggle} />
+                  <STh col="eventCount"    label="Events"  sc={srcMedSort.sortCol} sd={srcMedSort.sortDir} onSort={srcMedSort.toggle} style={{ textAlign: 'right' }} />
+                  <STh col="sessions"      label="Sessions" sc={srcMedSort.sortCol} sd={srcMedSort.sortDir} onSort={srcMedSort.toggle} style={{ textAlign: 'right' }} />
                 </tr>
               </thead>
               <tbody>
-                {srcMedData.map((r, i) => {
+                {srcMedSort.sort(srcMedData, {
+                  sessionSource: r => r.sessionSource ?? '',
+                  sessionMedium: r => r.sessionMedium ?? '',
+                  eventCount:    r => n(r.eventCount),
+                  sessions:      r => n(r.sessions),
+                }).map((r, i) => {
                   const isQA = r.sessionSource === 'tagassistant.google.com'
                   const isAI = r.sessionMedium === 'ai-assistant' || ['chatgpt','perplexity','gemini','copilot'].some(s => r.sessionSource?.includes(s))
                   return (
@@ -813,27 +863,23 @@ export default function BlogBannerFunnel() {
             <table className="data-table" style={{ minWidth: 0 }}>
               <thead>
                 <tr>
-                  <th>Origin</th>
-                  <th style={{ textAlign: 'right' }}>Sessions</th>
-                  <th style={{ textAlign: 'right' }}>% of clicks</th>
+                  <STh col="origin"  label="Origin"     sc={originSort.sortCol} sd={originSort.sortDir} onSort={originSort.toggle} />
+                  <STh col="sessions" label="Sessions"  sc={originSort.sortCol} sd={originSort.sortDir} onSort={originSort.toggle} style={{ textAlign: 'right' }} />
+                  <STh col="pct"     label="% of clicks" sc={originSort.sortCol} sd={originSort.sortDir} onSort={originSort.toggle} style={{ textAlign: 'right' }} />
                 </tr>
               </thead>
               <tbody>
-                <tr>
-                  <td>Landed directly on blog page with the banner</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{directSess}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pct(directSess, landingTotal)}</td>
-                </tr>
-                <tr>
-                  <td>Landed elsewhere, navigated to blog page mid-session</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{midSess}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pct(midSess, landingTotal)}</td>
-                </tr>
-                <tr>
-                  <td>Landing page (not set)</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{notSetSess}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pct(notSetSess, landingTotal)}</td>
-                </tr>
+                {originSort.sort([
+                  { origin: 'Landed directly on blog page with the banner',       sessions: directSess, pct: directSess / (landingTotal || 1) },
+                  { origin: 'Landed elsewhere, navigated to blog page mid-session', sessions: midSess,    pct: midSess    / (landingTotal || 1) },
+                  { origin: 'Landing page (not set)',                               sessions: notSetSess, pct: notSetSess  / (landingTotal || 1) },
+                ], { origin: r => r.origin, sessions: r => r.sessions, pct: r => r.pct }).map(row => (
+                  <tr key={row.origin}>
+                    <td>{row.origin}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{row.sessions}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pct(row.sessions, landingTotal)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -846,12 +892,15 @@ export default function BlogBannerFunnel() {
                 <table className="data-table" style={{ minWidth: 0 }}>
                   <thead>
                     <tr>
-                      <th>Landing page</th>
-                      <th style={{ textAlign: 'right' }}>Sessions</th>
+                      <STh col="path"     label="Landing page" sc={midSort.sortCol} sd={midSort.sortDir} onSort={midSort.toggle} />
+                      <STh col="sessions" label="Sessions"     sc={midSort.sortCol} sd={midSort.sortDir} onSort={midSort.toggle} style={{ textAlign: 'right' }} />
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(midPages).sort((a,b) => b[1] - a[1]).map(([path, sess]) => (
+                    {midSort.sort(Object.entries(midPages).map(([path,sess]) => ({ path, sessions: sess })), {
+                      path:     r => r.path,
+                      sessions: r => r.sessions,
+                    }).map(({ path, sessions: sess }) => (
                       <tr key={path}>
                         <td>
                           {path.includes('gtm_debug')
@@ -882,12 +931,15 @@ export default function BlogBannerFunnel() {
             <table className="data-table" style={{ minWidth: 0 }}>
               <thead>
                 <tr>
-                  <th>Country</th>
-                  <th style={{ textAlign: 'right' }}>Sessions</th>
+                  <STh col="country"  label="Country"  sc={geoSort.sortCol} sd={geoSort.sortDir} onSort={geoSort.toggle} />
+                  <STh col="sessions" label="Sessions" sc={geoSort.sortCol} sd={geoSort.sortDir} onSort={geoSort.toggle} style={{ textAlign: 'right' }} />
                 </tr>
               </thead>
               <tbody>
-                {geoTop.map((r, i) => (
+                {geoSort.sort(geoTop, {
+                  country:  r => r.country,
+                  sessions: r => n(r.sessions),
+                }).map((r, i) => (
                   <tr key={i}>
                     <td>{r.country}</td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{n(r.sessions)}</td>
