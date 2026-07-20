@@ -20,8 +20,8 @@ import {
   fetchAiOverviewTrend,
   fetchAiOverviewDeviceSplit,
   fetchAiOverviewCommerce,
-  fetchAiOverviewCountries,
 } from '../../services/data-service'
+import { useFilters } from '../../context/FiltersContext'
 import {
   processKpisData,
   processTrendData,
@@ -73,121 +73,6 @@ function OrbitErrorBanner({ message, onRetry }) {
   )
 }
 
-// ─── Country filter dropdown ─────────────────────────────────────────────────────
-function CountryFilter({ options, selected, onChange }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef(null)
-
-  // Close on outside click
-  useEffect(() => {
-    function handleClick(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [])
-
-  const toggleCountry = (country) => {
-    onChange(
-      selected.includes(country)
-        ? selected.filter(c => c !== country)
-        : [...selected, country]
-    )
-  }
-
-  const label = selected.length === 0
-    ? 'All Countries'
-    : selected.length === 1
-      ? selected[0]
-      : `${selected.length} Countries`
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '5px 12px',
-          border: `1px solid ${selected.length > 0 ? '#0F5FA6' : '#E2E8F0'}`,
-          borderRadius: 20,
-          background: selected.length > 0 ? '#0F5FA6' : '#fff',
-          color: selected.length > 0 ? '#fff' : '#5A6A7A',
-          fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
-          cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap',
-          boxShadow: selected.length > 0 ? '0 2px 6px rgba(15,95,166,0.25)' : 'none',
-        }}
-      >
-        🌍 {label}
-        <span style={{ fontSize: 9, opacity: 0.7 }}>{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', left: 0,
-          background: '#fff',
-          border: '1px solid #E2E8F0',
-          borderRadius: 10,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-          zIndex: 999,
-          minWidth: 220, maxWidth: 280,
-          maxHeight: 320, overflowY: 'auto',
-          padding: '6px 0',
-        }}>
-          {/* Clear all */}
-          {selected.length > 0 && (
-            <button
-              onClick={() => { onChange([]); setOpen(false) }}
-              style={{
-                display: 'block', width: '100%', textAlign: 'left',
-                padding: '6px 14px', border: 'none', background: 'none',
-                color: '#D97706', fontSize: 11, fontWeight: 700,
-                fontFamily: 'inherit', cursor: 'pointer',
-                borderBottom: '1px solid #F1F5F9', marginBottom: 4,
-              }}
-            >
-              × Clear selection
-            </button>
-          )}
-
-          {options.map(({ country, eventCount }) => {
-            const isSelected = selected.includes(country)
-            return (
-              <button
-                key={country}
-                onClick={() => toggleCountry(country)}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  width: '100%', padding: '6px 14px',
-                  border: 'none', background: isSelected ? '#EFF6FF' : 'none',
-                  color: isSelected ? '#0F5FA6' : '#0A2540',
-                  fontSize: 11, fontWeight: isSelected ? 700 : 500,
-                  fontFamily: 'inherit', cursor: 'pointer',
-                  textAlign: 'left', gap: 8,
-                  transition: 'background 0.1s',
-                }}
-              >
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{
-                    width: 12, height: 12, borderRadius: 3, flexShrink: 0,
-                    border: `1.5px solid ${isSelected ? '#0F5FA6' : '#CBD5E1'}`,
-                    background: isSelected ? '#0F5FA6' : 'transparent',
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {isSelected && <span style={{ color: '#fff', fontSize: 8, lineHeight: 1 }}>✓</span>}
-                  </span>
-                  {country}
-                </span>
-                <span style={{ fontSize: 10, color: '#94A3B8', flexShrink: 0 }}>
-                  {eventCount.toLocaleString()}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─── Main section ─────────────────────────────────────────────────────────────
 
@@ -209,9 +94,10 @@ export default function AiOverviewSection({
   const [commerceRows, setCommerceRows] = useState([])   // landingPage-level organic purchase data
   const [gran, setGran]               = useState('Week')
   const [category, setCategory]       = useState('All')
-  // Country filter — populated from GA4 country_kpis query
-  const [countryOptions, setCountryOptions] = useState([])   // [{ country, eventCount }]
-  const [countryFilter, setCountryFilter]   = useState([])   // [] = All countries
+
+  // Read countryFilter from FiltersContext (set by FilterBar's country dropdown)
+  const { filters: globalFilters } = useFilters()
+  const countryFilter = globalFilters?.countryFilter ?? []
 
   const fetchAll = useCallback(async () => {
     if (!dateRange?.startDate || !propertyId) return
@@ -245,24 +131,6 @@ export default function AiOverviewSection({
       setLoading(false)
     }
   }, [propertyId, dateRange, comparisonMode, comparisonDateRange, deviceFilter, countryFilter])
-
-  // Fetch country options once per dateRange change (independent of countryFilter)
-  useEffect(() => {
-    if (!propertyId || !dateRange?.startDate) return
-    fetchAiOverviewCountries(propertyId, dateRange)
-      .then(rows => setCountryOptions(rows ?? []))
-      .catch(() => setCountryOptions([]))
-  }, [propertyId, dateRange])
-
-  // Reset country filter when date range changes
-  const prevDateRangeKey = useRef(null)
-  useEffect(() => {
-    const key = `${dateRange?.startDate}|${dateRange?.endDate}`
-    if (prevDateRangeKey.current && prevDateRangeKey.current !== key) {
-      setCountryFilter([])
-    }
-    prevDateRangeKey.current = key
-  }, [dateRange])
 
   // Trigger fetch on mount and whenever filters change
   useEffect(() => { fetchAll() }, [fetchAll])
@@ -412,24 +280,8 @@ export default function AiOverviewSection({
   return (
     <div>
 
-      {/* ── Country filter + Category filter pills row ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
-
-        {/* Country multiselect dropdown */}
-        {countryOptions.length > 0 && (
-          <CountryFilter
-            options={countryOptions}
-            selected={countryFilter}
-            onChange={setCountryFilter}
-          />
-        )}
-
-        {/* Separator if both shown */}
-        {countryOptions.length > 0 && (
-          <div style={{ width: 1, height: 20, background: '#E2E8F0', flexShrink: 0 }} />
-        )}
-
-        {/* Category pills */}
+      {/* ── Category filter pills — above KPIs, filters entire dashboard ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
         {['All', ...Object.keys(CATEGORY_COLORS)]
           .filter(c => c === 'All' || availableCategories.has(c))
           .map(cat => {
