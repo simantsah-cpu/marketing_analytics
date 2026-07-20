@@ -387,9 +387,16 @@ export default function BlogBannerFunnel() {
   const devVals     = devFiltered.map(r => n(r.sessions))
   const devColors   = devFiltered.map(r => r.deviceCategory === 'mobile' ? BLUE : r.deviceCategory === 'desktop' ? '#64748B' : TEAL)
 
-  // Channel chart
-  const chanLabels  = channelData.map(r => r.sessionDefaultChannelGroup)
-  const chanVals    = channelData.map(r => n(r.sessions))
+  // Channel chart — collapse small channels into "Other" to avoid clutter
+  const CHAN_THRESHOLD = 4  // sessions; channels below this are grouped
+  const chanMain  = channelData.filter(r => n(r.sessions) >= CHAN_THRESHOLD)
+  const chanOther = channelData.filter(r => n(r.sessions) <  CHAN_THRESHOLD)
+  const chanOtherTotal = chanOther.reduce((s, r) => s + n(r.sessions), 0)
+  const chanDisplayData = chanOtherTotal > 0
+    ? [...chanMain, { sessionDefaultChannelGroup: `Other (${chanOther.length} channels)`, sessions: chanOtherTotal }]
+    : chanMain
+  const chanLabels = chanDisplayData.map(r => r.sessionDefaultChannelGroup)
+  const chanVals   = chanDisplayData.map(r => n(r.sessions))
 
   // New vs Returning
   const newRow = newRetData.find(r => r.newVsReturning === 'new') ?? {}
@@ -686,15 +693,15 @@ export default function BlogBannerFunnel() {
 
       <div className="chart-row chart-row-full" style={{ marginBottom: 24 }}>
         <ChartCard title="Channel split (sessions)" tag="CHANNEL">
-          <div style={{ height: 280 }}>
+          <div style={{ height: Math.max(160, chanDisplayData.length * 34) }}>
             <Bar
               data={{
                 labels: chanLabels,
-                datasets: [{ data: chanVals, backgroundColor: TEAL, borderRadius: 4, barThickness: 18 }],
+                datasets: [{ data: chanVals, backgroundColor: TEAL, borderRadius: 4, barThickness: 20 }],
               }}
               options={{
                 ...baseBarOpts('y'),
-                layout: { padding: { right: 48 } },
+                layout: { padding: { right: 52 } },
                 plugins: {
                   legend: { display: false },
                   tooltip: { callbacks: { label: ctx => ` ${ctx.raw} sessions` } },
@@ -715,7 +722,7 @@ export default function BlogBannerFunnel() {
               }}
             />
           </div>
-          <Note>Sessions by GA4’s default channel grouping for the session containing the banner click. Reflects how users originally arrived at the site, not how they navigated to the banner page.</Note>
+          <Note>Sessions by GA4’s default channel grouping for the session containing the banner click. Reflects how users originally arrived at the site, not how they navigated to the banner page. Channels with fewer than {CHAN_THRESHOLD} sessions are grouped into "Other".</Note>
         </ChartCard>
       </div>
 
@@ -1008,7 +1015,7 @@ export default function BlogBannerFunnel() {
               { name: 'View search results', sessions: fSearchSess, pct: fSearchSess / fMax,                 sub: pct(fSearchSess, fBannerSess) + ' of clicks', partial: false },
               { name: 'Begin checkout',      sessions: fBeginSess,  pct: fBeginSess  / fMax,                 sub: pct(fBeginSess,  fSearchSess) + ' of search', partial: false },
               { name: 'Checkout',            sessions: fCheckSess,  pct: fCheckSess  / fMax,                 sub: pct(fCheckSess,  fBeginSess)  + ' of begin_checkout', partial: true },
-              { name: 'Purchase',            sessions: fPurchSess,  pct: fPurchSess  / fMax,                 sub: fPurchSess ? pct(fPurchSess, fCheckSess) + ' of checkout' : 'tag not passing internal_referrer', partial: true },
+              { name: 'Purchase',            sessions: fPurchSess,  pct: fPurchSess  / fMax,                 sub: fPurchSess ? pct(fPurchSess, fCheckSess) + ' of checkout' : '', partial: true },
             ].map((row, i) => (
               <div key={i} className="funnel-step">
                 <div className="funnel-label">{row.name}</div>
