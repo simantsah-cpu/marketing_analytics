@@ -144,7 +144,8 @@ function normaliseReport(report: any): object[] {
 function buildRequests(
   dateRanges: object[],
   queryType: string,
-  deviceFilter: string[]
+  deviceFilter: string[],
+  countryFilter: string[] = []
 ) {
   // Mandatory filter: include ONLY rows where the dimension has a real snippet value.
   // FULL_REGEXP '.+' matches any non-empty string, which excludes both:
@@ -185,10 +186,31 @@ function buildRequests(
           },
         }
 
-  // Combine: MUST match regexp AND MUST NOT be "(not set)" AND (optionally) device
-  const buildFilter = (includeDevice: boolean) => {
+  // Optional country filter
+  // GA4 dimension name: 'country' (full name, e.g. "United Kingdom", "United States")
+  // country is a session-scoped dimension — safe to use as a filter in all query types
+  const cntFilter =
+    countryFilter.length === 0
+      ? null
+      : countryFilter.length === 1
+      ? {
+          filter: {
+            fieldName: 'country',
+            stringFilter: { matchType: 'EXACT', value: countryFilter[0] },
+          },
+        }
+      : {
+          filter: {
+            fieldName: 'country',
+            inListFilter: { values: countryFilter, caseSensitive: false },
+          },
+        }
+
+  // Combine: MUST match regexp AND MUST NOT be "(not set)" AND (optionally) device AND (optionally) country
+  const buildFilter = (includeDevice: boolean, includeCountry: boolean = true) => {
     const expressions: object[] = [aiFilter, notSetFilter]
     if (includeDevice && devFilter) expressions.push(devFilter)
+    if (includeCountry && cntFilter) expressions.push(cntFilter)
     if (expressions.length === 1) return expressions[0]
     return { andGroup: { expressions } }
   }
@@ -384,10 +406,30 @@ function buildRequests(
           { name: 'sessionDefaultChannelGroup' },
         ],
         metrics: [{ name: 'sessions' }, { name: 'eventCount' }],
-        dimensionFilter: buildFilter(false),  // AI Overview event filter only, no device
+        dimensionFilter: buildFilter(false, true),  // AI Overview event filter + country, no device
         orderBys: [{ dimension: { dimensionName: 'yearWeek' } }],
         keepEmptyRows: false,
         limit: 5000,
+      },
+    ]
+  }
+
+  // ── country_kpis: country × eventCount for populating the country filter dropdown ──
+  // Dimension: 'country' — GA4 full country name (session-scoped).
+  // This query has NO country filter (we want ALL countries to populate the picker).
+  // It uses the same AI Overview event filter so only real AIO clicks are counted.
+  if (queryType === 'country_kpis') {
+    return [
+      {
+        dateRanges: [dateRanges[0]],
+        dimensions: [
+          { name: 'country' },
+        ],
+        metrics: [{ name: 'eventCount' }],
+        dimensionFilter: buildFilter(false, false),  // AI Overview filter only — NO country filter here
+        orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+        keepEmptyRows: false,
+        limit: 250,  // there won't be more than ~250 countries with AIO events
       },
     ]
   }
@@ -420,6 +462,11 @@ serve(async (req) => {
       : filters?.deviceFilter && filters.deviceFilter !== 'all'
       ? [filters.deviceFilter]
       : []
+    const countryFilter: string[] = Array.isArray(filters?.countryFilter)
+      ? filters.countryFilter
+      : filters?.countryFilter
+      ? [filters.countryFilter]
+      : []
 
     const serviceAccountJson = Deno.env.get('GA4_SERVICE_ACCOUNT_JSON')
     if (!serviceAccountJson) {
@@ -430,7 +477,7 @@ serve(async (req) => {
     }
 
     const accessToken = await getGoogleAccessToken(serviceAccountJson)
-    const requests = buildRequests(dateRanges, queryType, deviceFilter)
+    const requests = buildRequests(dateRanges, queryType, deviceFilter, countryFilter)
     const batchResult: any = await batchRunReports(propertyId, requests, accessToken)
 
     const reports = (batchResult.reports ?? []).map((r: any) => normaliseReport(r))

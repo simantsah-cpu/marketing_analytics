@@ -217,7 +217,10 @@ export async function getLLMData(propertyId, filters) {
   const dateRanges = await buildGA4DateRanges(filters.dateRanges)
 
   const ga4Filters = {
-    affiliateFilter: LLM_SOURCE_KEYS,   // tells Edge Fn to filter by these sources
+    // Empty affiliateFilter = "all LLM sources" (traffic_type='llm' in BQ is sufficient).
+    // Previously we sent LLM_SOURCE_KEYS here, which caused the Edge Function to emit
+    // an AND session_source IN (...) clause that could mismatch BQ stored values.
+    affiliateFilter: [],
     countryFilter:   filters.countryFilter  ?? [],
     deviceFilter:    filters.deviceFilter   ?? [],
   }

@@ -455,7 +455,7 @@ body { overflow-x: hidden; }
 .desktop-only-warning {
   display: none;
 }
-@media (max-width: 1279px) {
+@media (max-width: 767px) {
   .desktop-only-warning {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     position: fixed; inset: 0;

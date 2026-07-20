@@ -23,13 +23,31 @@ const REPORT109_NAV_ITEMS = [
 
 const DEST_NAV_ITEMS = []
 
+// Sub-nav tabs for Destination Analysis New — shown in sidebar when on that route
+const DEST_NEW_TABS = [
+  { index: 0, label: 'Network Pulse',        icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M1 10 L4 6 L7 9 L10 4 L13 7 L15 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="15" cy="5" r="1.2" fill="currentColor"/></svg> },
+  { index: 1, label: 'Overview',             icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".7"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/></svg> },
+  { index: 2, label: 'Digest',               icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="1" width="10" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" opacity=".7"/><line x1="5" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="5" y1="8" x2="10" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/><line x1="5" y1="11" x2="8" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg> },
+  { index: 3, label: 'Full Funnel',          icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M2 3h12v1.5L9.5 8v5l-3-1.5V8L2 4.5V3z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" opacity=".8"/></svg> },
+  { index: 4, label: 'All Airports',         icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" opacity=".6"/><path d="M2 8h12M8 2a10 6 0 0 1 0 12A10 6 0 0 1 8 2z" stroke="currentColor" strokeWidth="1.2" opacity=".5"/></svg> },
+  { index: 5, label: 'Audience & Channels',  icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="6" r="3" stroke="currentColor" strokeWidth="1.5" opacity=".7"/><path d="M10 10c0-2 1.5-3 3-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity=".5"/><path d="M1 14c0-2.5 2-4 5-4s5 1.5 5 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity=".7"/></svg> },
+  { index: 6, label: 'Operations & Revenue', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="2" y="9" width="3" height="5" rx="1" fill="currentColor" opacity=".4"/><rect x="6.5" y="6" width="3" height="8" rx="1" fill="currentColor" opacity=".6"/><rect x="11" y="3" width="3" height="11" rx="1" fill="currentColor" opacity=".9"/></svg> },
+  { index: 7, label: 'Rankings',             icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M8 2l1.5 4H14l-3.5 2.5 1.5 4L8 10l-4 2.5 1.5-4L2 6h4.5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" opacity=".8"/></svg> },
+  { index: 8, label: 'Data & Method',        icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" opacity=".6"/><line x1="8" y1="7" x2="8" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="8" cy="5" r="1" fill="currentColor"/></svg> },
+]
+
 export default function Sidebar() {
   const { user, signOut } = useAuth()
   const location = useLocation()
-  const isLLM         = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview') || location.pathname.startsWith('/blog-banner-funnel')
-  const isReport109   = location.pathname.startsWith('/report-109')
-  const isDestAnalysis = location.pathname.startsWith('/destination-analysis')
-  const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : AFFILIATE_NAV_ITEMS
+  const isLLM          = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview') || location.pathname.startsWith('/blog-banner-funnel')
+  const isReport109    = location.pathname.startsWith('/report-109')
+  const isDestAnalysis = location.pathname.startsWith('/destination-analysis') && location.pathname !== '/destination-analysis-new'
+  const isDestNew      = location.pathname === '/destination-analysis-new'
+  const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : isDestNew ? [] : AFFILIATE_NAV_ITEMS
+
+  // Parse active tab from URL search params
+  const params = new URLSearchParams(location.search)
+  const activeTabIndex = Math.max(0, Math.min(8, parseInt(params.get('tab') || '0', 10)))
 
   return (
     <aside className="sidebar">
@@ -45,7 +63,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        <div className="nav-label">{isReport109 ? 'Report — 109' : 'Dashboard'}</div>
+        {!isDestNew && <div className="nav-label">{isReport109 ? 'Report — 109' : 'Dashboard'}</div>}
         {navItems.map(item => (
           <NavLink
             key={item.to}
@@ -59,19 +77,51 @@ export default function Sidebar() {
         ))}
 
 
-        <NavLink
-          to="/glossary"
-          className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-        >
-          <svg className="nav-icon" viewBox="0 0 16 16" fill="none">
-            <rect x="2" y="1" width="10" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" opacity=".7"/>
-            <path d="M12 3h1.5a.5.5 0 0 1 .5.5v11a.5.5 0 0 1-.5.5H4" stroke="currentColor" strokeWidth="1.2" opacity=".4"/>
-            <line x1="5" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <line x1="5" y1="8" x2="10" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-            <line x1="5" y1="11" x2="8" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-          </svg>
-          Metric Glossary
-        </NavLink>
+        {!isDestNew && (
+          <NavLink
+            to="/glossary"
+            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+          >
+            <svg className="nav-icon" viewBox="0 0 16 16" fill="none">
+              <rect x="2" y="1" width="10" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.5" opacity=".7"/>
+              <path d="M12 3h1.5a.5.5 0 0 1 .5.5v11a.5.5 0 0 1-.5.5H4" stroke="currentColor" strokeWidth="1.2" opacity=".4"/>
+              <line x1="5" y1="5" x2="9" y2="5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              <line x1="5" y1="8" x2="10" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+              <line x1="5" y1="11" x2="8" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
+            Metric Glossary
+          </NavLink>
+        )}
+
+        {/* ── Destination Intelligence sub-nav (only on /destination-analysis-new) ── */}
+        {isDestNew && (
+          <>
+            <div className="nav-label" style={{ marginTop: 14 }}>Destination Intelligence</div>
+            {DEST_NEW_TABS.map(tab => {
+              const isActive = activeTabIndex === tab.index
+              return (
+                <NavLink
+                  key={tab.index}
+                  to={`/destination-analysis-new?tab=${tab.index}`}
+                  className={() => `nav-item${isActive ? ' active' : ''}`}
+                  style={{ paddingLeft: 18 }}
+                  onClick={e => {
+                    // Prevent full navigation; just update the search param in place
+                    e.preventDefault()
+                    const url = new URL(window.location.href)
+                    url.searchParams.set('tab', String(tab.index))
+                    window.history.replaceState(null, '', url.toString())
+                    // Dispatch popstate so React Router / useSearchParams picks it up
+                    window.dispatchEvent(new PopStateEvent('popstate'))
+                  }}
+                >
+                  {tab.icon}
+                  {tab.label}
+                </NavLink>
+              )
+            })}
+          </>
+        )}
       </nav>
 
 

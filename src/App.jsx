@@ -23,6 +23,7 @@ import AiOverviewPage from './pages/AiOverviewPage'
 import BlogBannerFunnel from './pages/BlogBannerFunnel'
 import Report109 from './pages/Report109'
 import DestinationAnalysis from './pages/DestinationAnalysis'
+import DestinationAnalysisNew from './pages/DestinationAnalysisNew'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -73,7 +74,8 @@ function SectionToggle() {
   const navigate = useNavigate()
   const isLLM = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview') || location.pathname.startsWith('/blog-banner-funnel')
   const isReport109 = location.pathname.startsWith('/report-109')
-  const isDestAnalysis = location.pathname.startsWith('/destination-analysis')
+  const isDestAnalysisNew = location.pathname === '/destination-analysis-new'
+  const isDestAnalysis = location.pathname.startsWith('/destination-analysis') && !isDestAnalysisNew
   const { properties, selectedProperty, switchProperty } = useProperty()
 
   const activeStyle = {
@@ -114,10 +116,10 @@ function SectionToggle() {
       padding: '10px 20px 0',
     }}>
       <button
-        onClick={() => (!isLLM && !isReport109 && !isDestAnalysis) || navigate('/scorecard')}
-        style={!isLLM && !isReport109 && !isDestAnalysis ? activeStyle : inactiveStyle}
-        onMouseEnter={e => { if (isLLM || isReport109 || isDestAnalysis) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
-        onMouseLeave={e => { if (isLLM || isReport109 || isDestAnalysis) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+        onClick={() => (!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew) || navigate('/scorecard')}
+        style={!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
       >
         Affiliates
       </button>
@@ -144,6 +146,14 @@ function SectionToggle() {
         onMouseLeave={e => { if (!isDestAnalysis) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
       >
         Destination Analysis
+      </button>
+      <button
+        onClick={() => isDestAnalysisNew || navigate('/destination-analysis-new')}
+        style={isDestAnalysisNew ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (!isDestAnalysisNew) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (!isDestAnalysisNew) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+      >
+        Destination Analysis New
       </button>
 
       {/* Property switcher — right corner of same bar */}
@@ -211,6 +221,11 @@ function DashboardShell({ onQueryOpen }) {
             <Route path="/blog-banner-funnel" element={<BlogBannerFunnel />} />
             <Route path="/report-109" element={<Report109 />} />
             <Route path="/destination-analysis" element={<DestinationAnalysis />} />
+            <Route path="/destination-analysis-new" element={
+              <div style={{height:'calc(100vh - var(--header-h) - var(--filter-bar-h))',overflowY:'auto',overflowX:'hidden'}}>
+                <DestinationAnalysisNew />
+              </div>
+            } />
           </Routes>
         </div>
       </div>

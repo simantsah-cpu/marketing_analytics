@@ -739,6 +739,7 @@ export default function AiOverviewCharts({
   availableCategories,
   propertyId,
   dateRange,
+  countryFilter = [],
 }) {
   const [view, setView] = useState('Click Volume')
 
@@ -749,10 +750,10 @@ export default function AiOverviewCharts({
   const [organicRows, setOrganicRows]   = useState([])
   const [attrRows,    setAttrRows]      = useState([])
 
-  // Re-fetch attribution when dateRange changes (reset cache)
+  // Re-fetch attribution when dateRange OR countryFilter changes (reset cache)
   const prevDateRange = useRef(null)
   useEffect(() => {
-    const key = `${dateRange?.startDate}|${dateRange?.endDate}`
+    const key = `${dateRange?.startDate}|${dateRange?.endDate}|${(countryFilter || []).join(',')}`
     const prev = prevDateRange.current
     if (key !== prev) {
       prevDateRange.current = key
@@ -761,7 +762,7 @@ export default function AiOverviewCharts({
       setAttrRows([])
       setAttrError(null)
     }
-  }, [dateRange])
+  }, [dateRange, countryFilter])
 
   const fetchAttribution = useCallback(async () => {
     if (!propertyId || !dateRange?.startDate) return
@@ -770,7 +771,7 @@ export default function AiOverviewCharts({
     try {
       const [organic, attr] = await Promise.all([
         fetchOrganicSessionsByWeek(propertyId, dateRange),
-        fetchAttributionSessions(propertyId, dateRange),
+        fetchAttributionSessions(propertyId, dateRange, countryFilter),
       ])
       setOrganicRows(organic)
       setAttrRows(attr)
@@ -780,7 +781,7 @@ export default function AiOverviewCharts({
     } finally {
       setAttrLoading(false)
     }
-  }, [propertyId, dateRange])
+  }, [propertyId, dateRange, countryFilter])
 
   // Lazy-fetch when the user switches to Attribution or Share of Organic
   const handleViewChange = useCallback(v => {

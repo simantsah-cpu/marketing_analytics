@@ -993,7 +993,7 @@ export async function getSiteWideFunnel(propertyId, filters) {
 //   trend query:  { yearWeek: string, 'customEvent:ai_overview_click': string, eventCount: number, activeUsers: number }
 //   device query: { deviceCategory: string, 'customEvent:ai_overview_click': string, eventCount: number, sessions: number }
 
-async function callAiOverview(propertyId, queryType, dateRanges, deviceFilter = null) {
+async function callAiOverview(propertyId, queryType, dateRanges, deviceFilter = null, countryFilter = []) {
   await supabase.auth.getSession()
   const { data, error } = await supabase.functions.invoke('ga4-ai-overview', {
     body: {
@@ -1002,6 +1002,7 @@ async function callAiOverview(propertyId, queryType, dateRanges, deviceFilter = 
       filters: {
         queryType,
         deviceFilter: deviceFilter ? [deviceFilter] : [],
+        countryFilter: countryFilter ?? [],
       },
     },
   })
@@ -1014,12 +1015,12 @@ async function callAiOverview(propertyId, queryType, dateRanges, deviceFilter = 
  * fetchAiOverviewKpis — snippet-level aggregates for KPI cards + snippet table.
  * Supports optional comparison date range. Returns { current: Row[], comparison: Row[]|null }
  */
-export async function fetchAiOverviewKpis(propertyId, dateRange, comparisonDateRange = null, deviceFilter = null) {
+export async function fetchAiOverviewKpis(propertyId, dateRange, comparisonDateRange = null, deviceFilter = null, countryFilter = []) {
   if (!propertyId) return { current: [], comparison: null }
   const ranges = comparisonDateRange
     ? [dateRange, comparisonDateRange]
     : [dateRange]
-  const reports = await callAiOverview(propertyId, 'kpis', ranges, deviceFilter)
+  const reports = await callAiOverview(propertyId, 'kpis', ranges, deviceFilter, countryFilter)
   return {
     current:    reports[0] ?? [],
     comparison: reports[1] ?? null,
@@ -1030,9 +1031,9 @@ export async function fetchAiOverviewKpis(propertyId, dateRange, comparisonDateR
  * fetchAiOverviewTrend — yearWeek × snippet for trend chart + lifecycle matrix.
  * Returns a flat array of { yearWeek, 'customEvent:ai_overview_click', eventCount, activeUsers }
  */
-export async function fetchAiOverviewTrend(propertyId, dateRange, deviceFilter = null) {
+export async function fetchAiOverviewTrend(propertyId, dateRange, deviceFilter = null, countryFilter = []) {
   if (!propertyId) return []
-  const reports = await callAiOverview(propertyId, 'trend', [dateRange], deviceFilter)
+  const reports = await callAiOverview(propertyId, 'trend', [dateRange], deviceFilter, countryFilter)
   return reports[0] ?? []
 }
 
@@ -1096,9 +1097,21 @@ export async function fetchOrganicSessionsByWeek(propertyId, dateRange) {
  * The client splits this into Organic (Bar 2) and Direct (Bar 3) by filtering channel.
  * Returns flat array of { yearWeek, 'customEvent:ai_overview_click', sessionDefaultChannelGroup, sessions, eventCount }
  */
-export async function fetchAttributionSessions(propertyId, dateRange) {
+export async function fetchAttributionSessions(propertyId, dateRange, countryFilter = []) {
   if (!propertyId) return []
-  const reports = await callAiOverview(propertyId, 'attribution_sessions', [dateRange], null)
+  const reports = await callAiOverview(propertyId, 'attribution_sessions', [dateRange], null, countryFilter)
+  return reports[0] ?? []
+}
+
+/**
+ * fetchAiOverviewCountries — returns all countries where AI Overview clicks occurred,
+ * ordered by eventCount desc. Used to populate the country filter dropdown.
+ * GA4 dimension: 'country' (full name, e.g. "United Kingdom", "United States")
+ * Returns flat array of { country: string, eventCount: number }
+ */
+export async function fetchAiOverviewCountries(propertyId, dateRange) {
+  if (!propertyId) return []
+  const reports = await callAiOverview(propertyId, 'country_kpis', [dateRange], null, [])
   return reports[0] ?? []
 }
 

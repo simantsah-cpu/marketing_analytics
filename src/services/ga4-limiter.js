@@ -57,11 +57,25 @@ async function _runWithRetry(fn, retriesLeft) {
   try {
     return await fn()
   } catch (err) {
-    const is429 = err?.message?.includes('429') || err?.message?.includes('Exhausted concurrent')
-    const is5xx = err?.message?.includes('500') || err?.message?.includes('502') || err?.message?.includes('503')
+    const msg = err?.message || ''
+    const is429 = msg.includes('429') || msg.includes('Exhausted concurrent')
+    const is5xx = msg.includes('500') || msg.includes('502') || msg.includes('503')
+    const is401 = msg.includes('401') || msg.toLowerCase().includes('unauthorized') || msg.toLowerCase().includes('jwt')
+
+    // On 401 (expired JWT): refresh session once then retry immediately
+    if (is401 && retriesLeft > 0) {
+      console.warn('GA4 edge function: 401 — refreshing Supabase session and retrying...')
+      try {
+        await supabase.auth.refreshSession()
+      } catch (refreshErr) {
+        console.warn('Session refresh failed:', refreshErr)
+      }
+      return _runWithRetry(fn, retriesLeft - 1)
+    }
+
     if ((is429 || is5xx) && retriesLeft > 0) {
       const delay = RETRY_DELAY_MS * (MAX_RETRIES - retriesLeft + 1) // 800ms, 1600ms, 2400ms
-      console.warn(`GA4 ${err.message.slice(0, 60)} — retrying in ${delay}ms (${retriesLeft} left)`)
+      console.warn(`GA4 ${msg.slice(0, 60)} — retrying in ${delay}ms (${retriesLeft} left)`)
       await new Promise(r => setTimeout(r, delay))
       return _runWithRetry(fn, retriesLeft - 1)
     }

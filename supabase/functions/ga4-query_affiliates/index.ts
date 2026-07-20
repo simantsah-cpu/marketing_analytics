@@ -766,10 +766,36 @@ LIMIT 300`.trim(), token),
   return [r0, r1]
 }
 
+// Full set of LLM source keys — when the caller passes ALL of these it means
+// "no sub-selection". In that case we rely solely on traffic_type = 'llm' and
+// skip the redundant session_source IN (...) clause, which avoids false-zero
+// results caused by minor spelling variants in BigQuery (e.g. 'perplexity' vs
+// 'perplexity.ai' stored as a single canonical value in the BQ table).
+const ALL_LLM_SOURCE_KEYS = new Set([
+  'chatgpt.com', 'gemini.google.com', 'copilot.microsoft.com',
+  'copilot.com', 'copilot.cloud.microsoft',
+  'perplexity', 'perplexity.ai', 'claude.ai', 'grok.com',
+])
+
+function isLLMSubSelection(affiliates: string[]): boolean {
+  if (!affiliates.length) return false
+  // It is a sub-selection only when the caller provides FEWER sources than the
+  // full set AND each provided key is a known LLM source.
+  if (affiliates.length >= ALL_LLM_SOURCE_KEYS.size) return false
+  return affiliates.every(k => ALL_LLM_SOURCE_KEYS.has(k))
+}
+
 async function bqLLM(dateRanges: any[], filters: any, token: string): Promise<object[][]> {
-  // LLM pages: traffic_type = 'llm'. The table already contains only the nine
-  // LLM referrer sources, so no source filter is needed unless the caller has
-  // passed a sub-selection of LLM sources via affiliateFilter.
+  // LLM pages: traffic_type = 'llm'. The table already partitions all LLM
+  // referrer traffic, so no extra session_source filter is needed unless the
+  // caller has passed a genuine sub-selection of LLM sources.
+  //
+  // BUG FIX: previously the llm-data-service always sent ALL 9 LLM source keys
+  // as affiliateFilter (the "default all" case). This caused bqLLM to emit:
+  //   traffic_type = 'llm' AND session_source IN ('chatgpt.com', ...all 9...)
+  // which returned 0 rows when the BQ column stores slightly different source
+  // names (e.g. only 'perplexity.ai', not 'perplexity'). Now we only apply the
+  // source filter for genuine sub-selections (fewer than 9 sources).
   //
   // report[0] current daily totals       (date, sessions, transactions, purchaseRevenue, engagedSessions)
   // report[1] current per-source canonical
@@ -781,9 +807,11 @@ async function bqLLM(dateRanges: any[], filters: any, token: string): Promise<ob
   const prev = dateRanges[1] ?? null
   const { affiliates, devices, countries } = extractFilters(filters)
 
-  // For LLM, affiliateFilter holds LLM source keys (e.g. ['chatgpt.com'])
-  const currW = buildWhere({ trafficType: 'llm', dateRange: curr, affiliateFilter: affiliates, deviceFilter: devices, countryFilter: countries })
-  const prevW = prev ? buildWhere({ trafficType: 'llm', dateRange: prev, affiliateFilter: affiliates, deviceFilter: devices, countryFilter: countries }) : null
+  // Only apply source filter for genuine sub-selections, not the full default list
+  const srcFilter = isLLMSubSelection(affiliates) ? affiliates : []
+
+  const currW = buildWhere({ trafficType: 'llm', dateRange: curr, affiliateFilter: srcFilter, deviceFilter: devices, countryFilter: countries })
+  const prevW = prev ? buildWhere({ trafficType: 'llm', dateRange: prev, affiliateFilter: srcFilter, deviceFilter: devices, countryFilter: countries }) : null
 
   const dailyCols    = `SUM(sessions) AS sessions, SUM(transactions) AS transactions, SUM(purchase_revenue) AS purchaseRevenue, SUM(engaged_sessions) AS engagedSessions`
   const srcDailyCols = `SUM(sessions) AS sessions, SUM(transactions) AS transactions, SUM(purchase_revenue) AS purchaseRevenue, SUM(engaged_sessions) AS engagedSessions`
@@ -816,7 +844,11 @@ async function bqLLMPages(dateRanges: any[], filters: any, token: string): Promi
   const curr = dateRanges[0]
   const { affiliates, devices, countries } = extractFilters(filters)
 
-  const w = buildWhere({ trafficType: 'llm', dateRange: curr, affiliateFilter: affiliates, deviceFilter: devices, countryFilter: countries })
+  // Same sub-selection fix as bqLLM: only filter by source when it's a genuine
+  // sub-selection, not the full default 9-source list.
+  const srcFilter = isLLMSubSelection(affiliates) ? affiliates : []
+
+  const w = buildWhere({ trafficType: 'llm', dateRange: curr, affiliateFilter: srcFilter, deviceFilter: devices, countryFilter: countries })
 
   // report[0]: inline SQL so HAVING is correctly placed before ORDER BY and LIMIT.
   // The sqlLandingPages template already appends ORDER BY + LIMIT, so we cannot
