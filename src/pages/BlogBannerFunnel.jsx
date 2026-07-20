@@ -387,16 +387,9 @@ export default function BlogBannerFunnel() {
   const devVals     = devFiltered.map(r => n(r.sessions))
   const devColors   = devFiltered.map(r => r.deviceCategory === 'mobile' ? BLUE : r.deviceCategory === 'desktop' ? '#64748B' : TEAL)
 
-  // Channel chart — collapse small channels into "Other" to avoid clutter
-  const CHAN_THRESHOLD = 4  // sessions; channels below this are grouped
-  const chanMain  = channelData.filter(r => n(r.sessions) >= CHAN_THRESHOLD)
-  const chanOther = channelData.filter(r => n(r.sessions) <  CHAN_THRESHOLD)
-  const chanOtherTotal = chanOther.reduce((s, r) => s + n(r.sessions), 0)
-  const chanDisplayData = chanOtherTotal > 0
-    ? [...chanMain, { sessionDefaultChannelGroup: `Other (${chanOther.length} channels)`, sessions: chanOtherTotal }]
-    : chanMain
-  const chanLabels = chanDisplayData.map(r => r.sessionDefaultChannelGroup)
-  const chanVals   = chanDisplayData.map(r => n(r.sessions))
+  // Channel chart
+  const chanLabels = channelData.map(r => r.sessionDefaultChannelGroup)
+  const chanVals   = channelData.map(r => n(r.sessions))
 
   // New vs Returning
   const newRow = newRetData.find(r => r.newVsReturning === 'new') ?? {}
@@ -693,7 +686,7 @@ export default function BlogBannerFunnel() {
 
       <div className="chart-row chart-row-full" style={{ marginBottom: 24 }}>
         <ChartCard title="Channel split (sessions)" tag="CHANNEL">
-          <div style={{ height: Math.max(160, chanDisplayData.length * 34) }}>
+          <div style={{ height: Math.max(200, channelData.length * 34) }}>
             <Bar
               data={{
                 labels: chanLabels,
@@ -722,7 +715,7 @@ export default function BlogBannerFunnel() {
               }}
             />
           </div>
-          <Note>Sessions by GA4’s default channel grouping for the session containing the banner click. Reflects how users originally arrived at the site, not how they navigated to the banner page. Channels with fewer than {CHAN_THRESHOLD} sessions are grouped into "Other".</Note>
+          <Note>Sessions by GA4’s default channel grouping for the session containing the banner click. Reflects how users originally arrived at the site, not how they navigated to the banner page.</Note>
         </ChartCard>
       </div>
 
