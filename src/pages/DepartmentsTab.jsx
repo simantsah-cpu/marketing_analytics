@@ -269,7 +269,8 @@ function buildDepts(custRows, targets) {
       o.margin = o.revenue > 0 ? o.profit / o.revenue : null
       return o
     })
-    // §1.1 — hide entirely-empty rows with no target (self-healing)
+    // §1.1 — hide (Unassigned) and entirely-empty rows with no target
+    .filter(o => o.dept !== '(Unassigned)' && o.dept !== 'Unassigned')
     .filter(o => o.target !== null || o.profit !== 0 || o.revenue !== 0 || o.sales !== 0
               || o.lm_profit !== 0 || o.ly_profit !== 0)
     .sort((a, b) => b.profit - a.profit)
