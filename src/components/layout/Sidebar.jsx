@@ -22,7 +22,13 @@ const REPORT109_NAV_ITEMS = [
 ]
 
 const LEADERSHIP_NAV_ITEMS = [
-  { to: '/leadership', label: 'EAM Performance', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="8" width="3" height="6" rx="1" fill="currentColor" opacity=".4"/><rect x="5" y="5" width="3" height="9" rx="1" fill="currentColor" opacity=".6"/><rect x="9" y="2" width="3" height="12" rx="1" fill="currentColor" opacity=".85"/><rect x="13" y="1" width="2" height="13" rx="1" fill="currentColor"/><circle cx="13" cy="4" r="2" fill="#F05A28"/></svg> },
+  { index: 0, label: 'Executive Summary', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".8"/><rect x="9" y="1" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/><rect x="1" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/><rect x="9" y="9" width="6" height="6" rx="1.5" fill="currentColor" opacity=".4"/></svg> },
+  { index: 1, label: 'Departments', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M2 13h12M4 13V6l4-3 4 3v7M6 13V9h4v4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+  { index: 2, label: 'Customers', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M3 13c0-2.2 1.8-4 4-4s4 1.8 4 4M7 7a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM11 9c1.5 0 3 1.2 3 3M11 3.5a2.5 2.5 0 0 1 0 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+  { index: 3, label: 'Forecast', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M2 12l4-4 3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M11 5h3v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg> },
+  { index: 4, label: 'Geo & Product', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" opacity=".7"/><path d="M2 8h12M8 2a9 5 0 0 1 0 12A9 5 0 0 1 8 2z" stroke="currentColor" strokeWidth="1.2" opacity=".5"/></svg> },
+  { index: 5, label: 'B2C', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="9" width="3" height="5" rx="1" fill="currentColor" opacity=".4"/><rect x="5.5" y="6" width="3" height="8" rx="1" fill="currentColor" opacity=".6"/><rect x="10" y="3" width="3" height="11" rx="1" fill="currentColor" opacity=".8"/><path d="M1 8l3-3 3 2 4-5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
+  { index: 6, label: 'Ride Hailing & Quality', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M3 9l1.5-4.5h7L13 9M2 9h12v4H2zM4.5 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM11.5 13a1 1 0 1 0 0-2 1 1 0 0 0 2z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg> },
 ]
 
 const DEST_NAV_ITEMS = []
@@ -48,7 +54,9 @@ export default function Sidebar() {
   const isLeadership   = location.pathname.startsWith('/leadership')
   const isDestAnalysis = location.pathname.startsWith('/destination-analysis') && location.pathname !== '/destination-analysis-new'
   const isDestNew      = location.pathname === '/destination-analysis-new'
-  const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : isDestNew ? [] : isLeadership ? LEADERSHIP_NAV_ITEMS : AFFILIATE_NAV_ITEMS
+  const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : isDestNew ? [] : navItemsFallback(isLeadership, AFFILIATE_NAV_ITEMS)
+
+  function navItemsFallback(isLead, items) { return items }
 
   // Parse active tab from URL search params
   const params = new URLSearchParams(location.search)
@@ -69,20 +77,44 @@ export default function Sidebar() {
 
       <nav className="sidebar-nav">
         {!isDestNew && <div className="nav-label">{isReport109 ? 'Report — 109' : isLeadership ? 'Leadership' : 'Dashboard'}</div>}
-        {navItems.map(item => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.exact}
-            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-          >
-            {item.icon}
-            {item.label}
-          </NavLink>
-        ))}
+        {isLeadership ? (
+          LEADERSHIP_NAV_ITEMS.map(tab => {
+            const isActive = activeTabIndex === tab.index
+            return (
+              <NavLink
+                key={tab.index}
+                to={`/leadership?tab=${tab.index}`}
+                className={() => `nav-item${isActive ? ' active' : ''}`}
+                onClick={e => {
+                  if (location.pathname === '/leadership') {
+                    e.preventDefault()
+                    const url = new URL(window.location.href)
+                    url.searchParams.set('tab', String(tab.index))
+                    window.history.replaceState(null, '', url.toString())
+                    window.dispatchEvent(new PopStateEvent('popstate'))
+                  }
+                }}
+              >
+                {tab.icon}
+                {tab.label}
+              </NavLink>
+            )
+          })
+        ) : (
+          navItems.map(item => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.exact}
+              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+            >
+              {item.icon}
+              {item.label}
+            </NavLink>
+          ))
+        )}
 
-
-        {!isDestNew && (
+        {!isDestNew && !isLeadership && (
           <NavLink
             to="/glossary"
             className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}

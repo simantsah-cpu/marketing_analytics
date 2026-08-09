@@ -14,6 +14,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import DepartmentsTab  from './DepartmentsTab'
 import CustomersTab    from './CustomersTab'
@@ -572,10 +573,12 @@ const TABS = [
 ]
 
 export default function LeadershipDashboard() {
+  const [searchParams] = useSearchParams()
+  const tabParam = parseInt(searchParams.get('tab') || '0', 10)
+  const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(6, tabParam))
   const [period,     setPeriodState] = useState(
     () => localStorage.getItem('eam.period') || '2026-08'
   )
-  const [activeTab,  setActiveTab]  = useState(0)
   const [D,          setD]          = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], inc: [] })
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
@@ -983,32 +986,6 @@ export default function LeadershipDashboard() {
           >
             {loading ? '…' : 'Refresh'}
           </button>
-        </div>
-
-        {/* Tab bar */}
-        <div style={{ padding: '0 24px', display: 'flex', gap: 0, overflowX: 'auto' }}>
-          {TABS.map((tab, i) => {
-            const isActive    = i === activeTab
-            const isClickable = true
-            return (
-              <button
-                key={tab}
-                id={`ld-tab-${i}`}
-                onClick={isClickable ? () => setActiveTab(i) : undefined}
-                style={{
-                  padding: '10px 14px', fontSize: 13,
-                  fontWeight: isActive ? 700 : 500,
-                  color: isActive ? T.blue : T.text,
-                  background: 'transparent', border: 'none',
-                  borderBottom: isActive ? `2px solid ${T.blue}` : '2px solid transparent',
-                  cursor: isClickable ? 'pointer' : 'not-allowed',
-                  fontFamily: 'inherit', opacity: isClickable ? 1 : 0.4,
-                  whiteSpace: 'nowrap', flexShrink: 0,
-                  transition: 'color 0.15s, border-bottom-color 0.15s',
-                }}
-              >{tab}</button>
-            )
-          })}
         </div>
       </div>
 
