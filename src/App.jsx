@@ -24,6 +24,7 @@ import BlogBannerFunnel from './pages/BlogBannerFunnel'
 import Report109 from './pages/Report109'
 import DestinationAnalysis from './pages/DestinationAnalysis'
 import DestinationAnalysisNew from './pages/DestinationAnalysisNew'
+import LeadershipDashboard from './pages/LeadershipDashboard'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -76,6 +77,7 @@ function SectionToggle() {
   const isReport109 = location.pathname.startsWith('/report-109')
   const isDestAnalysisNew = location.pathname === '/destination-analysis-new'
   const isDestAnalysis = location.pathname.startsWith('/destination-analysis') && !isDestAnalysisNew
+  const isLeadership = location.pathname.startsWith('/leadership')
   const { properties, selectedProperty, switchProperty } = useProperty()
 
   const activeStyle = {
@@ -88,9 +90,9 @@ function SectionToggle() {
     fontFamily: 'inherit',
     letterSpacing: '0.01em',
     transition: 'all 0.18s ease',
-    background: '#1e293b',
+    background: 'var(--blue)',
     color: '#fff',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.07)',
+    boxShadow: '0 2px 8px rgba(15,95,166,0.25), inset 0 1px 0 rgba(255,255,255,0.12)',
   }
 
   const inactiveStyle = {
@@ -104,7 +106,7 @@ function SectionToggle() {
     letterSpacing: '0.01em',
     transition: 'all 0.18s ease',
     background: 'transparent',
-    color: 'var(--subtext)',
+    color: 'var(--text)',
     boxShadow: 'none',
   }
 
@@ -116,12 +118,20 @@ function SectionToggle() {
       padding: '10px 20px 0',
     }}>
       <button
-        onClick={() => (!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew) || navigate('/scorecard')}
-        style={!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew ? activeStyle : inactiveStyle}
-        onMouseEnter={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
-        onMouseLeave={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+        onClick={() => (!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew && !isLeadership) || navigate('/scorecard')}
+        style={!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew && !isLeadership ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew || isLeadership) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew || isLeadership) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
       >
         Affiliates
+      </button>
+      <button
+        onClick={() => isLeadership || navigate('/leadership')}
+        style={isLeadership ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (!isLeadership) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (!isLeadership) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+      >
+        Leadership
       </button>
       <button
         onClick={() => isLLM || navigate('/llm')}
@@ -199,13 +209,16 @@ function SectionToggle() {
 function DashboardShell({ onQueryOpen }) {
   const { chat, closeChat } = useChat()
 
+  const location = useLocation()
+  const isLeadership = location.pathname === '/leadership'
+
   return (
     <>
       <div className="app-shell">
         <Sidebar />
         <div className="main-area">
           <SectionToggle />
-          <FilterBar />
+          {!isLeadership && <FilterBar />}
           <Routes>
             <Route path="/" element={<ExecutiveSummary />} />
               <Route path="/scorecard" element={<AffiliateScorecard />} />
@@ -220,6 +233,11 @@ function DashboardShell({ onQueryOpen }) {
             <Route path="/ai-overview" element={<AiOverviewPage />} />
             <Route path="/blog-banner-funnel" element={<BlogBannerFunnel />} />
             <Route path="/report-109" element={<Report109 />} />
+            <Route path="/leadership" element={
+              <div style={{ height: 'calc(100vh - var(--header-h))', overflowY: 'auto', overflowX: 'hidden' }}>
+                <LeadershipDashboard />
+              </div>
+            } />
             <Route path="/destination-analysis" element={<DestinationAnalysis />} />
             <Route path="/destination-analysis-new" element={
               <div style={{height:'calc(100vh - var(--header-h) - var(--filter-bar-h))',overflowY:'auto',overflowX:'hidden'}}>

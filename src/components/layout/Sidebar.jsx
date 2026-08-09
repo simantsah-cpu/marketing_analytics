@@ -21,6 +21,10 @@ const REPORT109_NAV_ITEMS = [
   { to: '/report-109', label: 'B2C Performance', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="10" width="3" height="4" rx="1" fill="currentColor" opacity=".4"/><rect x="5" y="7" width="3" height="7" rx="1" fill="currentColor" opacity=".6"/><rect x="9" y="4" width="3" height="10" rx="1" fill="currentColor" opacity=".8"/><rect x="13" y="1" width="2" height="13" rx="1" fill="currentColor"/><path d="M1 9 L4 6 L7 8 L10 4 L13 2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" opacity=".5"/></svg> },
 ]
 
+const LEADERSHIP_NAV_ITEMS = [
+  { to: '/leadership', label: 'EAM Performance', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="8" width="3" height="6" rx="1" fill="currentColor" opacity=".4"/><rect x="5" y="5" width="3" height="9" rx="1" fill="currentColor" opacity=".6"/><rect x="9" y="2" width="3" height="12" rx="1" fill="currentColor" opacity=".85"/><rect x="13" y="1" width="2" height="13" rx="1" fill="currentColor"/><circle cx="13" cy="4" r="2" fill="#F05A28"/></svg> },
+]
+
 const DEST_NAV_ITEMS = []
 
 // Sub-nav tabs for Destination Analysis New — shown in sidebar when on that route
@@ -41,9 +45,10 @@ export default function Sidebar() {
   const location = useLocation()
   const isLLM          = location.pathname.startsWith('/llm') || location.pathname.startsWith('/ai-overview') || location.pathname.startsWith('/blog-banner-funnel')
   const isReport109    = location.pathname.startsWith('/report-109')
+  const isLeadership   = location.pathname.startsWith('/leadership')
   const isDestAnalysis = location.pathname.startsWith('/destination-analysis') && location.pathname !== '/destination-analysis-new'
   const isDestNew      = location.pathname === '/destination-analysis-new'
-  const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : isDestNew ? [] : AFFILIATE_NAV_ITEMS
+  const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : isDestNew ? [] : isLeadership ? LEADERSHIP_NAV_ITEMS : AFFILIATE_NAV_ITEMS
 
   // Parse active tab from URL search params
   const params = new URLSearchParams(location.search)
@@ -63,7 +68,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav">
-        {!isDestNew && <div className="nav-label">{isReport109 ? 'Report — 109' : 'Dashboard'}</div>}
+        {!isDestNew && <div className="nav-label">{isReport109 ? 'Report — 109' : isLeadership ? 'Leadership' : 'Dashboard'}</div>}
         {navItems.map(item => (
           <NavLink
             key={item.to}
