@@ -507,11 +507,7 @@ function AISection(){
           <div style={{fontSize:26,fontWeight:700,color:T.red}}>26.5%</div>
           <div style={{fontSize:11,color:T.red,marginTop:4}}>−18.10 pts WoW · prior 44.60%</div>
         </div>
-        <div style={CARD_SM}>
-          <div style={{fontSize:10.5,fontWeight:600,color:T.text3,marginBottom:6}}>Product &amp; test metrics</div>
-          <div style={{fontSize:16,fontWeight:700,color:T.text2}}>WIP</div>
-          <div style={{fontSize:11,color:T.text3,marginTop:4,lineHeight:1.6}}>Flagged as work in progress in the workbook</div>
-        </div>
+
       </div>
     </div>
   )
