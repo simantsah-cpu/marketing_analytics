@@ -1192,7 +1192,10 @@ export default function BlogBannerFunnel() {
             </table>
           </div>
           <div style={{ padding: '10px 20px 14px', fontSize: 11, color: 'var(--subtext)', lineHeight: 1.65 }}>
-            Banner clicks = sessions that fired <em>blog_banner_click</em> on that page (direct landing only). Searches / Begin checkout / Purchases = sessions where the same session also reached that funnel stage with <em>internal_referrer = transfers_banner</em>. Click → Checkout = begins ÷ banner clicks. For 100% attribution of mid-session rows, a GTM change is needed to pass the clicked page as a custom event parameter.
+            <strong>Banner clicks</strong> = all sessions that fired <em>blog_banner_click</em> on that page (direct landings only; excludes mid-session navigators).
+            <strong> Searches / Begin checkout / Purchases</strong> = sessions where the same session also reached that funnel stage <em>with internal_referrer = transfers_banner tagged</em> at each event.
+            Click → Checkout = begins ÷ banner clicks. Denominator is slightly larger than the numerator's filter scope (5 of 98 click sessions lacked the parameter), so the rate is marginally conservative.
+            Revenue = GA4 purchaseRevenue where available. Mid-session row = sessions whose landing page was not one of the banner pages; a GTM change is required to attribute those to a specific article.
           </div>
         </div>
       </div>
