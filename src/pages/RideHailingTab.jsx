@@ -530,7 +530,7 @@ function SectionLabel({children}){
 // ─────────────────────────────────────────────────────────────────────────────
 export default function RideHailingTab({D, period, CUR_MONTH, PM}){
   const [rhOpen, setRhOpen] = useState(()=>{
-    try{ return JSON.parse(localStorage.getItem('eam.rhOpen')||'{}') }catch{ return {} }
+    return {}
   })
 
   function setAndPersist(fn){

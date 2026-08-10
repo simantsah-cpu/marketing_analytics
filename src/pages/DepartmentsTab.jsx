@@ -340,7 +340,7 @@ function AttainmentBar({ ach }) {
 export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSpan, PC }) {
   // §2 — collapse state, persisted in localStorage
   const [expandedDepts, setExpandedDepts] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('eam.deptOpen') || '{}') } catch { return {} }
+    return {} // always start collapsed
   })
 
   // Data arrives pre-normalized from LeadershipDashboard.normCust() — no period resolution needed

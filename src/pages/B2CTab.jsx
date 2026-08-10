@@ -686,10 +686,7 @@ function BrandSection({ brand, D, period, CUR_MONTH, platform, PM, b2cOpen, setB
 // ─────────────────────────────────────────────────────────────────────────────
 export default function B2CTab({ D, period, CUR_MONTH, PC, PM }){
   const [platform, setPlatform] = useState('ALL')
-  const [b2cOpen, setB2cOpen] = useState(()=>{
-    try { return JSON.parse(localStorage.getItem('eam.b2cOpen')||'{}') }
-    catch{ return {} }
-  })
+  const [b2cOpen, setB2cOpen] = useState({})
 
   // Persist b2cOpen changes
   function setAndPersistOpen(next){

@@ -303,7 +303,7 @@ function CovChart({months, mAgg}) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
   // §6.1 — expand state persisted
-  const[fcOpen,setFcOpen]=useState(()=>{try{return JSON.parse(localStorage.getItem('eam.fcOpen')||'{}')}catch{return{}}})
+  const[fcOpen,setFcOpen]=useState({})
   const toggleFc=m=>{setFcOpen(prev=>{const n={...prev,[m]:!prev[m]};localStorage.setItem('eam.fcOpen',JSON.stringify(n));return n})}
   const setAllFc=open=>{setFcOpen(prev=>{const n={};months.forEach(m=>{n[m]=open});localStorage.setItem('eam.fcOpen',JSON.stringify(n));return n})}
 

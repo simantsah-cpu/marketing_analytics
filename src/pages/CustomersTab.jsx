@@ -119,7 +119,7 @@ function KpiTile({label,value,sub,subColor}){
 
 export default function CustomersTab({cust,period,CUR_MONTH,PC}){
   const[custGroup,setCustGroup]=useState(()=>localStorage.getItem('eam.custGroup')||'eam')
-  const[custOpen,setCustOpen]=useState(()=>{try{return JSON.parse(localStorage.getItem('eam.custOpen')||'{}')}catch{return{}}})
+  const[custOpen,setCustOpen]=useState({})
   const[custSort,setCustSort]=useState({key:'sales',dir:-1})
   const[filters,setFilters]=useState({dept:'',search:'',active:'active',basis:'lm'})
 
