@@ -576,9 +576,7 @@ export default function LeadershipDashboard() {
   const [searchParams] = useSearchParams()
   const tabParam = parseInt(searchParams.get('tab') || '0', 10)
   const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(6, tabParam))
-  const [period,     setPeriodState] = useState(
-    () => localStorage.getItem('eam.period') || '2026-08'
-  )
+  const [period,     setPeriodState] = useState('2026-08') // always default to Aug 2026
   const [D,          setD]          = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], inc: [] })
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
