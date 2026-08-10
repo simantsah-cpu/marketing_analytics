@@ -234,11 +234,12 @@ export default function BlogBannerFunnel() {
   const [clickGranularity, setClickGranularity] = useState('day')
 
   // Per-table sort states
-  const ctrSort     = useSortState('ctr',     'desc')
-  const srcMedSort  = useSortState('sessions','desc')
-  const geoSort     = useSortState('sessions','desc')
-  const originSort  = useSortState('sessions','desc')
-  const midSort     = useSortState('sessions','desc')
+  const ctrSort     = useSortState('ctr',      'desc')
+  const srcMedSort  = useSortState('sessions', 'desc')
+  const geoSort     = useSortState('sessions', 'desc')
+  const originSort  = useSortState('sessions', 'desc')
+  const midSort     = useSortState('sessions', 'desc')
+  const attrSort    = useSortState('clicked',  'desc')
 
   const startDate = filters.dateRanges?.primary?.startDate ?? '2026-06-25'
   const endDate   = filters.dateRanges?.primary?.endDate   ?? 'today'
@@ -270,6 +271,9 @@ export default function BlogBannerFunnel() {
       // [14]  funnel – begin_checkout
       // [15]  funnel – checkout
       // [16]  funnel – purchase
+      // [17]  attribution – view_search_results × landingPage (transfers_banner only)
+      // [18]  attribution – begin_checkout × landingPage (transfers_banner only)
+      // [19]  attribution – purchase × landingPage (transfers_banner only)
 
       const allReports = await runGA4([
         { dateRanges: DR, dimensions: [], metrics: [{ name: 'eventCount' }, { name: 'sessions' }, { name: 'totalUsers' }], dimensionFilter: EF },
@@ -289,6 +293,24 @@ export default function BlogBannerFunnel() {
         { dateRanges: DR, dimensions: [{ name: 'customEvent:internal_referrer' }], metrics: [{ name: 'eventCount' }, { name: 'sessions' }, { name: 'totalRevenue' }], dimensionFilter: { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: 'begin_checkout' } } }, orderBys: [{ metric: { metricName: 'sessions' }, desc: true }], limit: 50 },
         { dateRanges: DR, dimensions: [{ name: 'customEvent:internal_referrer' }], metrics: [{ name: 'eventCount' }, { name: 'sessions' }, { name: 'totalRevenue' }], dimensionFilter: { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: 'checkout' } } }, orderBys: [{ metric: { metricName: 'sessions' }, desc: true }], limit: 50 },
         { dateRanges: DR, dimensions: [{ name: 'customEvent:internal_referrer' }], metrics: [{ name: 'eventCount' }, { name: 'sessions' }, { name: 'totalRevenue' }], dimensionFilter: { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: 'purchase' } } }, orderBys: [{ metric: { metricName: 'sessions' }, desc: true }], limit: 50 },
+        // [17] attribution – view_search_results × landingPage
+        { dateRanges: DR, dimensions: [{ name: 'landingPage' }], metrics: [{ name: 'sessions' }],
+          dimensionFilter: { andGroup: { expressions: [
+            { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: 'view_search_results' } } },
+            { filter: { fieldName: 'customEvent:internal_referrer', stringFilter: { matchType: 'EXACT', value: 'transfers_banner' } } },
+          ]}}, orderBys: [{ metric: { metricName: 'sessions' }, desc: true }], limit: 50 },
+        // [18] attribution – begin_checkout × landingPage
+        { dateRanges: DR, dimensions: [{ name: 'landingPage' }], metrics: [{ name: 'sessions' }],
+          dimensionFilter: { andGroup: { expressions: [
+            { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: 'begin_checkout' } } },
+            { filter: { fieldName: 'customEvent:internal_referrer', stringFilter: { matchType: 'EXACT', value: 'transfers_banner' } } },
+          ]}}, orderBys: [{ metric: { metricName: 'sessions' }, desc: true }], limit: 50 },
+        // [19] attribution – purchase × landingPage
+        { dateRanges: DR, dimensions: [{ name: 'landingPage' }], metrics: [{ name: 'sessions' }, { name: 'purchaseRevenue' }],
+          dimensionFilter: { andGroup: { expressions: [
+            { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: 'purchase' } } },
+            { filter: { fieldName: 'customEvent:internal_referrer', stringFilter: { matchType: 'EXACT', value: 'transfers_banner' } } },
+          ]}}, orderBys: [{ metric: { metricName: 'sessions' }, desc: true }], limit: 50 },
       ])
 
       setData({ allReports, pagesWithClicks: allReports[1] ?? [] })
@@ -428,6 +450,44 @@ export default function BlogBannerFunnel() {
   const fCheckSess  = n(fCheck.sessions)
   const fPurchSess  = n(fPurch.sessions)
   const fMax        = fBannerSess || 1
+
+  // ── Article attribution (reports 17-19) ────────────────────────────────────
+  // Build a lookup: landingPage → sessions for each downstream event
+  const attrSearchData  = R(17)
+  const attrBeginData   = R(18)
+  const attrPurchData   = R(19)
+
+  const lpLookup = (rows, key = 'sessions') => {
+    const m = {}
+    rows.forEach(r => {
+      const lp = (r.landingPage ?? '').split('?')[0] // strip query string
+      m[lp] = (m[lp] ?? 0) + parseFloat(r[key] ?? 0)
+    })
+    return m
+  }
+
+  const searchByLP  = lpLookup(attrSearchData)
+  const beginByLP   = lpLookup(attrBeginData)
+  const purchByLP   = lpLookup(attrPurchData)
+  const revenueByLP = lpLookup(attrPurchData, 'purchaseRevenue')
+
+  // One row per known banner page — join clicks (ctrRows) + downstream events
+  const attrRows = ctrRows.map(r => ({
+    path:     r.path,
+    short:    r.short,
+    label:    r.label,
+    clicked:  r.clicked,                  // banner click sessions
+    searches: Math.round(searchByLP[r.path] ?? 0),
+    begins:   Math.round(beginByLP[r.path] ?? 0),
+    purchases: Math.round(purchByLP[r.path] ?? 0),
+    revenue:  revenueByLP[r.path] ?? 0,
+  }))
+
+  // Mid-session / unknown rows — landing page not one of the 8 blog pages
+  const unknownSearchSess  = Object.entries(searchByLP).filter(([p]) => !BANNER_PAGES_SET.has(p)).reduce((s,[,v]) => s+v, 0)
+  const unknownBeginSess   = Object.entries(beginByLP).filter(([p]) => !BANNER_PAGES_SET.has(p)).reduce((s,[,v]) => s+v, 0)
+  const unknownPurchSess   = Object.entries(purchByLP).filter(([p]) => !BANNER_PAGES_SET.has(p)).reduce((s,[,v]) => s+v, 0)
+  const unknownRevenue     = Object.entries(revenueByLP).filter(([p]) => !BANNER_PAGES_SET.has(p)).reduce((s,[,v]) => s+v, 0)
 
   const today     = new Date()
   const daysSince = Math.round((today - new Date(startDate + 'T00:00:00')) / 86400000)
@@ -1034,6 +1094,105 @@ export default function BlogBannerFunnel() {
             Filtered to rows where customEvent:internal_referrer = "transfers_banner" at each event.
             Sessions where this parameter was absent or blank are excluded.
             {!fPurchSess && ' Purchase: no rows with transfers_banner returned — the purchase GTM tag does not pass this parameter.'}
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════
+          SECTION 10 — ARTICLE ATTRIBUTION
+      ══════════════════════════════════════════════════ */}
+      <SectionHead label="Article attribution — which blog drove the booking?" />
+      <div className="chart-row chart-row-full" style={{ marginBottom: 24 }}>
+        <div className="chart-card" style={{ padding: 0, overflow: 'hidden' }}>
+          {/* Coverage caveat */}
+          <div style={{ padding: '12px 20px 10px', background: '#F8FAFC', borderBottom: '1px solid var(--border)', fontSize: 11, color: 'var(--subtext)', lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--navy)' }}>Coverage note:</strong> Attribution is based on the GA4 <em>landing page</em> of each session.
+            Sessions that landed directly on a blog page (≈72% of clicks) are attributed exactly.
+            Sessions that navigated to the blog mid-session appear in the <em>"Mid-session / page unknown"</em> row.
+            All rows filtered to <code>internal_referrer = transfers_banner</code>.
+          </div>
+          <div className="data-table-container" style={{ border: 'none', margin: 0, borderRadius: 0 }}>
+            <table className="data-table" style={{ minWidth: 0 }}>
+              <thead>
+                <tr>
+                  <STh col="short"     label="Blog article"   sc={attrSort.sortCol} sd={attrSort.sortDir} onSort={attrSort.toggle} />
+                  <STh col="clicked"   label="Banner clicks"  sc={attrSort.sortCol} sd={attrSort.sortDir} onSort={attrSort.toggle} style={{ textAlign: 'right' }} />
+                  <STh col="searches"  label="Searches"       sc={attrSort.sortCol} sd={attrSort.sortDir} onSort={attrSort.toggle} style={{ textAlign: 'right' }} />
+                  <STh col="begins"    label="Begin checkout" sc={attrSort.sortCol} sd={attrSort.sortDir} onSort={attrSort.toggle} style={{ textAlign: 'right' }} />
+                  <STh col="purchases" label="Purchases"      sc={attrSort.sortCol} sd={attrSort.sortDir} onSort={attrSort.toggle} style={{ textAlign: 'right' }} />
+                  <STh col="revenue"   label="Revenue (£)"    sc={attrSort.sortCol} sd={attrSort.sortDir} onSort={attrSort.toggle} style={{ textAlign: 'right' }} />
+                  <th style={{ textAlign: 'right', fontSize: 10, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>Click → Checkout</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attrSort.sort(attrRows, {
+                  short:     r => r.short,
+                  clicked:   r => r.clicked,
+                  searches:  r => r.searches,
+                  begins:    r => r.begins,
+                  purchases: r => r.purchases,
+                  revenue:   r => r.revenue,
+                }).map(r => (
+                  <tr key={r.path}>
+                    <td>
+                      <a href={`https://www.hoppa.com${r.path}`} target="_blank" rel="noreferrer" className="bb-link">
+                        {r.short}
+                      </a>
+                    </td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.clicked}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.searches || '—'}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.begins || '—'}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{r.purchases || '—'}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {r.revenue > 0 ? `£${r.revenue.toLocaleString('en-GB', { maximumFractionDigits: 0 })}` : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.begins > 0 ? 'var(--navy)' : 'var(--subtext)' }}>
+                      {r.clicked > 0 && r.begins > 0 ? pct(r.begins, r.clicked) : '—'}
+                    </td>
+                  </tr>
+                ))}
+                {/* Mid-session / unknown landing page */}
+                {(unknownBeginSess > 0 || unknownSearchSess > 0 || unknownPurchSess > 0) && (
+                  <tr style={{ background: '#F8FAFC', fontStyle: 'italic', color: 'var(--subtext)' }}>
+                    <td>Mid-session / page unknown</td>
+                    <td style={{ textAlign: 'right' }}>—</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(unknownSearchSess) || '—'}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(unknownBeginSess) || '—'}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(unknownPurchSess) || '—'}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {unknownRevenue > 0 ? `£${unknownRevenue.toLocaleString('en-GB', { maximumFractionDigits: 0 })}` : '—'}
+                    </td>
+                    <td style={{ textAlign: 'right' }}>—</td>
+                  </tr>
+                )}
+                {/* Totals */}
+                {(() => {
+                  const tClicks   = attrRows.reduce((s,r) => s + r.clicked,   0)
+                  const tSearches = attrRows.reduce((s,r) => s + r.searches,  0) + Math.round(unknownSearchSess)
+                  const tBegins   = attrRows.reduce((s,r) => s + r.begins,    0) + Math.round(unknownBeginSess)
+                  const tPurch    = attrRows.reduce((s,r) => s + r.purchases, 0) + Math.round(unknownPurchSess)
+                  const tRev      = attrRows.reduce((s,r) => s + r.revenue,   0) + unknownRevenue
+                  return (
+                    <tr style={{ background: 'var(--bg)', fontWeight: 700 }}>
+                      <td style={{ fontWeight: 700 }}>Total</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmt(tClicks)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{tSearches > 0 ? fmt(tSearches) : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{tBegins   > 0 ? fmt(tBegins)   : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{tPurch    > 0 ? fmt(tPurch)    : '—'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                        {tRev > 0 ? `£${tRev.toLocaleString('en-GB', { maximumFractionDigits: 0 })}` : '—'}
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                        {tClicks > 0 && tBegins > 0 ? pct(tBegins, tClicks) : '—'}
+                      </td>
+                    </tr>
+                  )
+                })()}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: '10px 20px 14px', fontSize: 11, color: 'var(--subtext)', lineHeight: 1.65 }}>
+            Banner clicks = sessions that fired <em>blog_banner_click</em> on that page (direct landing only). Searches / Begin checkout / Purchases = sessions where the same session also reached that funnel stage with <em>internal_referrer = transfers_banner</em>. Click → Checkout = begins ÷ banner clicks. For 100% attribution of mid-session rows, a GTM change is needed to pass the clicked page as a custom event parameter.
           </div>
         </div>
       </div>
