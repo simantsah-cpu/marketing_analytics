@@ -493,19 +493,19 @@ function AISection(){
     <div>
       <div style={{fontSize:9,fontWeight:700,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:10,display:'flex',alignItems:'center',gap:10}}>
         <span>Engineering — AI-Generated Share</span>
-        <span style={{background:T.amber,color:'#fff',fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:10}}>STATIC · JUL 19</span>
+        <span style={{background:T.amber,color:'#fff',fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:10}}>STATIC · AUG 3–9</span>
         <div style={{flex:1,height:'1px',background:T.border}}/>
       </div>
       <div style={{display:'flex',gap:14,flexWrap:'wrap',alignItems:'flex-start'}}>
         <div style={CARD_SM}>
           <div style={{fontSize:10.5,fontWeight:600,color:T.text3,marginBottom:6}}>AI Code %</div>
-          <div style={{fontSize:26,fontWeight:700,color:T.text}}>95.8%</div>
-          <div style={{fontSize:11,color:T.green,marginTop:4}}>+4.9 pts WoW · prior 90.9%</div>
+          <div style={{fontSize:26,fontWeight:700,color:T.text}}>93.0%</div>
+          <div style={{fontSize:11,color:T.red,marginTop:4}}>−2.70 pts WoW · prior 95.70%</div>
         </div>
         <div style={CARD_SM}>
           <div style={{fontSize:10.5,fontWeight:600,color:T.text3,marginBottom:6}}>AI Test %</div>
-          <div style={{fontSize:26,fontWeight:700,color:T.red}}>34.3%</div>
-          <div style={{fontSize:11,color:T.red,marginTop:4}}>−56.0 pts WoW · prior 90.3%</div>
+          <div style={{fontSize:26,fontWeight:700,color:T.red}}>26.5%</div>
+          <div style={{fontSize:11,color:T.red,marginTop:4}}>−18.10 pts WoW · prior 44.60%</div>
         </div>
         <div style={CARD_SM}>
           <div style={{fontSize:10.5,fontWeight:600,color:T.text3,marginBottom:6}}>Product &amp; test metrics</div>
