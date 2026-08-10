@@ -282,40 +282,55 @@ export default function AiOverviewSection({
 
       {/* ── Category filter pills — above KPIs, filters entire dashboard ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-        {['All', ...Object.keys(CATEGORY_COLORS)]
-          .filter(c => c === 'All' || availableCategories.has(c))
-          .map(cat => {
-            const active = category === cat
-            const color  = cat === 'All' ? '#0F5FA6' : CATEGORY_COLORS[cat]
-            return (
-              <button
-                key={cat}
-                onClick={() => setCategory(cat)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                  padding: '5px 12px',
-                  border: `1px solid ${active ? color : '#E2E8F0'}`,
-                  borderRadius: 20,
-                  background: active ? color : '#fff',
-                  color: active ? '#fff' : '#5A6A7A',
-                  fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
-                  cursor: 'pointer', transition: 'all 0.12s',
-                  boxShadow: active ? `0 2px 6px ${color}40` : 'none',
-                }}
-              >
-                {cat !== 'All' && (
+        {(() => {
+          // Build cat → eventCount lookup from existing categoryBreakdown (real GA4 data, no extra query)
+          const catEventMap = {}
+          categoryBreakdown.forEach(({ label, events }) => { catEventMap[label] = events })
+
+          return ['All', ...Object.keys(CATEGORY_COLORS)]
+            .filter(c => c === 'All' || availableCategories.has(c))
+            .map(cat => {
+              const active = category === cat
+              const color  = cat === 'All' ? '#0F5FA6' : CATEGORY_COLORS[cat]
+              const count  = cat === 'All' ? totalEvents : (catEventMap[cat] ?? 0)
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setCategory(cat)}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '5px 12px',
+                    border: `1px solid ${active ? color : '#E2E8F0'}`,
+                    borderRadius: 20,
+                    background: active ? color : '#fff',
+                    color: active ? '#fff' : '#5A6A7A',
+                    fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                    cursor: 'pointer', transition: 'all 0.12s',
+                    boxShadow: active ? `0 2px 6px ${color}40` : 'none',
+                  }}
+                >
+                  {cat !== 'All' && (
+                    <span style={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: active ? 'rgba(255,255,255,0.8)' : color,
+                      flexShrink: 0, display: 'inline-block',
+                    }} />
+                  )}
+                  {cat}
                   <span style={{
-                    width: 7, height: 7, borderRadius: '50%',
-                    background: active ? 'rgba(255,255,255,0.8)' : color,
-                    flexShrink: 0, display: 'inline-block',
-                  }} />
-                )}
-                {cat}
-              </button>
-            )
-          })
-        }
+                    fontSize: 10,
+                    fontWeight: 700,
+                    opacity: active ? 0.85 : 0.55,
+                    marginLeft: 2,
+                  }}>
+                    {count.toLocaleString()}
+                  </span>
+                </button>
+              )
+            })
+        })()}
       </div>
+
 
       {/* A: KPI Cards */}
       <AiOverviewKpis
