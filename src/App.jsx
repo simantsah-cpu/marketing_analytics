@@ -25,6 +25,7 @@ import Report109 from './pages/Report109'
 import DestinationAnalysis from './pages/DestinationAnalysis'
 import DestinationAnalysisNew from './pages/DestinationAnalysisNew'
 import LeadershipDashboard from './pages/LeadershipDashboard'
+import LeadershipGate from './components/LeadershipGate'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -234,9 +235,11 @@ function DashboardShell({ onQueryOpen }) {
             <Route path="/blog-banner-funnel" element={<BlogBannerFunnel />} />
             <Route path="/report-109" element={<Report109 />} />
             <Route path="/leadership" element={
-              <div style={{ height: 'calc(100vh - var(--header-h))', overflowY: 'auto', overflowX: 'hidden' }}>
-                <LeadershipDashboard />
-              </div>
+              <LeadershipGate>
+                <div style={{ height: 'calc(100vh - var(--header-h))', overflowY: 'auto', overflowX: 'hidden' }}>
+                  <LeadershipDashboard />
+                </div>
+              </LeadershipGate>
             } />
             <Route path="/destination-analysis" element={<DestinationAnalysis />} />
             <Route path="/destination-analysis-new" element={
