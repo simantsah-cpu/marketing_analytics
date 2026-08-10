@@ -337,7 +337,7 @@ function ChannelTable({ brand, channelRows, b2cOpen, setB2cOpen }){
 
   function isSplitOpen(split){
     const k=`${brand}|${split}`
-    return b2cOpen[k]===undefined ? true : !!b2cOpen[k]
+    return b2cOpen[k]===undefined ? false : !!b2cOpen[k]
   }
   function toggleSplit(split){
     const k=`${brand}|${split}`

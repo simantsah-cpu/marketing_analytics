@@ -189,7 +189,7 @@ function miniBar(ratio, color='#2B2B2B'){
 }
 
 function FunnelTable({scopes, rhOpen, setRhOpen}){
-  function isOpen(scope){ const k=`funnel|${scope}`; return rhOpen[k]===undefined?true:!!rhOpen[k] }
+  function isOpen(scope){ const k=`funnel|${scope}`; return rhOpen[k]===undefined?false:!!rhOpen[k] }
   function toggle(scope){ const k=`funnel|${scope}`; setRhOpen(p=>({...p,[k]:!isOpen(scope)})) }
   function toggleAll(v){ const n={...rhOpen}; SCOPES.forEach(s=>{n[`funnel|${s}`]=v}); setRhOpen(n) }
 
