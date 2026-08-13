@@ -550,7 +550,7 @@ export default function RideHailingTab({D, period, CUR_MONTH, PM}){
   if(!rhRows.length){
     return (
       <div>
-        <h1 style={{fontSize:20,fontWeight:700,color:T.text,margin:'0 0 6px'}}>Ride Hailing &amp; Quality</h1>
+        <h1 style={{fontSize:20,fontWeight:700,color:T.text,margin:'0 0 6px'}}>Ride Hailing</h1>
         <div style={{fontSize:13,color:T.text3,marginBottom:20}}>Live from ads_ride_dispatch_v. Follows the period selector.</div>
         <div style={{background:T.bg2,border:`1px solid ${T.border}`,borderRadius:10,padding:'20px 24px',color:T.text3,fontSize:13,lineHeight:1.8}}>
           <strong style={{color:T.text}}>Ride hailing data has not loaded yet.</strong>
@@ -587,7 +587,7 @@ export default function RideHailingTab({D, period, CUR_MONTH, PM}){
     <div>
       {/* §8.1 Header */}
       <div style={{marginBottom:18}}>
-        <h1 style={{fontSize:20,fontWeight:700,color:T.text,margin:'0 0 4px'}}>Ride Hailing &amp; Quality</h1>
+        <h1 style={{fontSize:20,fontWeight:700,color:T.text,margin:'0 0 4px'}}>Ride Hailing</h1>
         <div style={{fontSize:13,color:T.text3,lineHeight:1.6}}>
           Live from <code style={{fontSize:11.5,background:'#f4f2ed',padding:'1px 4px',borderRadius:3}}>ads_ride_dispatch_v</code>.
           Follows the period selector.
@@ -649,12 +649,7 @@ export default function RideHailingTab({D, period, CUR_MONTH, PM}){
       <SectionLabel>Economics — Total, Global and Japan</SectionLabel>
       <EconTable scopes={scopeData}/>
 
-      {/* §8.7 Quality */}
-      <SectionLabel>Margin &amp; Quality — Partner Incident Rate (Lost)</SectionLabel>
-      <QualityTable inc={incC} incBase={incB} PM={PM}/>
-
-      {/* §8.8 AI engineering */}
-      <AISection/>
+      {/* Quality and AI metrics are on separate pages (Quality tab, AI Code & Test tab) */}
     </div>
   )
 }

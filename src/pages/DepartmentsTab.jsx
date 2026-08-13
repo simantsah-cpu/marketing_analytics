@@ -516,7 +516,7 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
           }}>● LIVE</span>
         </div>
         <div style={{ fontSize: 13, color: T.text3, marginTop: 4 }}>
-          {PC.short} profit, revenue and sales by owning team, versus target and versus {PC.baseShort}
+          {PC.short} Profit, Complete GMV and Original Sales Amount by owning team, versus target and versus {PC.baseShort}
         </div>
       </div>
 
@@ -568,10 +568,10 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
                   vs {PC.baseShort}<br />
                   <span style={{ fontWeight: 400, fontSize: 9 }}>&nbsp;</span>
                 </th>
-                <th style={{ ...TH, textAlign: 'right' }}>Revenue</th>
+                <th style={{ ...TH, textAlign: 'right' }}>Complete GMV</th>
                 <th style={{ ...TH, textAlign: 'right' }}>Margin</th>
                 <th style={{ ...TH, textAlign: 'right' }}>
-                  Sales Amount<br />
+                  Original Sales Amount<br />
                   <span style={{ fontWeight: 400, fontSize: 9 }}>vs {PC.baseShort}</span>
                 </th>
                 <th style={{ ...TH, textAlign: 'right' }}>Accounts</th>
@@ -749,7 +749,7 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
                           return [
                             ` Margin ${_pctFmt(d.margin, 1)}`,
                             ` Profit ${_usd(d.profit)}`,
-                            ` Revenue ${_usd(d.revenue)}`,
+                            ` Complete GMV ${_usd(d.revenue)}`,
                           ]
                         },
                       },

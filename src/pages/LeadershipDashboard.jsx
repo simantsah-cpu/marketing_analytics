@@ -21,7 +21,9 @@ import CustomersTab    from './CustomersTab'
 import ForecastTab     from './ForecastTab'
 import GeoProductTab   from './GeoProductTab'
 import B2CTab          from './B2CTab'
-import RideHailingTab  from './RideHailingTab'
+import RideHailingTab   from './RideHailingTab'
+import QualityTab       from './QualityTab'
+import AIEngineeringTab from './AIEngineeringTab'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale,
@@ -567,15 +569,15 @@ function SkeletonGrid({ cols, rows: rowCount, height = 130 }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  'Executive Summary', 'Departments', 'Customers',
-  'Forecast', 'GEO & Product', 'B2C',
-  'Ride Hailing & Quality',
+  'Executive Summary', 'Forecast', 'Departments', 'Customers',
+  'GEO & Product', 'B2C',
+  'Ride Hailing', 'Quality', 'AI Code & Test',
 ]
 
 export default function LeadershipDashboard() {
   const [searchParams] = useSearchParams()
   const tabParam = parseInt(searchParams.get('tab') || '0', 10)
-  const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(6, tabParam))
+  const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(8, tabParam))
   const [period,     setPeriodState] = useState('2026-08') // always default to Aug 2026
   const [D,          setD]          = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], inc: [] })
   const [loading,    setLoading]    = useState(false)
@@ -999,13 +1001,27 @@ export default function LeadershipDashboard() {
           )
         ) : null}
 
-        {/* ── Ride Hailing & Quality tab ─────────────────────────────── */}
+        {/* ── Ride Hailing tab ─────────────────────────────────────────────── */}
         {activeTab === 6 ? (
           !loading ? (
             <RideHailingTab D={D} period={period} CUR_MONTH={CUR_MONTH} PM={PC}/>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: T.text3, fontSize: 13 }}>Loading…</div>
           )
+        ) : null}
+
+        {/* ── Quality tab ──────────────────────────────────────────────────── */}
+        {activeTab === 7 ? (
+          !loading ? (
+            <QualityTab D={D} period={period} CUR_MONTH={CUR_MONTH} PM={PC}/>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: T.text3, fontSize: 13 }}>Loading…</div>
+          )
+        ) : null}
+
+        {/* ── AI Code & Test tab ───────────────────────────────────────────── */}
+        {activeTab === 8 ? (
+          <AIEngineeringTab/>
         ) : null}
 
         {/* ── GEO & Product tab ─────────────────────────────────────────── */}
@@ -1023,7 +1039,7 @@ export default function LeadershipDashboard() {
         ) : null}
 
         {/* ── Forecast tab ──────────────────────────────────────────────── */}
-        {activeTab === 3 ? (
+        {activeTab === 1 ? (
           !loading && D.fc.length > 0 ? (
             <ForecastTab
               D={D}
@@ -1043,7 +1059,7 @@ export default function LeadershipDashboard() {
         ) : null}
 
         {/* ── Customers tab ──────────────────────────────────────────────── */}
-        {activeTab === 2 ? (
+        {activeTab === 3 ? (
           !loading && cust.length > 0 ? (
             <CustomersTab
               cust={cust}
@@ -1062,7 +1078,7 @@ export default function LeadershipDashboard() {
         ) : null}
 
         {/* ── Departments tab ──────────────────────────────────────────────── */}
-        {activeTab === 1 ? (
+        {activeTab === 2 ? (
           !loading && cust.length > 0 ? (
             <DepartmentsTab
               cust={cust}
@@ -1149,24 +1165,6 @@ export default function LeadershipDashboard() {
           </Banner>
         )}
 
-        {/* Pace / attainment banner */}
-        {!loading && hasData && ach !== null && !error && (
-          <Banner kind={behind ? 'warn' : 'info'}>
-            <strong>{behind ? 'Behind pace.' : 'On or ahead of pace.'}</strong>{' '}
-            Day {pace.elapsed} of {pace.days} ({pctFmt(pace.frac, 0)} of the month elapsed)
-            with <strong>{pctFmt(ach, 1)}</strong> of the <strong>{usdC(company)}</strong> profit
-            target booked. Straight-line pacing implies{' '}
-            <strong>{usdC(company * pace.frac)}</strong> by today —{' '}
-            {gap > 0
-              ? `a shortfall of ${usdC(gap)}`
-              : `ahead by ${usdC(-gap)}`
-            }.
-            {fcAch !== null && (
-              <> The forward-booking model lands the month at <strong>{usdC(fcProfit)}</strong>{' '}
-              ({pctFmt(fcAch, 0)} of target).</>
-            )}
-          </Banner>
-        )}
 
         {/* Section label */}
         {!loading && hasData && (
@@ -1192,7 +1190,7 @@ export default function LeadershipDashboard() {
             <KpiTile1
               label={`${PC.short} Total Profit`}
               value={usdC(profit)}
-              sub={`Revenue ${usdC(revenue)}`}
+              sub={`Complete GMV ${usdC(revenue)}`}
               goal={targetOk ? `vs target ${usdC(company)}` : 'No target loaded'}
               goalLabel={ach !== null ? pctFmt(ach, 0) : null}
               goalLabelColor={achColor(ach)}
@@ -1273,7 +1271,7 @@ export default function LeadershipDashboard() {
               sub={`${pctFmt(profitPct(profit, lmProfit), 1)} · ${PC.baseShort} ${usdC(lmProfit)}`}
             />
             <KpiTile2
-              label={`Sales amount vs ${PC.base}`}
+              label={`Original Sales Amount vs ${PC.base}`}
               value={signed(sales - lmSales)}
               valueColor={(sales - lmSales) > 0 ? T.green : (sales - lmSales) < 0 ? T.red : T.text3}
               sub={`${pctFmt(salesPct(sales, lmSales), 1)} · ${PC.short} ${usdC(sales)}`}

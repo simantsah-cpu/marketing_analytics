@@ -543,8 +543,8 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
                       <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Profit</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>vs target</span></div></th>
                       <th style={TH}>Attainment</th>
                       <th style={TH}>vs {BASE}</th>
-                      <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Revenue</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>margin</span></div></th>
-                      <th style={TH}>Sales</th>
+                      <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Complete GMV</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>margin</span></div></th>
+                      <th style={TH}>Original Sales Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -626,10 +626,10 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
                 <thead>
                   <tr>
                     <th style={{...TH,textAlign:'left',paddingLeft:14,width:'22%'}}>GEO</th>
-                    <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Profit (v3)</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>target, reference only</span></div></th>
-                    <th style={TH}>Share of Mix</th>
+                    <th style={{...TH}}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Profit (v3)</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>target, reference only</span></div></th>
+                    <th style={{...TH}}>Share of Mix</th>
                     <th style={TH}>vs {BASE}</th>
-                    <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Revenue</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>margin</span></div></th>
+                    <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Complete GMV</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>margin</span></div></th>
                     <th style={TH}>Owner</th>
                   </tr>
                 </thead>
