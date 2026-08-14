@@ -337,7 +337,7 @@ function ChannelTable({ brand, channelRows, b2cOpen, setB2cOpen }){
 
   function isSplitOpen(split){
     const k=`${brand}|${split}`
-    return b2cOpen[k]===undefined ? false : !!b2cOpen[k]
+    return b2cOpen[k]===undefined ? true : !!b2cOpen[k]  // §6.4 groups default open
   }
   function toggleSplit(split){
     const k=`${brand}|${split}`
@@ -686,7 +686,9 @@ function BrandSection({ brand, D, period, CUR_MONTH, platform, PM, b2cOpen, setB
 // ─────────────────────────────────────────────────────────────────────────────
 export default function B2CTab({ D, period, CUR_MONTH, PC, PM }){
   const [platform, setPlatform] = useState('ALL')
-  const [b2cOpen, setB2cOpen] = useState({})
+  const [b2cOpen, setB2cOpen] = useState(()=>{
+    try{ const s=localStorage.getItem('eam.b2cOpen'); return s ? JSON.parse(s) : {} }catch{ return {} }
+  })
 
   // Persist b2cOpen changes
   function setAndPersistOpen(next){
