@@ -385,7 +385,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
 
       {/* ── §4 KPI row — one tile per pickup month ─────────────────────────── */}
       <div style={{marginBottom:8}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:10}}>Forecast Profit by Pickup Month</div>
+        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:10}}>Forecast Total Profit by Pickup Month</div>
         <div style={{display:'grid',gridTemplateColumns:`repeat(${mAgg.length},1fr)`,gap:12,marginBottom:20}}>
           {mAgg.map(a=>{
             const isCur=a.ym===CUR_MONTH
@@ -436,7 +436,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24}}>
         {/* §5.1 Geo stacked bar */}
         <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'16px 20px 14px'}}>
-          <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Forecast profit by geography</div>
+          <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Forecast total profit by geography</div>
           <div style={{fontSize:11.5,color:T.text3,marginBottom:14}}>
             Four months ahead · totals above each column, {usdC(geoAll)} in aggregate
           </div>
@@ -490,7 +490,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
                   <th style={{...TH,textAlign:'left',paddingLeft:14,width:'22%'}}>Month / Geo</th>
                   <th style={TH}>Committed</th>
                   <th style={{...TH,minWidth:160}}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Forecast Revenue</span><span style={{fontWeight:400,fontSize:9,opacity:.8}}>low – high</span></div></th>
-                  <th style={{...TH,minWidth:160}}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Forecast Profit</span><span style={{fontWeight:400,fontSize:9,opacity:.8}}>low – high</span></div></th>
+                  <th style={{...TH,minWidth:160}}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Forecast Total Profit</span><span style={{fontWeight:400,fontSize:9,opacity:.8}}>low – high</span></div></th>
                   <th style={TH}>Margin</th>
                   <th style={TH}>Coverage</th>
                 </tr>
@@ -563,7 +563,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
                     <th style={{...TH,textAlign:'left'}}>Type</th>
                     <th style={TH}>Committed Rev</th>
                     <th style={TH}>Forecast Rev</th>
-                    <th style={TH}>Forecast Profit</th>
+                    <th style={TH}>Forecast Total Profit</th>
                     <th style={TH}>Coverage</th>
                   </tr>
                 </thead>

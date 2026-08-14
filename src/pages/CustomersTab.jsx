@@ -57,7 +57,7 @@ function buildCustRows(cust,filters,sort){
 
 function exportCsv(rows,basis){
   const bl=basis==='ly'?'LY':'LM'
-  const head=['Hoppa Non-Hoppa','customer_name',`Original Sales Amount ▲▼ v.s ${bl}`,`Original Sales Amount ▲▼% v.s ${bl}`,'Sales Amount',`${bl} MTD Sales Amount`,`Total Profit ▲▼ v.s ${bl}`,`Total Profit ▲▼% v.s ${bl}`,'Total Profit',`${bl} Profit`,'Revenue','Margin']
+  const head=['Hoppa Non-Hoppa','customer_name',`Original Sales Amount ▲▼ v.s ${bl}`,`Original Sales Amount ▲▼% v.s ${bl}`,'Sales Amount',`${bl} MTD Sales Amount`,`Total Profit ▲▼ v.s ${bl}`,`Total Profit ▲▼% v.s ${bl}`,'Total Profit',`${bl} Total Profit`,'Revenue','Margin']
   const q=s=>`"${String(s).replace(/"/g,'""')}"`
   const lines=[head.join(',')]
   rows.forEach(r=>lines.push([q(r.dept),q(r.cust),r.s_delta.toFixed(2),r.s_pct===null?'':r.s_pct.toFixed(4),r.sales.toFixed(2),r.base_sales.toFixed(2),r.p_delta.toFixed(2),r.p_pct===null?'':r.p_pct.toFixed(4),r.profit.toFixed(2),r.base_profit.toFixed(2),r.revenue.toFixed(2),r.margin===null?'':r.margin.toFixed(4)].join(',')))
@@ -330,8 +330,8 @@ export default function CustomersTab({cust,period,CUR_MONTH,PC}){
                 <TH k="cust" label={custGroup==='eam'?'Team / Customer':'Customer'}/>
                 <TH k="sales"   label="Sales Amount" right sub={`${bl} MTD ▼`}/>
                 <TH k="s_delta" label={`Sales ▲▼ v.s ${bl}`} right/>
-                <TH k="profit"  label="Total Profit"  right sub={`${bl} Profit`}/>
-                <TH k="p_delta" label={`Profit ▲▼ v.s ${bl}`} right/>
+                <TH k="profit"  label="Total Profit"  right sub={`${bl} Total Profit`}/>
+                <TH k="p_delta" label={`Total Profit ▲▼ v.s ${bl}`} right/>
                 <TH k="margin"  label="Margin" right/>
               </tr>
             </thead>

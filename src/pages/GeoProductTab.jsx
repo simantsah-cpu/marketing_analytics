@@ -517,7 +517,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
       {/* Header */}
       <div style={{marginBottom:16}}>
         <h1 style={{fontSize:20,fontWeight:700,color:T.text,margin:0}}>GEO &amp; Product Line</h1>
-        <div style={{fontSize:13,color:T.text3,marginTop:4}}>{SHORT} profit and revenue split by geography and by product line</div>
+        <div style={{fontSize:13,color:T.text3,marginTop:4}}>{SHORT} total profit and revenue split by geography and by product line</div>
       </div>
 
       {/* ── §4 Product Line section ─────────────────────────────────────────── */}
@@ -540,7 +540,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
                   <thead>
                     <tr>
                       <th style={{...TH,textAlign:'left',paddingLeft:14,width:'22%'}}>Product Line</th>
-                      <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Profit</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>vs target</span></div></th>
+                      <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Total Profit</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>vs target</span></div></th>
                       <th style={TH}>Attainment</th>
                       <th style={TH}>vs {BASE}</th>
                       <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Complete GMV</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>margin</span></div></th>
@@ -588,10 +588,10 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:8}}>
               {/* Doughnut */}
               <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'16px 20px 20px',display:'flex',flexDirection:'column'}}>
-                <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Profit mix by product line</div>
+                <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Total profit mix by product line</div>
                 <DonutChart
                   rows={prod} labelKey="pl" colorFn={plHex}
-                  totalLabel={`${SHORT} PROFIT`} totalValue={usdC(pT.profit)}
+                  totalLabel={`${SHORT} TOTAL PROFIT`} totalValue={usdC(pT.profit)}
                 />
               </div>
               {/* Attainment bar */}
@@ -626,7 +626,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
                 <thead>
                   <tr>
                     <th style={{...TH,textAlign:'left',paddingLeft:14,width:'22%'}}>GEO</th>
-                    <th style={{...TH}}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Profit (v3)</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>target, reference only</span></div></th>
+                    <th style={{...TH}}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Total Profit (v3)</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>target, reference only</span></div></th>
                     <th style={{...TH}}>Share of Mix</th>
                     <th style={TH}>vs {BASE}</th>
                     <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Complete GMV</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>margin</span></div></th>
@@ -676,10 +676,10 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24}}>
             {/* Doughnut */}
             <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'16px 20px 20px',display:'flex',flexDirection:'column'}}>
-              <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Profit mix by geography</div>
+              <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Total profit mix by geography</div>
               <DonutChart
                 rows={geoRows} labelKey="geo" colorFn={geoHex}
-                totalLabel="V3 PROFIT" totalValue={usdC(geoTot)}
+                totalLabel="V3 TOTAL PROFIT" totalValue={usdC(geoTot)}
                 subtitle="Level is under-reported by v3; the mix itself is representative"
               />
             </div>

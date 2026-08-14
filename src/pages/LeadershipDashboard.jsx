@@ -497,7 +497,7 @@ function MoversTable({ title, subtitle, rows, positive, periodShort = 'MTD', bas
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ borderBottom: `1px solid ${T.border}` }}>
-            {['CUSTOMER', 'Δ PROFIT', periodShort.toUpperCase(), baseShort.toUpperCase()].map((h, i) => (
+            {['CUSTOMER', 'Δ TOTAL PROFIT', periodShort.toUpperCase(), baseShort.toUpperCase()].map((h, i) => (
               <th key={h} style={{
                 padding: '6px 16px', fontSize: 10, fontWeight: 600,
                 color: T.text3, textAlign: i === 0 ? 'left' : 'right',
@@ -756,7 +756,7 @@ export default function LeadershipDashboard() {
     labels: deptRows.map(r => r.dept),
     datasets: [
       {
-        label: `${PC.short} profit`,
+        label: `${PC.short} total profit`,
         data:  deptRows.map(r => r.profit),
         backgroundColor: T.blue,
         borderRadius: 3,
@@ -1114,7 +1114,7 @@ export default function LeadershipDashboard() {
             </span>
           </div>
           <div style={{ fontSize: 13, color: T.text3, marginTop: 4 }}>
-            {isMonthKey(period) ? PC.label : monthLabel(CUR_MONTH)} profit against target, compared with{' '}
+            {isMonthKey(period) ? PC.label : monthLabel(CUR_MONTH)} total profit against target, compared with{' '}
             {PC.base}
             {PC.recon ? ' — reconstructed source' : ''}
           </div>
@@ -1138,7 +1138,7 @@ export default function LeadershipDashboard() {
 
         {targets.missing && period === 'mtd' && (
           <Banner kind="warn">
-            ⚠️ No profit target loaded for <strong>{CUR_MONTH}</strong>. Using{' '}
+            ⚠️ No total profit target loaded for <strong>{CUR_MONTH}</strong>. Using{' '}
             <strong>{targets.month}</strong> targets instead. Actuals are complete.
           </Banner>
         )}
@@ -1174,7 +1174,7 @@ export default function LeadershipDashboard() {
             marginBottom: 12, paddingBottom: 8,
             borderBottom: `1px solid ${T.border}`,
           }}>
-            {isMonthKey(period) ? PC.label : monthLabel(CUR_MONTH)} — PROFIT AGAINST TARGET
+            {isMonthKey(period) ? PC.label : monthLabel(CUR_MONTH)} — TOTAL PROFIT AGAINST TARGET
           </div>
         )}
 
@@ -1225,7 +1225,7 @@ export default function LeadershipDashboard() {
 
             {/* 4 — Projected Month-End Profit */}
             <KpiTile1
-              label="Projected Month-End Profit"
+              label="Projected Month-End Total Profit"
               value={fcProfit ? usdC(fcProfit) : '—'}
               sub={fcProfit
                 ? `Likely range ${usdC(fcLo)} – ${usdC(fcHi)}`
@@ -1265,7 +1265,7 @@ export default function LeadershipDashboard() {
             gap: 12, marginBottom: 20,
           }}>
             <KpiTile2
-              label={`Profit vs ${PC.baseShort}`}
+              label={`Total Profit vs ${PC.baseShort}`}
               value={signed(profit - lmProfit)}
               valueColor={(profit - lmProfit) > 0 ? T.green : (profit - lmProfit) < 0 ? T.red : T.text3}
               sub={`${pctFmt(profitPct(profit, lmProfit), 1)} · ${PC.baseShort} ${usdC(lmProfit)}`}
@@ -1277,7 +1277,7 @@ export default function LeadershipDashboard() {
               sub={`${pctFmt(salesPct(sales, lmSales), 1)} · ${PC.short} ${usdC(sales)}`}
             />
             <KpiTile2
-              label={`Profit vs last year ${PC.short}`}
+              label={`Total Profit vs last year ${PC.short}`}
               value={signed(profit - lyProfit)}
               valueColor={(profit - lyProfit) > 0 ? T.green : (profit - lyProfit) < 0 ? T.red : T.text3}
               sub={`${pctFmt(profitPct(profit, lyProfit), 1)} · LY ${usdC(lyProfit)}`}
@@ -1294,13 +1294,13 @@ export default function LeadershipDashboard() {
         {!loading && hasData && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
 
-            {/* Left: Profit vs target by department */}
+            {/* Left: Total Profit vs target by department */}
             <div style={{
               background: T.bg, borderRadius: 12, padding: '18px 20px',
               boxShadow: T.lift, border: `1px solid ${T.border}`,
             }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
-                Profit vs target by department
+                Total Profit vs target by department
               </div>
               <div style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>
                 {PC.short} {isMonthKey(period) ? PC.label : monthLabel(CUR_MONTH)}
@@ -1320,13 +1320,13 @@ export default function LeadershipDashboard() {
               </div>
             </div>
 
-            {/* Right: Profit outlook by pickup month */}
+            {/* Right: Total Profit outlook by pickup month */}
             <div style={{
               background: T.bg, borderRadius: 12, padding: '18px 20px',
               boxShadow: T.lift, border: `1px solid ${T.border}`,
             }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
-                Profit outlook by pickup month
+                Total Profit outlook by pickup month
               </div>
               <div style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>
                 Booked to date vs forward-booking forecast, with model range
@@ -1364,7 +1364,7 @@ export default function LeadershipDashboard() {
         {!loading && hasData && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <MoversTable
-              title={`Top 10 profit gains vs ${PC.base}`}
+              title={`Top 10 total profit gains vs ${PC.base}`}
               subtitle={`Where the growth is coming from · ${usdC(gainsSum)} combined`}
               rows={topGains}
               positive
@@ -1372,7 +1372,7 @@ export default function LeadershipDashboard() {
               baseShort={PC.baseShort}
             />
             <MoversTable
-              title={`Top 10 profit declines vs ${PC.base}`}
+              title={`Top 10 total profit declines vs ${PC.base}`}
               subtitle={`Where the leak is, the action list · ${usdC(declinesSum)} combined`}
               rows={topDeclines}
               positive={false}

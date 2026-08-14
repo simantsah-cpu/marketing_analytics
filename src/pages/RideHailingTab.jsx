@@ -334,7 +334,7 @@ function EconTable({scopes}){
   const COLS=[
     {key:'rev',    label:'Complete GMV',      sub:'prior',  invert:false, fmt:usdC},
     {key:'cost',   label:'Cost',              sub:'prior',  invert:true,  fmt:usdC},
-    {key:'profit', label:'Profit',            sub:'prior',  invert:false, fmt:usdC},
+    {key:'profit', label:'Total Profit',      sub:'prior',  invert:false, fmt:usdC},
     {key:'margin', label:'Profit Margin',     sub:'prior',  invert:false, fmt:v=>pct(v,1)},
     {key:'completion',label:'Completion Rate',sub:'prior',  invert:false, fmt:v=>pct(v,1)},
     {key:'cancelRate',label:'Cancel Rate',    sub:'prior',  invert:true,  fmt:v=>pct(v,1)},
@@ -374,7 +374,7 @@ function EconTable({scopes}){
             <col style={{width:'18%'}}/>{/* Scope */}
             <col style={{width:'11.71%'}}/>{/* Complete GMV */}
             <col style={{width:'11.71%'}}/>{/* Cost */}
-            <col style={{width:'11.71%'}}/>{/* Profit */}
+            <col style={{width:'11.71%'}}/>{/* Total Profit */}
             <col style={{width:'11.71%'}}/>{/* Profit Margin */}
             <col style={{width:'11.71%'}}/>{/* Completion Rate */}
             <col style={{width:'11.71%'}}/>{/* Cancel Rate */}

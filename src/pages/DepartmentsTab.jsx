@@ -516,7 +516,7 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
           }}>● LIVE</span>
         </div>
         <div style={{ fontSize: 13, color: T.text3, marginTop: 4 }}>
-          {PC.short} Profit, Complete GMV and Original Sales Amount by owning team, versus target and versus {PC.baseShort}
+          {PC.short} Total Profit, Complete GMV and Original Sales Amount by owning team, versus target and versus {PC.baseShort}
         </div>
       </div>
 
@@ -560,7 +560,7 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
               <tr>
                 <th style={{ ...TH, textAlign: 'left', minWidth: 180 }}>Department</th>
                 <th style={{ ...TH, textAlign: 'right' }}>
-                  {PC.short} Profit<br />
+                  {PC.short} Total Profit<br />
                   <span style={{ fontWeight: 400, fontSize: 9 }}>vs target</span>
                 </th>
                 <th style={{ ...TH, textAlign: 'left', minWidth: 145 }}>Attainment</th>
@@ -638,12 +638,12 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
       {/* ── Charts row (§4) ─────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
-        {/* §4.1 — Profit contribution (doughnut + value legend) */}
+        {/* §4.1 — Total profit contribution (doughnut + value legend) */}
         <div style={{
           background: T.bg, borderRadius: 12, padding: '18px 20px',
           boxShadow: T.lift, border: `1px solid ${T.border}`,
         }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Profit contribution</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>Total profit contribution</div>
           <div style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>
             Share of {PC.short} total profit · {_usdC(shareTot)} across {donutDepts.length} teams
           </div>
@@ -675,7 +675,7 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
                         },
                       },
                       // Custom plugins
-                      centerTotal: { value: _usdC(shareTot), label: `${PC.short} profit`, sub: `${donutDepts.length} teams` },
+                      centerTotal: { value: _usdC(shareTot), label: `${PC.short} total profit`, sub: `${donutDepts.length} teams` },
                       barLabels:   { enabled: false },
                       refLine:     { enabled: false },
                       datalabels:  { display: false },
@@ -748,7 +748,7 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
                           const d = marginDepts[ctx.dataIndex]
                           return [
                             ` Margin ${_pctFmt(d.margin, 1)}`,
-                            ` Profit ${_usd(d.profit)}`,
+                            ` Total Profit ${_usd(d.profit)}`,
                             ` Complete GMV ${_usd(d.revenue)}`,
                           ]
                         },
