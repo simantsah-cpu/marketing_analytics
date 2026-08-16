@@ -139,19 +139,23 @@ function incAgg(incRows, months){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KPI tile
+// KPI tile — scopeFilter-aware
 // ─────────────────────────────────────────────────────────────────────────────
 const CARD = {background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'14px 18px 12px'}
 
-function KpiTile({label, totVal, totColor, delta, priorVal, g, j}){
+function KpiTile({label, totVal, totColor, delta, priorVal, g, j, scopeFilter}){
   const dNum = num(delta)
   const dCol = isFinite(dNum)?(dNum>0?T.green:dNum<0?T.red:T.text3):T.text3
+
+  // Primary label: when a specific scope is selected, label it; otherwise 'Total'
+  const scopeChip = scopeFilter && scopeFilter !== 'All' ? scopeFilter : 'Total'
+
   return (
     <div style={CARD}>
       <div style={{fontSize:10.5,fontWeight:600,color:T.text3,marginBottom:6,textTransform:'uppercase',letterSpacing:'0.06em'}}>{label}</div>
       <div style={{display:'flex',alignItems:'baseline',gap:6,flexWrap:'wrap'}}>
         <span style={{fontSize:24,fontWeight:700,color:totColor||T.text,lineHeight:1.1}}>{totVal}</span>
-        <span style={{fontSize:10.5,color:T.text3}}>Total</span>
+        <span style={{fontSize:10.5,color:T.text3}}>{scopeChip}</span>
       </div>
       {delta!==undefined&&(
         <div style={{fontSize:11,marginTop:3}}>
@@ -161,10 +165,13 @@ function KpiTile({label, totVal, totColor, delta, priorVal, g, j}){
           <span style={{color:T.text3}}> vs prior · prior {priorVal}</span>
         </div>
       )}
-      <div style={{display:'flex',gap:16,marginTop:6,fontSize:11}}>
-        <span><span style={{color:SCOPE_COLOR.Global,marginRight:3}}>●</span>Global {g}</span>
-        <span><span style={{color:SCOPE_COLOR.Japan,marginRight:3}}>●</span>Japan {j}</span>
-      </div>
+      {/* Show Global/Japan breakdown only when All is selected */}
+      {(!scopeFilter || scopeFilter === 'All') && (
+        <div style={{display:'flex',gap:16,marginTop:6,fontSize:11}}>
+          <span><span style={{color:SCOPE_COLOR.Global,marginRight:3}}>●</span>Global {g}</span>
+          <span><span style={{color:SCOPE_COLOR.Japan,marginRight:3}}>●</span>Japan {j}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -529,9 +536,8 @@ function SectionLabel({children}){
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function RideHailingTab({D, period, CUR_MONTH, PM}){
-  const [rhOpen, setRhOpen] = useState(()=>{
-    return {}
-  })
+  const [rhOpen, setRhOpen] = useState(()=>{return {}})
+  const [scopeFilter, setScopeFilter] = useState('All') // All | Global | Japan
 
   function setAndPersist(fn){
     setRhOpen(prev=>{
@@ -594,60 +600,106 @@ export default function RideHailingTab({D, period, CUR_MONTH, PM}){
         </div>
       </div>
 
-      {/* Scope legend */}
-      <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:16}}>
-        {SCOPES.filter(s=>s!=='Total').map(s=>(
-          <span key={s} style={{fontSize:12,color:T.text3}}>
-            <span style={{color:SCOPE_COLOR[s],marginRight:4}}>■</span>{s}
+      {/* Filter toggle: All | Global | Japan */}
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>Scope</div>
+        <div style={{display:'flex',alignItems:'center',gap:0}}>
+          <div style={{display:'flex',border:`1px solid ${T.border}`,borderRadius:8,overflow:'hidden'}}>
+            {['All','Global','Japan'].map((s,i,arr)=>(
+              <button key={s} onClick={()=>setScopeFilter(s)} style={{
+                padding:'6px 16px',fontSize:12.5,fontWeight:600,fontFamily:'inherit',cursor:'pointer',
+                border:'none',borderRight:i<arr.length-1?`1px solid ${T.border}`:'none',
+                background:scopeFilter===s?T.blue:T.bg,
+                color:scopeFilter===s?'#fff':T.text2,
+                transition:'all .15s',
+              }}>
+                {s}
+              </button>
+            ))}
+          </div>
+          <div style={{flex:1}}/>
+          <span style={{fontSize:11.5,color:T.text3,background:T.bg2,border:`1px solid ${T.border}`,borderRadius:8,padding:'5px 12px'}}>
+            {pmLabel} · vs {PM?.base?.toLowerCase()||'prior'}
           </span>
-        ))}
-        <div style={{flex:1}}/>
-        <span style={{fontSize:11.5,color:T.text3,background:T.bg2,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 12px'}}>
-          {pmLabel} · vs {PM?.base?.toLowerCase()||'prior'}
-        </span>
+        </div>
       </div>
+
+      {/* Scope legend — only shown when All is selected */}
+      {scopeFilter === 'All' && (
+        <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:12}}>
+          {SCOPES.filter(s=>s!=='Total').map(s=>(
+            <span key={s} style={{fontSize:12,color:T.text3}}>
+              <span style={{color:SCOPE_COLOR[s],marginRight:4}}>■</span>{s}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* §8.3 Demand funnel KPIs */}
       <SectionLabel>Demand Funnel</SectionLabel>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-        <KpiTile label="Inquiry Numbers"
-          totVal={numFmt(totC.inq)} totColor={T.text}
-          delta={delta(totC.inq,totB.inq)} priorVal={numFmt(totB.inq)}
-          g={numFmt(glbC.inq)} j={numFmt(jpC.inq)}
-        />
-        <KpiTile label="Service Trips"
-          totVal={numFmt(totC.trips)} totColor={T.text}
-          delta={delta(totC.trips,totB.trips)} priorVal={numFmt(totB.trips)}
-          g={numFmt(glbC.trips)} j={numFmt(jpC.trips)}
-        />
-        <KpiTile label="Completed Trips"
-          totVal={numFmt(totC.completed)} totColor={T.text}
-          delta={delta(totC.completed,totB.completed)} priorVal={numFmt(totB.completed)}
-          g={numFmt(glbC.completed)} j={numFmt(jpC.completed)}
-        />
-        <KpiTile label="Complete GMV"
-          totVal={usdC(totC.rev)} totColor={T.text}
-          delta={delta(totC.rev,totB.rev)} priorVal={usdC(totB.rev)}
-          g={usdC(glbC.rev)} j={usdC(jpC.rev)}
-        />
-      </div>
+      {/* When a specific scope is selected, derive KPI values from that scope */}
+      {(()=>{
+        const activeScope = scopeFilter === 'All' ? 'Total' : scopeFilter
+        const activeBase  = scopeFilter === 'All' ? 'Total' : scopeFilter
+        const aC = scopeData.find(s=>s.scope===activeScope)?.cur  || {}
+        const aB = scopeData.find(s=>s.scope===activeBase)?.base || {}
+        return (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+            <KpiTile label="Inquiry Numbers"
+              totVal={numFmt(aC.inq)} totColor={T.text}
+              delta={delta(aC.inq,aB.inq)} priorVal={numFmt(aB.inq)}
+              g={numFmt(glbC.inq)} j={numFmt(jpC.inq)}
+              scopeFilter={scopeFilter}
+            />
+            <KpiTile label="Service Trips"
+              totVal={numFmt(aC.trips)} totColor={T.text}
+              delta={delta(aC.trips,aB.trips)} priorVal={numFmt(aB.trips)}
+              g={numFmt(glbC.trips)} j={numFmt(jpC.trips)}
+              scopeFilter={scopeFilter}
+            />
+            <KpiTile label="Completed Trips"
+              totVal={numFmt(aC.completed)} totColor={T.text}
+              delta={delta(aC.completed,aB.completed)} priorVal={numFmt(aB.completed)}
+              g={numFmt(glbC.completed)} j={numFmt(jpC.completed)}
+              scopeFilter={scopeFilter}
+            />
+            <KpiTile label="Complete GMV"
+              totVal={usdC(aC.rev)} totColor={T.text}
+              delta={delta(aC.rev,aB.rev)} priorVal={usdC(aB.rev)}
+              g={usdC(glbC.rev)} j={usdC(jpC.rev)}
+              scopeFilter={scopeFilter}
+            />
+          </div>
+        )
+      })()}
 
       {/* §8.4 Conversion — separate section, booking-date basis */}
       <SectionLabel>Conversion — Booking Basis</SectionLabel>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:24}}>
-        <KpiTile label="Sales Trips"
-          totVal={numFmt(totC.salesTrips)} totColor={T.text}
-          delta={delta(totC.salesTrips,totB.salesTrips)} priorVal={numFmt(totB.salesTrips)}
-          g={numFmt(glbC.salesTrips)} j={numFmt(jpC.salesTrips)}
-        />
-      </div>
+      {(()=>{
+        const activeScope = scopeFilter === 'All' ? 'Total' : scopeFilter
+        const aC = scopeData.find(s=>s.scope===activeScope)?.cur  || {}
+        const aB = scopeData.find(s=>s.scope===activeScope)?.base || {}
+        return (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:24}}>
+            <KpiTile label="Sales Trips"
+              totVal={numFmt(aC.salesTrips)} totColor={T.text}
+              delta={delta(aC.salesTrips,aB.salesTrips)} priorVal={numFmt(aB.salesTrips)}
+              g={numFmt(glbC.salesTrips)} j={numFmt(jpC.salesTrips)}
+              scopeFilter={scopeFilter}
+            />
+          </div>
+        )
+      })()}
 
-      {/* §8.5 Demand funnel table */}
-      <FunnelTable scopes={scopeData} rhOpen={rhOpen} setRhOpen={setAndPersist}/>
+      {/* §8.5 Demand funnel table — filtered by scopeFilter */}
+      <FunnelTable
+        scopes={scopeFilter==='All' ? scopeData : scopeData.filter(s=>s.scope===scopeFilter)}
+        rhOpen={rhOpen} setRhOpen={setAndPersist}
+      />
 
-      {/* §8.6 Economics table */}
-      <SectionLabel>Economics — Total, Global and Japan</SectionLabel>
-      <EconTable scopes={scopeData}/>
+      {/* §8.6 Economics table — filtered by scopeFilter */}
+      <SectionLabel>Economics — {scopeFilter==='All'?'Total, Global and Japan':scopeFilter}</SectionLabel>
+      <EconTable scopes={scopeFilter==='All' ? scopeData : scopeData.filter(s=>s.scope===scopeFilter)}/>
 
       {/* Quality and AI metrics are on separate pages (Quality tab, AI Code & Test tab) */}
     </div>
