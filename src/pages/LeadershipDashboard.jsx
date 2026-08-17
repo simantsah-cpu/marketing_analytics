@@ -579,7 +579,7 @@ export default function LeadershipDashboard() {
   const tabParam = parseInt(searchParams.get('tab') || '0', 10)
   const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(8, tabParam))
   const [period,     setPeriodState] = useState('2026-08') // always default to Aug 2026
-  const [D,          setD]          = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], inc: [] })
+  const [D,          setD]          = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], mq: [] })
   const [loading,    setLoading]    = useState(false)
   const [error,      setError]      = useState(null)
   const [usingCache, setUsingCache] = useState(false)
@@ -618,7 +618,7 @@ export default function LeadershipDashboard() {
         b2c:     Array.isArray(data.b2c)     ? data.b2c     : [],
         b2cM:    Array.isArray(data.b2cM)    ? data.b2cM    : [],
         rh:      Array.isArray(data.rh)      ? data.rh      : [],
-        inc:     Array.isArray(data.inc)     ? data.inc      : [],
+        mq:      Array.isArray(data.mq)      ? data.mq       : [],
       }
       setD(result)
       cacheWrite(result)

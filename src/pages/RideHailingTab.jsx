@@ -129,15 +129,6 @@ function rhAgg(rows, months, scope){
   return der(o)
 }
 
-function incAgg(incRows, months){
-  const rs = incRows.filter(r=>months.includes(r.ym))
-  const o={valid_trips:0,lost_trips:0,all_trips:0}
-  rs.forEach(r=>{o.valid_trips+=num(r.valid_trips);o.lost_trips+=num(r.lost_trips);o.all_trips+=num(r.all_trips)})
-  o.lostRate = o.valid_trips>0 ? o.lost_trips/o.valid_trips : null
-  o.allRate  = o.valid_trips>0 ? o.all_trips/o.valid_trips : null
-  return o
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // KPI tile — scopeFilter-aware
 // ─────────────────────────────────────────────────────────────────────────────
@@ -414,82 +405,7 @@ function EconTable({scopes}){
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Quality section — incident rate
-// ─────────────────────────────────────────────────────────────────────────────
-const INC_TARGET = 0.01 // §7: 1.00%
 
-function QualityTable({inc, incBase, PM}){
-  const lostRate = inc.lostRate
-  const lostBase = incBase.lostRate
-  const vsTarget = lostRate!==null ? lostRate - INC_TARGET : null
-  const change   = lostRate!==null&&lostBase!==null ? lostRate-lostBase : null
-  const barFill  = Math.min(100, lostRate!==null ? (lostRate/INC_TARGET)*100 : 0)
-
-  return (
-    <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
-      <div style={{padding:'12px 14px 10px',borderBottom:`1px solid ${T.border}`}}>
-        <div style={{fontWeight:700,fontSize:13.5,color:T.text}}>Complaints closed against Elife</div>
-        <div style={{fontSize:11.5,color:T.text3,marginTop:2}}>
-          Filed in {PM?.label||'current period'} · as a share of Valid Trips · lower is better
-        </div>
-      </div>
-      <table style={{width:'100%',borderCollapse:'collapse'}}>
-        <thead>
-          <tr>
-            <th style={{...TH,textAlign:'left',paddingLeft:14,width:'18%'}}>Product Line</th>
-            <th style={{...TH,width:'18%'}}>Lost Rate<br/><span style={{fontWeight:400,opacity:.8}}>prior period</span></th>
-            <th style={{...TH,width:'20%'}}>vs Target (1.00%)</th>
-            <th style={{...TH,width:'16%'}}>Change</th>
-            <th style={{...TH,width:'14%'}}>Lost Complaints<br/><span style={{fontWeight:400,opacity:.8}}>valid trips</span></th>
-            <th style={{...TH,width:'14%'}}>All Complaints</th>
-          </tr>
-        </thead>
-        <tbody>
-          {/* Prebooked */}
-          <tr style={ROW}>
-            <td style={{...TD,paddingLeft:14,fontWeight:600,fontSize:13}}>Prebooked</td>
-            <td style={{...TD,textAlign:'right'}}>
-              <div style={{fontWeight:600,fontVariantNumeric:'tabular-nums',color:lostRate!==null&&lostRate<INC_TARGET?T.green:T.red}}>
-                {lostRate!==null?pct(lostRate,3):'—'}
-              </div>
-              <div style={{fontSize:10.5,color:T.text3}}>{lostBase!==null?pct(lostBase,3):'—'}</div>
-            </td>
-            <td style={{...TD}}>
-              <div style={{display:'flex',alignItems:'center',gap:8}}>
-                <div style={{flex:1,height:6,background:'#ece9e0',borderRadius:3}}>
-                  <div style={{width:`${barFill}%`,height:'100%',background:barFill<100?T.green:T.red,borderRadius:3,transition:'width .3s'}}/>
-                </div>
-                <span style={{fontSize:11.5,fontWeight:600,color:vsTarget!==null&&vsTarget<0?T.green:T.red,minWidth:36,textAlign:'right'}}>
-                  {vsTarget!==null?(vsTarget*100).toFixed(0)+'%':'—'}
-                </span>
-              </div>
-            </td>
-            <td style={{...TD,textAlign:'right'}}>
-              <span style={{fontSize:12.5,fontWeight:600,color:change!==null&&change<=0?T.green:T.red}}>
-                {change!==null?pts(change,3):'—'}
-              </span>
-            </td>
-            <td style={{...TD,textAlign:'right'}}>
-              <div style={{fontWeight:500}}>{numFmt(inc.lost_trips)}</div>
-              <div style={{fontSize:10.5,color:T.text3}}>{numFmt(inc.valid_trips)}</div>
-            </td>
-            <td style={{...TD,textAlign:'right',fontVariantNumeric:'tabular-nums'}}>
-              {inc.allRate!==null?pct(inc.allRate,2):'—'}
-            </td>
-          </tr>
-          {/* Ride Hailing — §7.1 no data */}
-          <tr style={{...ROW,background:T.bg}}>
-            <td style={{...TD,paddingLeft:14,fontWeight:600,fontSize:13,color:T.text2}}>Ride Hailing</td>
-            <td colSpan={5} style={{...TD,color:T.text3,fontSize:12,fontStyle:'italic'}}>
-              Not held in this source — see note below
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  )
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AI engineering section — static §8.8
@@ -550,7 +466,6 @@ export default function RideHailingTab({D, period, CUR_MONTH, PM}){
   const sets = useMemo(()=>rhMonthSets(period,CUR_MONTH),[period,CUR_MONTH])
 
   const rhRows = D.rh  || []
-  const incRows= D.inc || []
 
   // §8.2 Empty state — only if query returned nothing
   if(!rhRows.length){
@@ -580,10 +495,6 @@ export default function RideHailingTab({D, period, CUR_MONTH, PM}){
   const totB = scopeData.find(s=>s.scope==='Total')?.base || {}
   const glbC = scopeData.find(s=>s.scope==='Global')?.cur || {}
   const jpC  = scopeData.find(s=>s.scope==='Japan')?.cur  || {}
-
-  // Incident rate
-  const incC  = useMemo(()=>incAgg(incRows,sets.cur), [incRows,sets])
-  const incB  = useMemo(()=>incAgg(incRows,sets.base),[incRows,sets])
 
   const delta = (c,b) => b&&b!==0?(c-b)/Math.abs(b):null
 

@@ -525,34 +525,82 @@ FROM disp d
 FULL JOIN srch s ON d.ym = s.ym AND d.scope = s.scope
 `
 
-// Q_INC — Prebooked partner incident rate
-// §7: numerator on file_datetime, denominator on pickup_date — two date bases, deliberate
-// §7.1: Ride Hailing has zero rows — only Prebooked is in this view
-const Q_INC = `
-WITH den AS (
+// Q_MQ — Margin & Quality partner incident rate
+// Reconciled to Power BI RP0036 to the row. Replaces Q_INC entirely.
+// Sources: dwb.dwb_complaint (numerator), ads.ads_ride_dispatch_v (denominator)
+//          dwb.dwb_dispatch_detail (maps dispatch_id → ride_id+trip_no)
+// §4.2 IMPORTANT: inc CTE has NO date filter. Late-filed complaints must count
+//      against the trip's pickup month. dwb_complaint covers back to 2022-01-01.
+// §0.2 'Customer No show' exact string — capital N. Must be excluded from incident count.
+// §0.3 Denominator includes has_complaint=1 regardless of ride_stat.
+// §0.4 Product line from partner_name STRPOS only — no fleet-ID allow-list.
+// §0.5 Deduplicate to trip grain: MAX(...) GROUP BY ride_id, trip_no.
+// §4 dispatch_stat <> '' exclusion removes hoppa-fulfilled trips (no dispatch record).
+const Q_MQ = `
+WITH inc AS (
   SELECT
-    FORMAT_DATE("%Y-%m", pickup_date) AS ym,
-    SUM(IF(ride_stat IN ("Accepted","Pending")
-        OR (ride_stat="Cancelled" AND has_complaint=1), 1, 0)) AS valid_trips
-  FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\`
-  WHERE pickup_date BETWEEN DATE "2025-01-01" AND CURRENT_DATE()
-    AND STRPOS(IFNULL(partner_name,""), "Ride Hailing") = 0
-  GROUP BY 1
+    dd.ride_id,
+    dd.trip_no,
+    MAX(IF(dc.complaint_reason <> 'Customer No show', 1, 0)) AS pi_in,
+    MAX(IF(dc.complaint_reason <> 'Customer No show'
+           AND dc.complaint_status IN ('Closed against Elife, lost','Initiated'), 1, 0)) AS pi_ex,
+    MAX(IF(dc.complaint_reason <> 'Customer No show'
+           AND dc.complaint_status = 'Closed against Elife, lost', 1, 0)) AS pi_lost
+  FROM \`elife-data-warehouse-prod.dwb.dwb_complaint\` dc
+  JOIN \`elife-data-warehouse-prod.dwb.dwb_dispatch_detail\` dd
+    ON dd.dispatch_id = dc.dispatch_id
+  GROUP BY 1, 2
 ),
-num AS (
+sa AS (
+  SELECT service_area_id, ANY_VALUE(geo) AS geo
+  FROM \`elife-data-warehouse-prod.ads.ads_driver_service_area\`
+  WHERE service_area_id IS NOT NULL
+  GROUP BY service_area_id
+),
+cust AS (
+  SELECT fleet_id, IFNULL(NULLIF(customer_name,''), fleet_name) AS cust
+  FROM \`elife-data-warehouse-prod.dim.dim_fleet_as_customer\`
+),
+wt AS (
   SELECT
-    FORMAT_DATE("%Y-%m", DATE(file_datetime)) AS ym,
-    SUM(IF(complaint_status="Closed against Elife, lost", IFNULL(complaint_trip,0),0)) AS lost_trips,
-    SUM(IFNULL(complaint_trip,0)) AS all_trips
-  FROM \`elife-data-warehouse-prod.ads.ads_qa_complaint_kpi_view\`
-  WHERE DATE(file_datetime) BETWEEN DATE "2025-01-01" AND CURRENT_DATE()
-  GROUP BY 1
+    FORMAT_DATE('%Y-%m', v.pickup_date) AS ym,
+    IF(STRPOS(IFNULL(v.partner_name,''), 'Ride Hailing') > 0, 'Ride Hailing', 'Prebooked') AS biz,
+    CASE
+      WHEN STRPOS(IFNULL(v.partner_name,''), 'Ride Hailing') > 0 THEN 'Ride Hailing'
+      WHEN v.vehicle_class_id < 110                              THEN 'Private Transfer'
+      WHEN v.vehicle_class_id = 122                              THEN 'Rail'
+      ELSE 'Shared Shuttle'
+    END AS product_line,
+    IFNULL(c.cust, '(Unmapped)')   AS cust,
+    IFNULL(s.geo,  '(Unassigned)') AS geo,
+    IFNULL(i.pi_in,   0) AS pi_in,
+    IFNULL(i.pi_ex,   0) AS pi_ex,
+    IFNULL(i.pi_lost, 0) AS pi_lost
+  FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\` v
+  LEFT JOIN inc  i ON i.ride_id = v.ride_id AND i.trip_no = v.trip_no
+  LEFT JOIN sa   s ON s.service_area_id = v.service_area_id
+  LEFT JOIN cust c ON c.fleet_id = v.from_fleet_id_as_customer
+  WHERE v.pickup_date BETWEEN DATE '2025-01-01' AND CURRENT_DATE()
+    AND (v.ride_stat IN ('Accepted','Pending') OR v.has_complaint = 1)
+    AND IFNULL(v.dispatch_stat, 'x') <> ''
+),
+agg AS (
+  SELECT 'biz'      AS grain, biz                       AS dim, ym, pi_in, pi_ex, pi_lost FROM wt
+  UNION ALL
+  SELECT 'product',            product_line,                     ym, pi_in, pi_ex, pi_lost FROM wt
+  UNION ALL
+  SELECT 'geo',                CONCAT(biz, ' | ', geo),          ym, pi_in, pi_ex, pi_lost FROM wt
+  UNION ALL
+  SELECT 'customer',           CONCAT(biz, ' | ', cust),         ym, pi_in, pi_ex, pi_lost FROM wt
 )
-SELECT den.ym,
-       CAST(den.valid_trips           AS FLOAT64) AS valid_trips,
-       CAST(IFNULL(num.lost_trips,0)  AS FLOAT64) AS lost_trips,
-       CAST(IFNULL(num.all_trips,0)   AS FLOAT64) AS all_trips
-FROM den LEFT JOIN num USING (ym)
+SELECT
+  grain, dim, ym,
+  CAST(COUNT(*)      AS FLOAT64) AS valid_trips,
+  CAST(SUM(pi_in)    AS FLOAT64) AS pi_in,
+  CAST(SUM(pi_ex)    AS FLOAT64) AS pi_ex,
+  CAST(SUM(pi_lost)  AS FLOAT64) AS pi_lost
+FROM agg
+GROUP BY grain, dim, ym
 `
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -585,7 +633,7 @@ serve(async (req) => {
     // All non-CUST queries are non-fatal — tabs show empty states on failure.
     const [
       custRows, targetsRows, fcRows, monthsRows, fccRows,
-      prodRows, geoRows, b2cRows, b2cMRows, rhRows, incRows,
+      prodRows, geoRows, b2cRows, b2cMRows, rhRows, mqRows,
     ] = await Promise.all([
       runQuery(projectId, Q_CUST,    accessToken),
       runQuery(projectId, Q_TARGETS, accessToken),
@@ -597,7 +645,7 @@ serve(async (req) => {
       runQuery(projectId, Q_B2C,     accessToken).catch(() => []),
       runQuery(projectId, Q_B2C_M,   accessToken).catch(() => []),
       runQuery(projectId, Q_RH,      accessToken).catch(() => []),
-      runQuery(projectId, Q_INC,     accessToken).catch(() => []),
+      runQuery(projectId, Q_MQ,      accessToken).catch(() => []),
     ])
 
     return new Response(
@@ -613,7 +661,7 @@ serve(async (req) => {
         b2c:     b2cRows,
         b2cM:    b2cMRows,
         rh:      rhRows,
-        inc:     incRows,
+        mq:      mqRows,
       }),
       { headers: { ...CORS, 'Content-Type': 'application/json' } },
     )
