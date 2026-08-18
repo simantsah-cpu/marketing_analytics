@@ -228,6 +228,7 @@ function BizTile({label, t, base, accentColor}){
 const PL_ORDER=['Private Transfer','Shared Shuttle','Rail','Ride Hailing']
 
 function ProductTable({MQ, months}){
+  const [open,setOpen]=useState(false)
   const rows=PL_ORDER.map(pl=>{
     const t=mqFor(MQ,'product',pl,months)
     return {pl,t}
@@ -249,50 +250,59 @@ function ProductTable({MQ, months}){
   )
   return (
     <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
-      <div style={{overflowX:'auto'}}>
-        <table style={{width:'100%',borderCollapse:'collapse',minWidth:520}}>
-          <colgroup>
-            <col style={{width:'28%'}}/>
-            <col style={{width:'16%'}}/>
-            <col style={{width:'14%'}}/>
-            <col style={{width:'14%'}}/>
-            <col style={{width:'14%'}}/>
-            <col style={{width:'14%'}}/>
-          </colgroup>
-          <thead>
-            <tr>
-              <th style={{...TH,textAlign:'left',paddingLeft:14}}>Product line</th>
-              <th style={TH}>Valid trips</th>
-              <th style={TH}>All</th>
-              <th style={TH}>Ex</th>
-              <th style={TH}>Lost</th>
-              <th style={TH}>Lost rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({pl,t})=>(
-              <tr key={pl} style={ROW}>
-                <td style={{...TD,paddingLeft:14,fontWeight:600}}>{pl}</td>
-                <td style={{...TD,textAlign:'right'}}>{numFmt(t.valid)}</td>
-                <td style={{...TD,textAlign:'right'}}>{numFmt(t.pin)}</td>
-                <td style={{...TD,textAlign:'right'}}>{numFmt(t.pex)}</td>
-                <td style={{...TD,textAlign:'right',fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{numFmt(t.plost)}</td>
-                <td style={{...TD,textAlign:'right',fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{pct(t.rateLost,3)}</td>
-              </tr>
-            ))}
-            {tot&&(
-              <tr style={{...ROW,background:T.bg3}}>
-                <td style={{...TD,paddingLeft:14,fontWeight:700}}>Total</td>
-                <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(tot.valid)}</td>
-                <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(agg.pin)}</td>
-                <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(agg.pex)}</td>
-                <td style={{...TD,textAlign:'right',fontWeight:700,color:tot.rateLost<0.01?T.green:T.red}}>{numFmt(agg.plost)}</td>
-                <td style={{...TD,textAlign:'right',fontWeight:700,color:tot.rateLost<0.01?T.green:T.red}}>{pct(tot.rateLost,3)}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+      <div onClick={()=>setOpen(o=>!o)}
+        style={{padding:'10px 14px',cursor:'pointer',display:'flex',alignItems:'center',gap:8,userSelect:'none'}}>
+        <span style={{fontSize:10,color:T.text3}}>{open?'▼':'▶'}</span>
+        <span style={{fontWeight:700,fontSize:13}}>By product line</span>
+        <div style={{flex:1}}/>
+        <span style={{fontSize:11,color:T.text3}}>{rows.length} product lines</span>
       </div>
+      {open&&(
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',minWidth:520}}>
+            <colgroup>
+              <col style={{width:'28%'}}/>
+              <col style={{width:'16%'}}/>
+              <col style={{width:'14%'}}/>
+              <col style={{width:'14%'}}/>
+              <col style={{width:'14%'}}/>
+              <col style={{width:'14%'}}/>
+            </colgroup>
+            <thead>
+              <tr>
+                <th style={{...TH,textAlign:'left',paddingLeft:14}}>Product line</th>
+                <th style={TH}>Valid trips</th>
+                <th style={TH}>All</th>
+                <th style={TH}>Ex</th>
+                <th style={TH}>Lost</th>
+                <th style={TH}>Lost rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({pl,t})=>(
+                <tr key={pl} style={ROW}>
+                  <td style={{...TD,paddingLeft:14,fontWeight:600}}>{pl}</td>
+                  <td style={{...TD,textAlign:'right'}}>{numFmt(t.valid)}</td>
+                  <td style={{...TD,textAlign:'right'}}>{numFmt(t.pin)}</td>
+                  <td style={{...TD,textAlign:'right'}}>{numFmt(t.pex)}</td>
+                  <td style={{...TD,textAlign:'right',fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{numFmt(t.plost)}</td>
+                  <td style={{...TD,textAlign:'right',fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{pct(t.rateLost,3)}</td>
+                </tr>
+              ))}
+              {tot&&(
+                <tr style={{...ROW,background:T.bg3}}>
+                  <td style={{...TD,paddingLeft:14,fontWeight:700}}>Total</td>
+                  <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(tot.valid)}</td>
+                  <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(agg.pin)}</td>
+                  <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(agg.pex)}</td>
+                  <td style={{...TD,textAlign:'right',fontWeight:700,color:tot.rateLost<0.01?T.green:T.red}}>{numFmt(agg.plost)}</td>
+                  <td style={{...TD,textAlign:'right',fontWeight:700,color:tot.rateLost<0.01?T.green:T.red}}>{pct(tot.rateLost,3)}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
@@ -341,7 +351,7 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
         <span><span style={{color:T.amber,marginRight:3}}>●</span>Ride Hailing (right axis)</span>
       </div>
       <div style={{overflowX:'auto'}}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',maxWidth:W,display:'block'}}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',display:'block'}}>
           <g transform={`translate(${PL.l},${PL.t})`}>
             {tick3(iH).map((y,i)=>(
               <line key={i} x1={0} y1={y} x2={iW} y2={y} stroke={T.border} strokeWidth={0.8}/>
@@ -583,28 +593,8 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
           </div>
           <TrendChart MQ={MQ} allMonths={allMonths} CUR_MONTH={CUR_MONTH}/>
 
-          {/* Product line */}
-          <div style={{fontSize:9,fontWeight:700,color:T.text3,textTransform:'uppercase',
-            letterSpacing:'0.07em',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
-            <span>By product line</span>
-            <div style={{flex:1,height:'1px',background:T.border}}/>
-          </div>
           <ProductTable MQ={MQ} months={sets.cur}/>
-
-          {/* Geo */}
-          <div style={{fontSize:9,fontWeight:700,color:T.text3,textTransform:'uppercase',
-            letterSpacing:'0.07em',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
-            <span>By geography</span>
-            <div style={{flex:1,height:'1px',background:T.border}}/>
-          </div>
           <GeoSection MQ={MQ} months={sets.cur}/>
-
-          {/* Customer */}
-          <div style={{fontSize:9,fontWeight:700,color:T.text3,textTransform:'uppercase',
-            letterSpacing:'0.07em',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
-            <span>By customer</span>
-            <div style={{flex:1,height:'1px',background:T.border}}/>
-          </div>
           <CustomerSection MQ={MQ} months={sets.cur} baseMonths={sets.base}/>
 
           {/* §8 mandatory footnote */}
