@@ -227,11 +227,10 @@ function BizTile({label, t, base, accentColor}){
 // ─────────────────────────────────────────────────────────────────────────────
 const PL_ORDER=['Private Transfer','Shared Shuttle','Rail','Ride Hailing']
 
-function ProductTable({MQ, months, baseMonths}){
+function ProductTable({MQ, months}){
   const rows=PL_ORDER.map(pl=>{
-    const t   =mqFor(MQ,'product',pl,months)
-    const base=mqFor(MQ,'product',pl,baseMonths)
-    return {pl,t,base}
+    const t=mqFor(MQ,'product',pl,months)
+    return {pl,t}
   }).filter(r=>r.t&&r.t.valid>0)
 
   // Aggregate total — sum components, then divide (never average rates)
@@ -243,11 +242,6 @@ function ProductTable({MQ, months, baseMonths}){
   const tot=agg.valid>0?{
     ...agg,
     rateLost:agg.plost/agg.valid,
-    rateEx:agg.pex/agg.valid,
-    rateIn:agg.pin/agg.valid,
-    open:agg.pex-agg.plost,
-    openShare:agg.pex>0?(agg.pex-agg.plost)/agg.pex:0,
-    provisional:rows.some(r=>r.t?.provisional),
   }:null
 
   if(!rows.length) return (
@@ -256,15 +250,14 @@ function ProductTable({MQ, months, baseMonths}){
   return (
     <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
       <div style={{overflowX:'auto'}}>
-        <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
+        <table style={{width:'100%',borderCollapse:'collapse',minWidth:520}}>
           <colgroup>
-            <col style={{width:'25%'}}/>
-            <col style={{width:'13%'}}/>
-            <col style={{width:'11%'}}/>
-            <col style={{width:'11%'}}/>
-            <col style={{width:'11%'}}/>
-            <col style={{width:'18%'}}/>
-            <col style={{width:'11%'}}/>
+            <col style={{width:'28%'}}/>
+            <col style={{width:'16%'}}/>
+            <col style={{width:'14%'}}/>
+            <col style={{width:'14%'}}/>
+            <col style={{width:'14%'}}/>
+            <col style={{width:'14%'}}/>
           </colgroup>
           <thead>
             <tr>
@@ -274,30 +267,27 @@ function ProductTable({MQ, months, baseMonths}){
               <th style={TH}>Ex</th>
               <th style={TH}>Lost</th>
               <th style={TH}>Lost rate</th>
-              <th style={TH}>vs prior</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({pl,t,base})=>(
+            {rows.map(({pl,t})=>(
               <tr key={pl} style={ROW}>
                 <td style={{...TD,paddingLeft:14,fontWeight:600}}>{pl}</td>
                 <td style={{...TD,textAlign:'right'}}>{numFmt(t.valid)}</td>
                 <td style={{...TD,textAlign:'right'}}>{numFmt(t.pin)}</td>
                 <td style={{...TD,textAlign:'right'}}>{numFmt(t.pex)}</td>
                 <td style={{...TD,textAlign:'right',fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{numFmt(t.plost)}</td>
-                <td style={{...TD,textAlign:'right'}}><RateCell t={t}/></td>
-                <td style={{...TD,textAlign:'right'}}><DeltaCell cur={t} base={base}/></td>
+                <td style={{...TD,textAlign:'right',fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{pct(t.rateLost,3)}</td>
               </tr>
             ))}
             {tot&&(
               <tr style={{...ROW,background:T.bg3}}>
                 <td style={{...TD,paddingLeft:14,fontWeight:700}}>Total</td>
                 <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(tot.valid)}</td>
-                <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(tot.pin)}</td>
-                <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(tot.pex)}</td>
-                <td style={{...TD,textAlign:'right',fontWeight:700,color:tot.rateLost<0.01?T.green:T.red}}>{numFmt(tot.plost)}</td>
-                <td style={{...TD,textAlign:'right'}}><RateCell t={tot}/></td>
-                <td style={{...TD,textAlign:'right'}}>—</td>
+                <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(agg.pin)}</td>
+                <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(agg.pex)}</td>
+                <td style={{...TD,textAlign:'right',fontWeight:700,color:tot.rateLost<0.01?T.green:T.red}}>{numFmt(agg.plost)}</td>
+                <td style={{...TD,textAlign:'right',fontWeight:700,color:tot.rateLost<0.01?T.green:T.red}}>{pct(tot.rateLost,3)}</td>
               </tr>
             )}
           </tbody>
@@ -310,8 +300,9 @@ function ProductTable({MQ, months, baseMonths}){
 // ─────────────────────────────────────────────────────────────────────────────
 // §8 Trend chart — dual-axis SVG (Prebooked left, Ride Hailing right)
 // ─────────────────────────────────────────────────────────────────────────────
-function TrendChart({MQ, allMonths}){
-  const months=[...allMonths].sort().slice(-12)
+function TrendChart({MQ, allMonths, CUR_MONTH}){
+  // Exclude the current (partial) month — it has incomplete data and misleads the trend
+  const months=[...allMonths].filter(ym=>ym!==CUR_MONTH).sort().slice(-12)
   if(months.length<2) return null
 
   const pbVals=months.map(ym=>{const t=mqFor(MQ,'biz','Prebooked',[ym]);return t?t.rateLost*100:null})
@@ -380,12 +371,11 @@ function TrendChart({MQ, allMonths}){
 // ─────────────────────────────────────────────────────────────────────────────
 const MIN_GEO=100
 
-function GeoSection({MQ, months, baseMonths}){
+function GeoSection({MQ, months}){
   const [open,setOpen]=useState(false)
   const rows=Object.keys(MQ.geo||{}).map(dim=>{
     const t=mqFor(MQ,'geo',dim,months)
-    const base=mqFor(MQ,'geo',dim,baseMonths)
-    return {dim,t,base}
+    return {dim,t}
   }).filter(r=>r.t&&r.t.valid>0).sort((a,b)=>b.t.valid-a.t.valid)
 
   return (
@@ -400,10 +390,13 @@ function GeoSection({MQ, months, baseMonths}){
       </div>
       {open&&(
         <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',minWidth:500}}>
+          <table style={{width:'100%',borderCollapse:'collapse',minWidth:480}}>
             <colgroup>
-              <col style={{width:'28%'}}/><col style={{width:'13%'}}/><col style={{width:'11%'}}/>
-              <col style={{width:'11%'}}/><col style={{width:'18%'}}/><col style={{width:'11%'}}/>
+              <col style={{width:'32%'}}/>
+              <col style={{width:'18%'}}/>
+              <col style={{width:'14%'}}/>
+              <col style={{width:'14%'}}/>
+              <col style={{width:'22%'}}/>
             </colgroup>
             <thead><tr>
               <th style={{...TH,textAlign:'left',paddingLeft:14}}>Line · Geo</th>
@@ -411,10 +404,9 @@ function GeoSection({MQ, months, baseMonths}){
               <th style={TH}>Ex</th>
               <th style={TH}>Lost</th>
               <th style={TH}>Lost rate</th>
-              <th style={TH}>vs prior</th>
             </tr></thead>
             <tbody>
-              {rows.map(({dim,t,base})=>{
+              {rows.map(({dim,t})=>{
                 const parts=dim.split(' | ')
                 const bizP=parts[0], geoP=parts.slice(1).join(' | ')||dim
                 const suppressed=t.valid<MIN_GEO
@@ -430,11 +422,8 @@ function GeoSection({MQ, months, baseMonths}){
                     <td style={{...TD,textAlign:'right'}}>
                       {suppressed
                         ?<span style={{color:T.text3,fontSize:11}}>n/a ({numFmt(t.valid)} trips)</span>
-                        :<RateCell t={t}/>
+                        :<span style={{fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{pct(t.rateLost,3)}</span>
                       }
-                    </td>
-                    <td style={{...TD,textAlign:'right'}}>
-                      {suppressed?<span style={{color:T.text3}}>—</span>:<DeltaCell cur={t} base={base}/>}
                     </td>
                   </tr>
                 )
@@ -482,10 +471,14 @@ function CustomerSection({MQ, months, baseMonths}){
       </div>
       {open&&(
         <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',minWidth:560}}>
+          <table style={{width:'100%',borderCollapse:'collapse',minWidth:520}}>
             <colgroup>
-              <col style={{width:'28%'}}/><col style={{width:'13%'}}/><col style={{width:'10%'}}/>
-              <col style={{width:'10%'}}/><col style={{width:'10%'}}/><col style={{width:'18%'}}/>
+              <col style={{width:'32%'}}/>
+              <col style={{width:'18%'}}/>
+              <col style={{width:'12%'}}/>
+              <col style={{width:'12%'}}/>
+              <col style={{width:'12%'}}/>
+              <col style={{width:'14%'}}/>
             </colgroup>
             <thead><tr>
               <th style={{...TH,textAlign:'left',paddingLeft:14}}>Line · Customer</th>
@@ -509,7 +502,7 @@ function CustomerSection({MQ, months, baseMonths}){
                     <td style={{...TD,textAlign:'right'}}>{numFmt(t.pin)}</td>
                     <td style={{...TD,textAlign:'right'}}>{numFmt(t.pex)}</td>
                     <td style={{...TD,textAlign:'right',fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{numFmt(t.plost)}</td>
-                    <td style={{...TD,textAlign:'right'}}><RateCell t={t} dp={3}/></td>
+                    <td style={{...TD,textAlign:'right',fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{pct(t.rateLost,3)}</td>
                   </tr>
                 )
               })}
@@ -555,13 +548,6 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
           <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:10,
             background:'rgba(29,158,117,.11)',color:'#1D9E75',letterSpacing:'0.06em'}}>● LIVE</span>
         </div>
-        <div style={{fontSize:13,color:T.text3,marginTop:4}}>
-          Partner incident rate — Prebooked &amp; Ride Hailing.{' '}
-          Data from <code style={{fontSize:11.5,background:'#f4f2ed',padding:'1px 4px',borderRadius:3}}>dwb.dwb_complaint</code>
-          {' '}+{' '}
-          <code style={{fontSize:11.5,background:'#f4f2ed',padding:'1px 4px',borderRadius:3}}>ads_ride_dispatch_v</code>.
-          Reconciled to RP0036.
-        </div>
       </div>
 
       {/* Period context */}
@@ -595,7 +581,7 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
             <span>Monthly trend</span>
             <div style={{flex:1,height:'1px',background:T.border}}/>
           </div>
-          <TrendChart MQ={MQ} allMonths={allMonths}/>
+          <TrendChart MQ={MQ} allMonths={allMonths} CUR_MONTH={CUR_MONTH}/>
 
           {/* Product line */}
           <div style={{fontSize:9,fontWeight:700,color:T.text3,textTransform:'uppercase',
@@ -603,7 +589,7 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
             <span>By product line</span>
             <div style={{flex:1,height:'1px',background:T.border}}/>
           </div>
-          <ProductTable MQ={MQ} months={sets.cur} baseMonths={sets.base}/>
+          <ProductTable MQ={MQ} months={sets.cur}/>
 
           {/* Geo */}
           <div style={{fontSize:9,fontWeight:700,color:T.text3,textTransform:'uppercase',
@@ -611,7 +597,7 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
             <span>By geography</span>
             <div style={{flex:1,height:'1px',background:T.border}}/>
           </div>
-          <GeoSection MQ={MQ} months={sets.cur} baseMonths={sets.base}/>
+          <GeoSection MQ={MQ} months={sets.cur}/>
 
           {/* Customer */}
           <div style={{fontSize:9,fontWeight:700,color:T.text3,textTransform:'uppercase',
