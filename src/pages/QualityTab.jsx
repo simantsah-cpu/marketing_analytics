@@ -15,10 +15,10 @@
 import { useState, useMemo, useEffect } from 'react'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Design tokens
+// Design tokens — identical to RideHailingTab, GeoProductTab, CustomersTab
 // ─────────────────────────────────────────────────────────────────────────────
 const T = {
-  bg:'#ffffff', bg2:'#FAFBFC', bg3:'#F1F5F9',
+  bg:'#ffffff', bg2:'#FAFBFC', bg3:'#F1F5F9', bg4:'#E2EAF0',
   text:'#1A2B3C', text2:'#374151', text3:'#64748B',
   border:'#E2EAF0', border2:'#B8C4D0',
   green:'#1D9E75', greenBg:'rgba(29,158,117,.11)',
@@ -168,47 +168,82 @@ function DeltaCell({cur, base}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Table styles
+// Table styles — exact match to RideHailingTab / GeoProductTab
 // ─────────────────────────────────────────────────────────────────────────────
 const TH={padding:'6px 10px',fontSize:9.5,fontWeight:700,color:T.text3,
   textTransform:'uppercase',letterSpacing:'0.06em',background:T.bg2,
   borderBottom:`1px solid ${T.border}`,whiteSpace:'nowrap',textAlign:'right'}
 const TD={padding:'9px 10px',fontSize:12.5,verticalAlign:'top'}
 const ROW={borderBottom:`1px solid ${T.border}`}
-const CARD={background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'16px 20px 14px'}
+const CARD={background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'14px 18px 12px'}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §8 — Headline tile (Prebooked OR Ride Hailing — never combined §0.7)
+// SectionLabel — identical to RideHailingTab
+// ─────────────────────────────────────────────────────────────────────────────
+function SectionLabel({children}){
+  return (
+    <div style={{fontSize:9,fontWeight:700,color:T.text3,textTransform:'uppercase',
+      letterSpacing:'0.07em',marginBottom:10,display:'flex',alignItems:'center',gap:10}}>
+      <span>{children}</span>
+      <div style={{flex:1,height:'1px',background:T.border}}/>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §8 — Headline KPI tile (Prebooked OR Ride Hailing — never combined §0.7)
+// Pattern: matches KpiTile in RideHailingTab exactly
 // ─────────────────────────────────────────────────────────────────────────────
 function BizTile({label, t, base, accentColor}){
   if(!t) return (
     <div style={{...CARD,flex:1,minWidth:240}}>
-      <div style={{fontSize:10.5,fontWeight:700,color:T.text3,marginBottom:6,textTransform:'uppercase',letterSpacing:'0.06em'}}>{label}</div>
+      <div style={{fontSize:10.5,fontWeight:600,color:T.text3,marginBottom:6,
+        textTransform:'uppercase',letterSpacing:'0.06em'}}>{label}</div>
       <div style={{color:T.text3,fontSize:13}}>No data for this period</div>
     </div>
   )
   const col=t.rateLost<0.01?T.green:T.red
+  const hasDelta = t && base && !t.provisional && !base.provisional
+  const delta = hasDelta ? t.rateLost - base.rateLost : null
+  const deltaCol = delta===null ? T.text3 : delta<=0 ? T.green : T.red
   return (
     <div style={{...CARD,flex:1,minWidth:240}}>
-      <div style={{fontSize:10.5,fontWeight:700,color:T.text3,marginBottom:8,textTransform:'uppercase',letterSpacing:'0.06em'}}>{label}</div>
-      <div style={{marginBottom:4}}>
-        <span style={{fontSize:30,fontWeight:700,color:accentColor||T.text,lineHeight:1.1}}>{pct(t.rateLost,3)}</span>
+      {/* Label */}
+      <div style={{fontSize:10.5,fontWeight:600,color:T.text3,marginBottom:8,
+        textTransform:'uppercase',letterSpacing:'0.06em'}}>{label}</div>
+      {/* Big metric */}
+      <div style={{display:'flex',alignItems:'baseline',gap:6,flexWrap:'wrap',marginBottom:2}}>
+        <span style={{fontSize:28,fontWeight:700,color:accentColor||T.text,lineHeight:1.1}}>
+          {pct(t.rateLost,3)}
+        </span>
         {!t.provisional
           ? <span style={CHIP_OK}>settled</span>
           : <span style={CHIP_PROV}>provisional</span>
         }
       </div>
-      <div style={{fontSize:12,color:T.text3,marginBottom:4}}>lost rate</div>
+      {/* Sub-label */}
+      <div style={{fontSize:11,color:T.text3,marginBottom:t.provisional?4:8}}>lost rate</div>
+      {/* Provisional ceiling */}
       {t.provisional&&(
         <div style={{fontSize:11,color:T.amber,marginBottom:6}}>
           {numFmt(t.open)} open · up to {pct(t.rateEx,3)}
         </div>
       )}
-      <div style={{fontSize:11,color:T.text3,marginBottom:10}}>
-        <DeltaCell cur={t} base={base}/>
-        {(!t.provisional&&!base?.provisional)&&<span style={{marginLeft:4}}>vs prior period</span>}
-      </div>
-      <div style={{fontSize:11.5,color:T.text2,display:'grid',gridTemplateColumns:'auto 1fr',gap:'2px 8px'}}>
+      {/* Delta vs prior */}
+      {delta!==null&&(
+        <div style={{fontSize:11,marginBottom:10}}>
+          <span style={{color:deltaCol,fontWeight:600}}>
+            {(delta*100>=0?'+':'')+(delta*100).toFixed(2)+' pts'}
+          </span>
+          <span style={{color:T.text3,marginLeft:4}}>vs prior period</span>
+        </div>
+      )}
+      {(t.provisional||base?.provisional)&&(
+        <div style={{fontSize:11,color:T.text3,marginBottom:10}}>— awaiting case closure</div>
+      )}
+      {/* Stats grid */}
+      <div style={{fontSize:11.5,color:T.text2,display:'grid',gridTemplateColumns:'auto 1fr',gap:'2px 8px',
+        borderTop:`1px solid ${T.border}`,paddingTop:8}}>
         <span style={{color:T.text3}}>Valid trips</span>
         <span style={{textAlign:'right',fontWeight:600}}>{numFmt(t.valid)}</span>
         <span style={{color:T.text3}}>Lost</span>
@@ -254,13 +289,18 @@ function ProductTable({MQ, months, forceOpen}){
   )
   return (
     <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
+      {/* Card header — matches RideHailingTab FunnelTable style */}
       <div onClick={()=>setOpen(o=>!o)}
-        style={{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,userSelect:'none'}}>
-        <span style={{fontSize:11,color:T.text3}}>{open?'▼':'▶'}</span>
-        <span style={{fontWeight:700,fontSize:13.5,color:T.text}}>By product line</span>
-        <div style={{flex:1}}/>
-        <span style={{fontSize:11,color:T.text3,marginRight:8}}>{rows.length} product lines</span>
-        <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`}}>
+        style={{padding:'10px 16px 8px',borderBottom:open?`1px solid ${T.border}`:'none',
+          cursor:'pointer',display:'flex',alignItems:'center',gap:8,userSelect:'none'}}>
+        <span style={{fontSize:10,color:T.text3,marginTop:1,flexShrink:0,
+          transform:open?'rotate(90deg)':'rotate(0deg)',transition:'transform .15s',display:'inline-block'}}>▶</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:13.5,color:T.text}}>By product line</div>
+          <div style={{fontSize:11.5,color:T.text3,marginTop:2}}>{rows.length} product lines · lost rate breakdown</div>
+        </div>
+        <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,
+          padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`,flexShrink:0}}>
           {open ? 'Collapse ▲' : 'Expand ▼'}
         </span>
       </div>
@@ -277,7 +317,7 @@ function ProductTable({MQ, months, forceOpen}){
             </colgroup>
             <thead>
               <tr>
-                <th style={{...TH,textAlign:'left',paddingLeft:14}}>Product line</th>
+                <th style={{...TH,textAlign:'left',paddingLeft:16}}>Product line</th>
                 <th style={TH}>Valid trips</th>
                 <th style={TH}>All</th>
                 <th style={TH}>Ex</th>
@@ -288,7 +328,7 @@ function ProductTable({MQ, months, forceOpen}){
             <tbody>
               {rows.map(({pl,t})=>(
                 <tr key={pl} style={ROW}>
-                  <td style={{...TD,paddingLeft:14,fontWeight:600}}>{pl}</td>
+                  <td style={{...TD,paddingLeft:16,fontWeight:600}}>{pl}</td>
                   <td style={{...TD,textAlign:'right'}}>{numFmt(t.valid)}</td>
                   <td style={{...TD,textAlign:'right'}}>{numFmt(t.pin)}</td>
                   <td style={{...TD,textAlign:'right'}}>{numFmt(t.pex)}</td>
@@ -298,7 +338,7 @@ function ProductTable({MQ, months, forceOpen}){
               ))}
               {tot&&(
                 <tr style={{...ROW,background:T.bg3}}>
-                  <td style={{...TD,paddingLeft:14,fontWeight:700}}>Total</td>
+                  <td style={{...TD,paddingLeft:16,fontWeight:700}}>Total</td>
                   <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(tot.valid)}</td>
                   <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(agg.pin)}</td>
                   <td style={{...TD,textAlign:'right',fontWeight:700}}>{numFmt(agg.pex)}</td>
@@ -328,7 +368,7 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
   const pbMax=Math.max(2,...pbVals.filter(v=>v!==null))*1.25
   const rhMax=Math.max(2,...rhVals.filter(v=>v!==null))*1.25
 
-  const W=1000, H=220, PL={t:20, r:65, b:40, l:60}
+  const W=1000, H=175, PL={t:14, r:44, b:26, l:44}
   const iW=W-PL.l-PL.r, iH=H-PL.t-PL.b
   const xP=i=>(months.length>1?(i/(months.length-1)):0.5)*iW
   const pbY=v=>v===null?null:iH-(v/pbMax)*iH
@@ -349,40 +389,41 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
   const tick3=(max)=>[0,max/2,max]
 
   return (
-    <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'18px 20px 14px',marginBottom:20}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
-        <div style={{fontSize:13.5,fontWeight:700,color:T.text}}>
-          Lost rate by month — Prebooked vs Ride Hailing
-        </div>
-        <div style={{display:'flex',gap:16,fontSize:12,color:T.text2,fontWeight:500}}>
-          <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
-            <span style={{width:9,height:9,borderRadius:'50%',background:T.blue,display:'inline-block'}}/>
-            Prebooked (left axis)
+    <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
+      {/* Card header — uniform with table cards */}
+      <div style={{padding:'10px 16px 8px',borderBottom:`1px solid ${T.border}`}}>
+        <div style={{fontWeight:700,fontSize:13.5,color:T.text}}>Lost rate by month</div>
+        <div style={{fontSize:11.5,color:T.text3,marginTop:2,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
+          <span>Prebooked vs Ride Hailing · dual-axis · current month excluded</span>
+          <span style={{display:'inline-flex',alignItems:'center',gap:5}}>
+            <span style={{width:7,height:7,borderRadius:'50%',background:T.blue,display:'inline-block'}}/>
+            <span>Prebooked (left)</span>
           </span>
-          <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
-            <span style={{width:9,height:9,borderRadius:'50%',background:T.amber,display:'inline-block'}}/>
-            Ride Hailing (right axis)
+          <span style={{display:'inline-flex',alignItems:'center',gap:5}}>
+            <span style={{width:7,height:7,borderRadius:'50%',background:T.amber,display:'inline-block'}}/>
+            <span>Ride Hailing (right)</span>
           </span>
         </div>
       </div>
-      <div style={{overflowX:'auto'}}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',display:'block',fontFamily:"'Inter', system-ui, -apple-system, sans-serif"}}>
+      <div style={{padding:'12px 16px 14px',overflowX:'auto'}}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',display:'block',
+          fontFamily:"'Inter', system-ui, -apple-system, sans-serif"}}>
           <g transform={`translate(${PL.l},${PL.t})`}>
             {tick3(iH).map((y,i)=>(
-              <line key={i} x1={0} y1={y} x2={iW} y2={y} stroke={T.border} strokeWidth={1} strokeDasharray="3 3"/>
+              <line key={i} x1={0} y1={y} x2={iW} y2={y} stroke={T.border} strokeWidth={0.8} strokeDasharray="3 3"/>
             ))}
             {tick3(pbMax).map((v,i)=>(
-              <text key={i} x={-10} y={pbY(v)+4} textAnchor='end' fontSize={11} fontWeight="500" fill={T.text3}>{v.toFixed(1)}%</text>
+              <text key={i} x={-8} y={pbY(v)+3} textAnchor='end' fontSize={8.5} fontWeight="400" fill={T.text3}>{v.toFixed(1)}%</text>
             ))}
             {tick3(rhMax).map((v,i)=>(
-              <text key={i} x={iW+10} y={rhY(v)+4} textAnchor='start' fontSize={11} fontWeight="500" fill={T.text3}>{v.toFixed(1)}%</text>
+              <text key={i} x={iW+8} y={rhY(v)+3} textAnchor='start' fontSize={8.5} fontWeight="400" fill={T.text3}>{v.toFixed(1)}%</text>
             ))}
-            <path d={makePath(pbVals,pbY)} fill='none' stroke={T.blue} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"/>
-            <path d={makePath(rhVals,rhY)} fill='none' stroke={T.amber} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"/>
-            {pbVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={pbY(v)} r={3.5} fill={T.blue} stroke="#ffffff" strokeWidth={1.5}/>)}
-            {rhVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={rhY(v)} r={3.5} fill={T.amber} stroke="#ffffff" strokeWidth={1.5}/>)}
+            <path d={makePath(pbVals,pbY)} fill='none' stroke={T.blue} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
+            <path d={makePath(rhVals,rhY)} fill='none' stroke={T.amber} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
+            {pbVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={pbY(v)} r={3} fill={T.blue} stroke="#ffffff" strokeWidth={1}/>)}
+            {rhVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={rhY(v)} r={3} fill={T.amber} stroke="#ffffff" strokeWidth={1}/>)}
             {months.map((ym,i)=>(
-              <text key={i} x={xP(i)} y={iH+24} textAnchor='middle' fontSize={12} fontWeight="500" fill={T.text3}>{monthLbl(ym)}</text>
+              <text key={i} x={xP(i)} y={iH+18} textAnchor='middle' fontSize={8.5} fontWeight="400" fill={T.text3}>{monthLbl(ym)}</text>
             ))}
           </g>
         </svg>
@@ -410,13 +451,16 @@ function GeoSection({MQ, months, forceOpen}){
   return (
     <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
       <div onClick={()=>setOpen(o=>!o)}
-        style={{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,userSelect:'none'}}>
-        <span style={{fontSize:11,color:T.text3}}>{open?'▼':'▶'}</span>
-        <span style={{fontWeight:700,fontSize:13.5,color:T.text}}>By geography</span>
-        <span style={{fontSize:11.5,color:T.text3,marginLeft:4}}>— Prebooked and Ride Hailing split</span>
-        <div style={{flex:1}}/>
-        <span style={{fontSize:11,color:T.text3,marginRight:8}}>{rows.length} rows</span>
-        <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`}}>
+        style={{padding:'10px 16px 8px',borderBottom:open?`1px solid ${T.border}`:'none',
+          cursor:'pointer',display:'flex',alignItems:'center',gap:8,userSelect:'none'}}>
+        <span style={{fontSize:10,color:T.text3,marginTop:1,flexShrink:0,
+          transform:open?'rotate(90deg)':'rotate(0deg)',transition:'transform .15s',display:'inline-block'}}>▶</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:13.5,color:T.text}}>By geography</div>
+          <div style={{fontSize:11.5,color:T.text3,marginTop:2}}>Prebooked and Ride Hailing split · {rows.length} rows · sorted by valid trips</div>
+        </div>
+        <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,
+          padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`,flexShrink:0}}>
           {open ? 'Collapse ▲' : 'Expand ▼'}
         </span>
       </div>
@@ -431,7 +475,7 @@ function GeoSection({MQ, months, forceOpen}){
               <col style={{width:'22%'}}/>
             </colgroup>
             <thead><tr>
-              <th style={{...TH,textAlign:'left',paddingLeft:14}}>Line · Geo</th>
+              <th style={{...TH,textAlign:'left',paddingLeft:16}}>Line · Geo</th>
               <th style={TH}>Valid trips</th>
               <th style={TH}>Ex</th>
               <th style={TH}>Lost</th>
@@ -444,7 +488,7 @@ function GeoSection({MQ, months, forceOpen}){
                 const suppressed=t.valid<MIN_GEO
                 return (
                   <tr key={dim} style={ROW}>
-                    <td style={{...TD,paddingLeft:14}}>
+                    <td style={{...TD,paddingLeft:16}}>
                       <div style={{fontWeight:600,fontSize:12}}>{geoP}</div>
                       <div style={{fontSize:10.5,color:T.text3}}>{bizP}</div>
                     </td>
@@ -498,13 +542,16 @@ function CustomerSection({MQ, months, baseMonths, forceOpen}){
   return (
     <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
       <div onClick={()=>setOpen(o=>!o)}
-        style={{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,userSelect:'none'}}>
-        <span style={{fontSize:11,color:T.text3}}>{open?'▼':'▶'}</span>
-        <span style={{fontWeight:700,fontSize:13.5,color:T.text}}>By customer</span>
-        <span style={{fontSize:11.5,color:T.text3,marginLeft:4}}>— top 15 by valid trips · sortable</span>
-        <div style={{flex:1}}/>
-        <span style={{fontSize:11,color:T.text3,marginRight:8}}>{Math.min(15,all.length)} shown</span>
-        <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`}}>
+        style={{padding:'10px 16px 8px',borderBottom:open?`1px solid ${T.border}`:'none',
+          cursor:'pointer',display:'flex',alignItems:'center',gap:8,userSelect:'none'}}>
+        <span style={{fontSize:10,color:T.text3,marginTop:1,flexShrink:0,
+          transform:open?'rotate(90deg)':'rotate(0deg)',transition:'transform .15s',display:'inline-block'}}>▶</span>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:13.5,color:T.text}}>By customer</div>
+          <div style={{fontSize:11.5,color:T.text3,marginTop:2}}>Top 15 by valid trips · click column headers to sort · {Math.min(15,all.length)} shown</div>
+        </div>
+        <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,
+          padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`,flexShrink:0}}>
           {open ? 'Collapse ▲' : 'Expand ▼'}
         </span>
       </div>
@@ -520,7 +567,7 @@ function CustomerSection({MQ, months, baseMonths, forceOpen}){
               <col style={{width:'14%'}}/>
             </colgroup>
             <thead><tr>
-              <th style={{...TH,textAlign:'left',paddingLeft:14}}>Line · Customer</th>
+              <th style={{...TH,textAlign:'left',paddingLeft:16}}>Line · Customer</th>
               <th style={{...TH,cursor:'pointer'}} onClick={()=>toggleSort('valid')}>Valid trips {arrow('valid')}</th>
               <th style={TH}>All</th>
               <th style={TH}>Ex</th>
@@ -533,7 +580,7 @@ function CustomerSection({MQ, months, baseMonths, forceOpen}){
                 const bizP=parts[0], custP=parts.slice(1).join(' | ')||dim
                 return (
                   <tr key={dim} style={ROW}>
-                    <td style={{...TD,paddingLeft:14}}>
+                    <td style={{...TD,paddingLeft:16}}>
                       <div style={{fontWeight:600,fontSize:12}}>{custP}</div>
                       <div style={{fontSize:10.5,color:T.text3}}>{bizP}</div>
                     </td>
@@ -581,7 +628,7 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
 
   return (
     <div>
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{marginBottom:16}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <h1 style={{fontSize:20,fontWeight:700,color:T.text,margin:0}}>Quality</h1>
@@ -590,15 +637,15 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
         </div>
       </div>
 
-      {/* Period context */}
-      <div style={{marginBottom:16}}>
+      {/* ── Period context pill ── */}
+      <div style={{marginBottom:20}}>
         <span style={{fontSize:11.5,color:T.text3,background:T.bg2,
           border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 12px'}}>
           {pmLabel} · vs {PM?.base?.toLowerCase()||'prior period'}
         </span>
       </div>
 
-      {/* Empty state */}
+      {/* ── Empty state ── */}
       {!hasData ? (
         <div style={{background:T.bg2,border:`1px solid ${T.border}`,borderRadius:10,
           padding:'20px 24px',color:T.text3,fontSize:13,lineHeight:1.8}}>
@@ -609,44 +656,46 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
         </div>
       ) : (
         <>
-          {/* §8 — Two tiles, side by side, NEVER combined (§0.7) */}
-          <div style={{display:'flex',gap:16,marginBottom:20,flexWrap:'wrap'}}>
+          {/* ── §8 KPI Tiles — two tiles, NEVER combined (§0.7) ── */}
+          <SectionLabel>Headline Metrics</SectionLabel>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24,flexWrap:'wrap'}}>
             <BizTile label="Prebooked"    t={pbCur} base={pbBase} accentColor={T.blue}/>
             <BizTile label="Ride Hailing" t={rhCur} base={rhBase} accentColor={T.amber}/>
           </div>
 
-          {/* Trend */}
+          {/* ── Trend chart ── */}
+          <SectionLabel>Trend</SectionLabel>
           <TrendChart MQ={MQ} allMonths={allMonths} CUR_MONTH={CUR_MONTH}/>
 
-          {/* Table controls header */}
-          <div style={{display:'flex',alignItems:'center',justify:'space-between',marginBottom:12,marginTop:24}}>
-            <div style={{fontSize:11,fontWeight:700,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em'}}>
-              Detailed Breakdowns
+          {/* ── Detailed breakdowns ── */}
+          <div style={{marginTop:8}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+              <SectionLabel>Detailed Breakdowns</SectionLabel>
+              <button
+                onClick={()=>setAllExpanded(v=>!v)}
+                style={{
+                  background:T.bg,
+                  border:`1px solid ${T.border2||T.border}`,
+                  borderRadius:6,
+                  padding:'4px 12px',
+                  fontSize:11.5,
+                  fontWeight:600,
+                  color:T.text2,
+                  cursor:'pointer',
+                  fontFamily:'inherit',
+                  flexShrink:0,
+                  marginLeft:12,
+                  marginBottom:10,
+                }}
+              >
+                {allExpanded ? 'Collapse all' : 'Expand all'}
+              </button>
             </div>
-            <button
-              onClick={()=>setAllExpanded(v=>!v)}
-              style={{
-                background:T.bg,
-                border:`1px solid ${T.border2||T.border}`,
-                borderRadius:6,
-                padding:'5px 12px',
-                fontSize:12,
-                fontWeight:600,
-                color:T.blue,
-                cursor:'pointer',
-                display:'inline-flex',
-                alignItems:'center',
-                gap:6,
-                boxShadow:'0 1px 2px rgba(0,0,0,0.04)'
-              }}
-            >
-              {allExpanded ? 'Collapse All Tables ▲' : 'Expand All Tables ▼'}
-            </button>
-          </div>
 
-          <ProductTable MQ={MQ} months={sets.cur} forceOpen={allExpanded}/>
-          <GeoSection MQ={MQ} months={sets.cur} forceOpen={allExpanded}/>
-          <CustomerSection MQ={MQ} months={sets.cur} baseMonths={sets.base} forceOpen={allExpanded}/>
+            <ProductTable MQ={MQ} months={sets.cur} forceOpen={allExpanded}/>
+            <GeoSection MQ={MQ} months={sets.cur} forceOpen={allExpanded}/>
+            <CustomerSection MQ={MQ} months={sets.cur} baseMonths={sets.base} forceOpen={allExpanded}/>
+          </div>
         </>
       )}
     </div>
