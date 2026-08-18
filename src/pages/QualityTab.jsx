@@ -12,7 +12,7 @@
  *  - §10.7 Geo rows with valid < 100 → 'n/a (N trips)' not a rate
  */
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Design tokens
@@ -227,8 +227,12 @@ function BizTile({label, t, base, accentColor}){
 // ─────────────────────────────────────────────────────────────────────────────
 const PL_ORDER=['Private Transfer','Shared Shuttle','Rail','Ride Hailing']
 
-function ProductTable({MQ, months}){
+function ProductTable({MQ, months, forceOpen}){
   const [open,setOpen]=useState(false)
+  useEffect(()=>{
+    if(typeof forceOpen==='boolean') setOpen(forceOpen)
+  },[forceOpen])
+
   const rows=PL_ORDER.map(pl=>{
     const t=mqFor(MQ,'product',pl,months)
     return {pl,t}
@@ -251,11 +255,14 @@ function ProductTable({MQ, months}){
   return (
     <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
       <div onClick={()=>setOpen(o=>!o)}
-        style={{padding:'10px 14px',cursor:'pointer',display:'flex',alignItems:'center',gap:8,userSelect:'none'}}>
-        <span style={{fontSize:10,color:T.text3}}>{open?'▼':'▶'}</span>
-        <span style={{fontWeight:700,fontSize:13}}>By product line</span>
+        style={{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,userSelect:'none'}}>
+        <span style={{fontSize:11,color:T.text3}}>{open?'▼':'▶'}</span>
+        <span style={{fontWeight:700,fontSize:13.5,color:T.text}}>By product line</span>
         <div style={{flex:1}}/>
-        <span style={{fontSize:11,color:T.text3}}>{rows.length} product lines</span>
+        <span style={{fontSize:11,color:T.text3,marginRight:8}}>{rows.length} product lines</span>
+        <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`}}>
+          {open ? 'Collapse ▲' : 'Expand ▼'}
+        </span>
       </div>
       {open&&(
         <div style={{overflowX:'auto'}}>
@@ -321,7 +328,7 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
   const pbMax=Math.max(2,...pbVals.filter(v=>v!==null))*1.25
   const rhMax=Math.max(2,...rhVals.filter(v=>v!==null))*1.25
 
-  const W=560,H=160,PL={t:10,r:55,b:32,l:48}
+  const W=1000, H=220, PL={t:20, r:65, b:40, l:60}
   const iW=W-PL.l-PL.r, iH=H-PL.t-PL.b
   const xP=i=>(months.length>1?(i/(months.length-1)):0.5)*iW
   const pbY=v=>v===null?null:iH-(v/pbMax)*iH
@@ -342,32 +349,40 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
   const tick3=(max)=>[0,max/2,max]
 
   return (
-    <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'14px 16px',marginBottom:16}}>
-      <div style={{fontSize:10.5,fontWeight:700,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>
-        Lost rate by month — Prebooked vs Ride Hailing
-      </div>
-      <div style={{display:'flex',gap:16,marginBottom:8,fontSize:11,color:T.text3}}>
-        <span><span style={{color:T.blue,marginRight:3}}>●</span>Prebooked (left axis)</span>
-        <span><span style={{color:T.amber,marginRight:3}}>●</span>Ride Hailing (right axis)</span>
+    <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'18px 20px 14px',marginBottom:20}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
+        <div style={{fontSize:13.5,fontWeight:700,color:T.text}}>
+          Lost rate by month — Prebooked vs Ride Hailing
+        </div>
+        <div style={{display:'flex',gap:16,fontSize:12,color:T.text2,fontWeight:500}}>
+          <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+            <span style={{width:9,height:9,borderRadius:'50%',background:T.blue,display:'inline-block'}}/>
+            Prebooked (left axis)
+          </span>
+          <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+            <span style={{width:9,height:9,borderRadius:'50%',background:T.amber,display:'inline-block'}}/>
+            Ride Hailing (right axis)
+          </span>
+        </div>
       </div>
       <div style={{overflowX:'auto'}}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',display:'block'}}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',display:'block',fontFamily:"'Inter', system-ui, -apple-system, sans-serif"}}>
           <g transform={`translate(${PL.l},${PL.t})`}>
             {tick3(iH).map((y,i)=>(
-              <line key={i} x1={0} y1={y} x2={iW} y2={y} stroke={T.border} strokeWidth={0.8}/>
+              <line key={i} x1={0} y1={y} x2={iW} y2={y} stroke={T.border} strokeWidth={1} strokeDasharray="3 3"/>
             ))}
             {tick3(pbMax).map((v,i)=>(
-              <text key={i} x={-6} y={pbY(v)+3} textAnchor='end' fontSize={8.5} fill={T.text3}>{v.toFixed(1)}%</text>
+              <text key={i} x={-10} y={pbY(v)+4} textAnchor='end' fontSize={11} fontWeight="500" fill={T.text3}>{v.toFixed(1)}%</text>
             ))}
             {tick3(rhMax).map((v,i)=>(
-              <text key={i} x={iW+6} y={rhY(v)+3} textAnchor='start' fontSize={8.5} fill={T.text3}>{v.toFixed(1)}%</text>
+              <text key={i} x={iW+10} y={rhY(v)+4} textAnchor='start' fontSize={11} fontWeight="500" fill={T.text3}>{v.toFixed(1)}%</text>
             ))}
-            <path d={makePath(pbVals,pbY)} fill='none' stroke={T.blue}  strokeWidth={1.8}/>
-            <path d={makePath(rhVals,rhY)} fill='none' stroke={T.amber} strokeWidth={1.8}/>
-            {pbVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={pbY(v)} r={2.5} fill={T.blue}/>)}
-            {rhVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={rhY(v)} r={2.5} fill={T.amber}/>)}
+            <path d={makePath(pbVals,pbY)} fill='none' stroke={T.blue} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"/>
+            <path d={makePath(rhVals,rhY)} fill='none' stroke={T.amber} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"/>
+            {pbVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={pbY(v)} r={3.5} fill={T.blue} stroke="#ffffff" strokeWidth={1.5}/>)}
+            {rhVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={rhY(v)} r={3.5} fill={T.amber} stroke="#ffffff" strokeWidth={1.5}/>)}
             {months.map((ym,i)=>(
-              <text key={i} x={xP(i)} y={iH+20} textAnchor='middle' fontSize={8.5} fill={T.text3}>{monthLbl(ym)}</text>
+              <text key={i} x={xP(i)} y={iH+24} textAnchor='middle' fontSize={12} fontWeight="500" fill={T.text3}>{monthLbl(ym)}</text>
             ))}
           </g>
         </svg>
@@ -381,22 +396,29 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
 // ─────────────────────────────────────────────────────────────────────────────
 const MIN_GEO=100
 
-function GeoSection({MQ, months}){
+function GeoSection({MQ, months, forceOpen}){
   const [open,setOpen]=useState(false)
+  useEffect(()=>{
+    if(typeof forceOpen==='boolean') setOpen(forceOpen)
+  },[forceOpen])
+
   const rows=Object.keys(MQ.geo||{}).map(dim=>{
     const t=mqFor(MQ,'geo',dim,months)
     return {dim,t}
   }).filter(r=>r.t&&r.t.valid>0).sort((a,b)=>b.t.valid-a.t.valid)
 
   return (
-    <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:12}}>
+    <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
       <div onClick={()=>setOpen(o=>!o)}
-        style={{padding:'10px 14px',cursor:'pointer',display:'flex',alignItems:'center',gap:8,userSelect:'none'}}>
-        <span style={{fontSize:10,color:T.text3}}>{open?'▼':'▶'}</span>
-        <span style={{fontWeight:700,fontSize:13}}>By geography</span>
-        <span style={{fontSize:11,color:T.text3,marginLeft:4}}>— Prebooked and Ride Hailing split</span>
+        style={{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,userSelect:'none'}}>
+        <span style={{fontSize:11,color:T.text3}}>{open?'▼':'▶'}</span>
+        <span style={{fontWeight:700,fontSize:13.5,color:T.text}}>By geography</span>
+        <span style={{fontSize:11.5,color:T.text3,marginLeft:4}}>— Prebooked and Ride Hailing split</span>
         <div style={{flex:1}}/>
-        <span style={{fontSize:11,color:T.text3}}>{rows.length} rows</span>
+        <span style={{fontSize:11,color:T.text3,marginRight:8}}>{rows.length} rows</span>
+        <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`}}>
+          {open ? 'Collapse ▲' : 'Expand ▼'}
+        </span>
       </div>
       {open&&(
         <div style={{overflowX:'auto'}}>
@@ -449,8 +471,12 @@ function GeoSection({MQ, months}){
 // ─────────────────────────────────────────────────────────────────────────────
 // Customer expandable — top 15 by valid trips, sortable
 // ─────────────────────────────────────────────────────────────────────────────
-function CustomerSection({MQ, months, baseMonths}){
+function CustomerSection({MQ, months, baseMonths, forceOpen}){
   const [open,setOpen]=useState(false)
+  useEffect(()=>{
+    if(typeof forceOpen==='boolean') setOpen(forceOpen)
+  },[forceOpen])
+
   const [sortKey,setSortKey]=useState('valid')
   const [sortDir,setSortDir]=useState(-1)
 
@@ -470,14 +496,17 @@ function CustomerSection({MQ, months, baseMonths}){
   const toggleSort=k=>{ if(sortKey===k) setSortDir(d=>-d); else{setSortKey(k);setSortDir(-1)} }
 
   return (
-    <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:12}}>
+    <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
       <div onClick={()=>setOpen(o=>!o)}
-        style={{padding:'10px 14px',cursor:'pointer',display:'flex',alignItems:'center',gap:8,userSelect:'none'}}>
-        <span style={{fontSize:10,color:T.text3}}>{open?'▼':'▶'}</span>
-        <span style={{fontWeight:700,fontSize:13}}>By customer</span>
-        <span style={{fontSize:11,color:T.text3,marginLeft:4}}>— top 15 by valid trips · sortable</span>
+        style={{padding:'12px 16px',cursor:'pointer',display:'flex',alignItems:'center',gap:10,userSelect:'none'}}>
+        <span style={{fontSize:11,color:T.text3}}>{open?'▼':'▶'}</span>
+        <span style={{fontWeight:700,fontSize:13.5,color:T.text}}>By customer</span>
+        <span style={{fontSize:11.5,color:T.text3,marginLeft:4}}>— top 15 by valid trips · sortable</span>
         <div style={{flex:1}}/>
-        <span style={{fontSize:11,color:T.text3}}>{Math.min(15,all.length)} shown</span>
+        <span style={{fontSize:11,color:T.text3,marginRight:8}}>{Math.min(15,all.length)} shown</span>
+        <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`}}>
+          {open ? 'Collapse ▲' : 'Expand ▼'}
+        </span>
       </div>
       {open&&(
         <div style={{overflowX:'auto'}}>
@@ -531,6 +560,7 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
   const mqRaw = D.mq || []
   const sets  = useMemo(()=>mqSets(period, CUR_MONTH), [period, CUR_MONTH])
   const MQ    = useMemo(()=>buildMQ(mqRaw), [mqRaw])
+  const [allExpanded, setAllExpanded] = useState(false)
 
   // All months present in biz grain — for the trend chart
   const allMonths = useMemo(()=>{
@@ -554,7 +584,7 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
       {/* Header */}
       <div style={{marginBottom:16}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <h1 style={{fontSize:20,fontWeight:700,color:T.text,margin:0}}>Margin &amp; Quality</h1>
+          <h1 style={{fontSize:20,fontWeight:700,color:T.text,margin:0}}>Quality</h1>
           <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:10,
             background:'rgba(29,158,117,.11)',color:'#1D9E75',letterSpacing:'0.06em'}}>● LIVE</span>
         </div>
@@ -586,28 +616,37 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
           </div>
 
           {/* Trend */}
-          <div style={{fontSize:9,fontWeight:700,color:T.text3,textTransform:'uppercase',
-            letterSpacing:'0.07em',marginBottom:8,display:'flex',alignItems:'center',gap:10}}>
-            <span>Monthly trend</span>
-            <div style={{flex:1,height:'1px',background:T.border}}/>
-          </div>
           <TrendChart MQ={MQ} allMonths={allMonths} CUR_MONTH={CUR_MONTH}/>
 
-          <ProductTable MQ={MQ} months={sets.cur}/>
-          <GeoSection MQ={MQ} months={sets.cur}/>
-          <CustomerSection MQ={MQ} months={sets.cur} baseMonths={sets.base}/>
-
-          {/* §8 mandatory footnote */}
-          <div style={{marginTop:16,background:T.bg2,border:`1px solid ${T.border}`,
-            borderRadius:8,padding:'10px 14px',fontSize:12,color:T.text3,lineHeight:1.6}}>
-            <strong style={{color:T.text2}}>Partner incident</strong> excludes{' '}
-            <code style={{fontSize:11}}>Customer No show</code> (exact string, capital N).
-            {' '}Lost = closed against Elife. Ex = all in-scope complaints including open
-            (Initiated + Lost). Rate = lost ÷ valid trips on pickup date.{' '}
-            <strong style={{color:T.amber}}>Provisional</strong> periods have {'>'}5% of Ex cases
-            still open; ceiling shown is the Ex rate — real bound if all open cases are lost.
-            Reconciled to Power BI RP0036 to the row.
+          {/* Table controls header */}
+          <div style={{display:'flex',alignItems:'center',justify:'space-between',marginBottom:12,marginTop:24}}>
+            <div style={{fontSize:11,fontWeight:700,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em'}}>
+              Detailed Breakdowns
+            </div>
+            <button
+              onClick={()=>setAllExpanded(v=>!v)}
+              style={{
+                background:T.bg,
+                border:`1px solid ${T.border2||T.border}`,
+                borderRadius:6,
+                padding:'5px 12px',
+                fontSize:12,
+                fontWeight:600,
+                color:T.blue,
+                cursor:'pointer',
+                display:'inline-flex',
+                alignItems:'center',
+                gap:6,
+                boxShadow:'0 1px 2px rgba(0,0,0,0.04)'
+              }}
+            >
+              {allExpanded ? 'Collapse All Tables ▲' : 'Expand All Tables ▼'}
+            </button>
           </div>
+
+          <ProductTable MQ={MQ} months={sets.cur} forceOpen={allExpanded}/>
+          <GeoSection MQ={MQ} months={sets.cur} forceOpen={allExpanded}/>
+          <CustomerSection MQ={MQ} months={sets.cur} baseMonths={sets.base} forceOpen={allExpanded}/>
         </>
       )}
     </div>
