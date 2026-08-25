@@ -268,7 +268,10 @@ function buildDepts(custRows, targets) {
     ;(deptKids[p] = deptKids[p] || []).push(o)
   })
 
-  // Attach targets + derived fields to parent rows
+    // Attach targets + derived fields to parent rows
+  // FIX 2: keep (Unassigned) in depts — do NOT filter it out.
+  // The row reconciles the Departments Total to the Exec Summary (§2a of fix guide).
+  // Only suppress rows that are completely empty AND have no target at all.
   const depts = Object.values(m)
     .map(o => {
       o.target = targets.dept?.[o.dept] ?? null
@@ -276,11 +279,16 @@ function buildDepts(custRows, targets) {
       o.margin = o.revenue > 0 ? o.profit / o.revenue : null
       return o
     })
-    // §1.1 — hide (Unassigned) and entirely-empty rows with no target
-    .filter(o => o.dept !== '(Unassigned)' && o.dept !== 'Unassigned')
+    // Only suppress rows that have zero everything AND no target — i.e. truly phantom rows.
+    // (Unassigned) has profit 268 / revenue 677 so it survives.
     .filter(o => o.target !== null || o.profit !== 0 || o.revenue !== 0 || o.sales !== 0
               || o.lm_profit !== 0 || o.ly_profit !== 0)
-    .sort((a, b) => b.profit - a.profit)
+    // Sort: named depts by profit desc, (Unassigned) pinned to bottom.
+    .sort((a, b) => {
+      if (a.dept === '(Unassigned)') return 1
+      if (b.dept === '(Unassigned)') return -1
+      return b.profit - a.profit
+    })
 
   return { depts, deptKids }
 }
@@ -431,10 +439,10 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
   }
 
   // ── Chart data ──────────────────────────────────────────────────────────────
-  const donutDepts = depts.filter(d => d.profit > 0)
-  const shareTot   = donutDepts.reduce((a, d) => a + d.profit, 0)
+  const donutDepts  = depts.filter(d => d.profit > 0 && d.dept !== '(Unassigned)')
+  const shareTot    = donutDepts.reduce((a, d) => a + d.profit, 0)
 
-  const marginDepts = depts.filter(d => d.profit > 0)
+  const marginDepts = depts.filter(d => d.profit > 0 && d.dept !== '(Unassigned)')
   const blend = t.revenue > 0 ? (t.profit / t.revenue) * 100 : 0
 
   // Month label for table header
@@ -450,15 +458,16 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
 
   // ── Row renderer ─────────────────────────────────────────────────────────────
   const renderDeptRow = (d, isKid = false, parentName = '') => {
-    const hasKids  = !isKid && Boolean(deptKids[d.dept]?.length)
+    const isUnassigned = d.dept === '(Unassigned)'
+    const hasKids  = !isKid && !isUnassigned && Boolean(deptKids[d.dept]?.length)
     const isOpen   = expandedDepts[d.dept]
     const delta    = d.profit - d.lm_profit
     const pp       = _profitPct(d.profit, d.lm_profit)
     const sp       = _salesPct(d.sales, d.lm_sales)
     const dColor   = delta > 0 ? T.green : delta < 0 ? T.red : T.text3
 
-    // §3 — snap-based delta for parent rows only (sub-teams excluded per §6)
-    const snapDelta = !isKid && hasDelta ? (deptDelta[d.dept] ?? null) : null
+    // §3 — snap-based delta for parent named-dept rows only; not sub-teams, not (Unassigned)
+    const snapDelta = (!isKid && !isUnassigned && hasDelta) ? (deptDelta[d.dept] ?? null) : null
     const sdColor   = snapDelta ? (snapDelta.deltaProfit > 0 ? T.green : T.red) : T.text3
 
     return (
@@ -466,18 +475,18 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
         key={`${d.dept}${isKid ? '_kid' : ''}`}
         onClick={hasKids ? () => toggleDept(d.dept) : undefined}
         style={{
-          background: isKid ? T.bg2 : T.bg,
+          background: isKid ? T.bg2 : isUnassigned ? '#FAFBFC' : T.bg,
           cursor: hasKids ? 'pointer' : 'default',
           borderBottom: `1px solid ${T.border}`,
           transition: 'background 0.1s',
         }}
-        onMouseEnter={e => { if (!isKid) e.currentTarget.style.background = '#EFF6FF' }}
-        onMouseLeave={e => { e.currentTarget.style.background = isKid ? T.bg2 : T.bg }}
+        onMouseEnter={e => { if (!isKid && !isUnassigned) e.currentTarget.style.background = '#EFF6FF' }}
+        onMouseLeave={e => { e.currentTarget.style.background = isKid ? T.bg2 : isUnassigned ? '#FAFBFC' : T.bg }}
       >
         {/* Col 1 — Department */}
         <td style={{ ...TD, paddingLeft: isKid ? 36 : 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {/* §2 — only departments with sub-teams get a chevron */}
+            {/* §2 — only named departments with sub-teams get a chevron */}
             {hasKids && (
               <span style={{
                 fontSize: 9, color: T.text3, flexShrink: 0,
@@ -491,9 +500,9 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
             {isKid && (
               <span style={{ display: 'inline-block', width: 14, fontSize: 11, color: T.text3, flexShrink: 0 }}>└</span>
             )}
-            {/* §6 — colour dot */}
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: deptHex(d.dept), flexShrink: 0 }} />
-            <span style={{ fontWeight: isKid ? 500 : 600, color: T.text }}>{d.dept}</span>
+            {/* §6 — colour dot — grey for Unassigned */}
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: isUnassigned ? T.text3 : deptHex(d.dept), flexShrink: 0 }} />
+            <span style={{ fontWeight: isKid ? 500 : 600, color: isUnassigned ? T.text3 : T.text, fontStyle: isUnassigned ? 'italic' : 'normal' }}>{d.dept}</span>
             {/* Child count badge */}
             {hasKids && (
               <span style={{ fontSize: 10, color: T.text3, background: T.bg4, borderRadius: 8, padding: '1px 6px', marginLeft: 2, flexShrink: 0 }}>
@@ -517,16 +526,17 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
         {/* Col 2 — Profit / vs target */}
         <td style={{ ...TD, textAlign: 'right' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-end' }}>
-            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{_usd(d.profit)}</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: isUnassigned ? T.text3 : 'inherit' }}>{_usd(d.profit)}</span>
             <span style={{ fontSize: 11, color: T.text3, fontVariantNumeric: 'tabular-nums' }}>
-              {d.target != null && d.target > 0 ? _usd(d.target) : 'no target'}
+              {/* FIX 2: (Unassigned) has no target and must NOT contribute to company denominator */}
+              {!isUnassigned && d.target != null && d.target > 0 ? _usd(d.target) : isUnassigned ? 'no target' : 'no target'}
             </span>
           </div>
         </td>
 
-        {/* Col 3 — Attainment */}
+        {/* Col 3 — Attainment — blank for (Unassigned) */}
         <td style={{ ...TD, minWidth: 140 }}>
-          <AttainmentBar ach={d.ach} />
+          {isUnassigned ? <span style={{ color: T.text3 }}>—</span> : <AttainmentBar ach={d.ach} />}
         </td>
 
         {/* Col 4 — vs LM (absolute + %) */}
@@ -561,10 +571,10 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
           {d.active} / {d.customers}
         </td>
 
-        {/* Col 9 — Snap-based growth (§3) — parent rows only */}
+        {/* Col 9 — Snap-based growth (§3) — parent rows only, not (Unassigned) */}
         {hasDelta && (
           <td style={{ ...TD, textAlign: 'right' }}>
-            {isKid ? (
+            {(isKid || isUnassigned) ? (
               <span style={{ color: T.text3 }}>—</span>
             ) : snapDelta ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
@@ -733,7 +743,8 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
                   </div>
                 </td>
                 <td style={{ ...TD, textAlign: 'right', color: T.text3, fontVariantNumeric: 'tabular-nums' }}>
-                  {cust.length}
+                  {/* FIX 3: unique non-Unknown customer count, matches Exec Summary tile */}
+                  {new Set(cust.filter(r => r.cust && r.cust !== '(Unknown)').map(r => r.cust)).size}
                 </td>
                 {/* Total row delta — company-level (§3.1) */}
                 {hasDelta && (() => {

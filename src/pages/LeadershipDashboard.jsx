@@ -663,7 +663,11 @@ export default function LeadershipDashboard() {
 
   // ── Derived data ───────────────────────────────────────────────────────────
   // cust is normalized once here — never pass D.cust directly to renderers
-  const cust   = normCust(period, D.cust, D.months)     // §5 — neutral field names
+  const cust       = normCust(period, D.cust,     D.months)  // §5 — neutral field names
+  // custPrev must go through the same normCust() so DepartmentsTab.buildDepts
+  // receives field names {profit, sales, revenue, lm_profit, ...} not {m_profit, m_sales, ...}
+  // Fix 1a+1b (Departments fix guide): raw rows have m_profit, not profit.
+  const custPrevNorm = normCust(period, D.custPrev, D.months) // normalized prev snapshot rows
   const depts  = buildDepts(cust)                       // Map<dept, neutralAgg>
   const t      = totals(depts)
   const targets = buildTargets(D.targets, CUR_MONTH)    // dept targets for Exec Summary compat
@@ -709,8 +713,22 @@ export default function LeadershipDashboard() {
   const lmMargin    = lmRev   > 0 ? lmProfit / lmRev     : null
   const marginDelta = (margin !== null && lmMargin !== null) ? margin - lmMargin : null
 
-  // Active customers — those with any sales or profit in the normalized rows
-  const activeCust = cust.filter(r => r.sales !== 0 || r.profit !== 0).length
+  // Active customers — unique customer names, excluding "(Unknown)" (the null placeholder).
+  // FIX 3 (Departments fix guide):
+  //  - D.cust.length is at (dept × customer) grain → overcounts when cust appears in >1 dept.
+  //  - Exec Summary's "accounts on file" should be distinct customer names, not rows.
+  //  - "(Unknown)" is the IFNULL placeholder for NULL customer_name; it is NOT a real account.
+  //    Including it in new Set() inflates the count by 1 (76→77 active, 118→119 on-file).
+  const custNames = new Set(
+    D.cust.map(r => r.cust).filter(n => n && n !== '(Unknown)')
+  )
+  const activeCustNames = new Set(
+    cust.filter(r => r.sales !== 0 || r.profit !== 0)
+        .map(r => r.cust)
+        .filter(n => n && n !== '(Unknown)')
+  )
+  const activeCust    = activeCustNames.size   // distinct active customer names
+  const totalCustFile = custNames.size         // distinct accounts on file (excl. Unknown)
 
   // §7.1 — guard: if months failed and user had a month selected, fall back to mtd
   const monthList = availableMonths(D.months)
@@ -1139,7 +1157,7 @@ export default function LeadershipDashboard() {
           !loading && cust.length > 0 ? (
             <DepartmentsTab
               cust={cust}
-              custPrev={D.custPrev}
+              custPrev={custPrevNorm}
               prevSnapDate={D.prevSnapDate}
               asAt={D.asAt}
               period={period}
@@ -1361,7 +1379,7 @@ export default function LeadershipDashboard() {
             <KpiTile2
               label="Active customers"
               value={numFmt(activeCust)}
-              sub={`of ${numFmt(D.cust.length)} accounts on file`}
+              sub={`of ${numFmt(totalCustFile)} accounts on file`}
             />
           </div>
         ) : null}
