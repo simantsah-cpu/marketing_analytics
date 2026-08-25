@@ -1136,9 +1136,13 @@ export default function LeadershipDashboard() {
           !loading && cust.length > 0 ? (
             <CustomersTab
               cust={cust}
+              custPrev={custPrevNorm}
+              prevSnapDate={D.prevSnapDate}
+              asAt={D.asAt ?? D.snapDates[0] ?? null}
               period={period}
               CUR_MONTH={CUR_MONTH}
               PC={PC}
+              targets={targets}
             />
           ) : loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: T.text3, fontSize: 13 }}>Loading…</div>
