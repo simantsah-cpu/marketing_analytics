@@ -757,10 +757,8 @@ export default function LeadershipDashboard() {
     console.log(`QA|depts=${deptLog}`)
   }
 
-  // ── §8.2 Context chip ─────────────────────────────────────────────────────
-  const contextChip = isMonthKey(period)
-    ? `${PC.label} · reconstructed${fcDate ? ` · forecast ${String(fcDate).slice(0, 10)}` : ''}`
-    : `${PC.label} as of ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}${fcDate ? ` · forecast ${String(fcDate).slice(0, 10)}` : ''}`
+  // contextChip removed — was computed but never rendered and showed the
+  // current render date, which contradicts the snapshot selector.
 
   // ── Movers ─────────────────────────────────────────────────────────────────
   const moversRaw = cust
@@ -1184,13 +1182,14 @@ export default function LeadershipDashboard() {
             <h1 style={{ fontSize: 20, fontWeight: 700, color: T.text, margin: 0 }}>
               Executive Summary
             </h1>
-            {/* Snapshot date badge — replaces LIVE badge (§1 migration spec). */}
-            {/* Muted grey: this is weekly data captured on Monday, not a live stream. */}
+            {/* Snapshot date badge — single instance, beside the page title. */}
+            {/* FIX 2: fall back to snapDates[0] so badge never shows '...' */}
+            {/* after data loads. D.asAt is null until the first fetch succeeds. */}
             <span style={{
               fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
               background: T.bg4, color: T.text3, letterSpacing: '0.04em',
             }}>
-              Data as of {D.asAt ?? '…'}
+              Data as of {D.asAt ?? D.snapDates[0] ?? '…'}
             </span>
           </div>
           <div style={{ fontSize: 13, color: T.text3, marginTop: 4 }}>

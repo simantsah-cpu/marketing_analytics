@@ -399,12 +399,18 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
     prevDepts.forEach(d => { prevMap[d.dept] = d.profit })
     const out = {}
     depts.forEach(d => {
-      const prev = prevMap[d.dept] ?? null
+      const isUnassigned = d.dept === '(Unassigned)'
+      // FIX 1: (Unassigned) had 0 profit on 2026-08-21 (no rows → filtered from prevDepts).
+      // Treat a missing prev entry as 0 for (Unassigned) so we show +268 not —.
+      // For named depts, null prev means "not in previous snapshot" which is ambiguous → show —.
+      const rawPrev = prevMap[d.dept]
+      const prev = (rawPrev === undefined && isUnassigned) ? 0 : (rawPrev ?? null)
       if (prev === null) { out[d.dept] = null; return }
       const dp = d.profit - prev
       const tgt = d.target
-      // §3.1: deltaPts = deltaProfit / target × 100 — exact because target is constant
-      const dPts = (tgt && tgt > 0) ? (dp / tgt) * 100 : null
+      // §3.1: deltaPts = deltaProfit / target × 100 — exact because target is constant.
+      // (Unassigned) has no target → always null (spec: show +$268 over —).
+      const dPts = (!isUnassigned && tgt && tgt > 0) ? (dp / tgt) * 100 : null
       out[d.dept] = { deltaProfit: dp, deltaPts: dPts }
     })
     return out
@@ -466,8 +472,9 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
     const sp       = _salesPct(d.sales, d.lm_sales)
     const dColor   = delta > 0 ? T.green : delta < 0 ? T.red : T.text3
 
-    // §3 — snap-based delta for parent named-dept rows only; not sub-teams, not (Unassigned)
-    const snapDelta = (!isKid && !isUnassigned && hasDelta) ? (deptDelta[d.dept] ?? null) : null
+    // §3 — snap-based delta; for named depts and (Unassigned) on parent rows.
+    // Sub-teams are always excluded. (Unassigned) gets a delta but no pts sub-line.
+    const snapDelta = (!isKid && hasDelta) ? (deptDelta[d.dept] ?? null) : null
     const sdColor   = snapDelta ? (snapDelta.deltaProfit > 0 ? T.green : T.red) : T.text3
 
     return (
@@ -571,10 +578,10 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
           {d.active} / {d.customers}
         </td>
 
-        {/* Col 9 — Snap-based growth (§3) — parent rows only, not (Unassigned) */}
+        {/* Col 9 — Snap-based growth (§3) — parent rows only, not sub-teams */}
         {hasDelta && (
           <td style={{ ...TD, textAlign: 'right' }}>
-            {(isKid || isUnassigned) ? (
+            {isKid ? (
               <span style={{ color: T.text3 }}>—</span>
             ) : snapDelta ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
