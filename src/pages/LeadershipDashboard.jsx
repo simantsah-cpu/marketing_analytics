@@ -713,22 +713,23 @@ export default function LeadershipDashboard() {
   const lmMargin    = lmRev   > 0 ? lmProfit / lmRev     : null
   const marginDelta = (margin !== null && lmMargin !== null) ? margin - lmMargin : null
 
-  // Active customers — unique customer names, excluding "(Unknown)" (the null placeholder).
-  // FIX 3 (Departments fix guide):
-  //  - D.cust.length is at (dept × customer) grain → overcounts when cust appears in >1 dept.
-  //  - Exec Summary's "accounts on file" should be distinct customer names, not rows.
-  //  - "(Unknown)" is the IFNULL placeholder for NULL customer_name; it is NOT a real account.
-  //    Including it in new Set() inflates the count by 1 (76→77 active, 118→119 on-file).
+  // Active customers — unique customer names.
+  // FIX 4 (Customers tab fix guide §4): align to Customers tab — use 118 on both.
+  //  - 117 distinct named customers + 1 '(Unknown)' = 118 total.
+  //  - (Unknown) has $268 profit and IS shown on the Customers tab.
+  //  - Showing it as 'on file' is consistent with showing its row rather than silently dropping $268.
+  //  - Active: 76 named + 1 (Unknown) with profit ≠ 0 = 77.
+  //  - D.cust.length (119) is at (dept × customer) grain — overcounts when a cust appears in >1 dept.
   const custNames = new Set(
-    D.cust.map(r => r.cust).filter(n => n && n !== '(Unknown)')
+    D.cust.map(r => r.cust).filter(n => n)   // include (Unknown); exclude empty/null only
   )
   const activeCustNames = new Set(
     cust.filter(r => r.sales !== 0 || r.profit !== 0)
         .map(r => r.cust)
-        .filter(n => n && n !== '(Unknown)')
+        .filter(n => n)                        // include (Unknown) if it is active
   )
-  const activeCust    = activeCustNames.size   // distinct active customer names
-  const totalCustFile = custNames.size         // distinct accounts on file (excl. Unknown)
+  const activeCust    = activeCustNames.size   // 77 (76 named + (Unknown))
+  const totalCustFile = custNames.size         // 118 (117 named + (Unknown))
 
   // §7.1 — guard: if months failed and user had a month selected, fall back to mtd
   const monthList = availableMonths(D.months)

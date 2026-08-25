@@ -137,8 +137,11 @@ function exportCsv(rows, basis, asAt, prevSnapDate, prevMap, targets) {
   const bl    = basis === 'ly' ? 'LY' : 'LM'
   const gapDy = gapDays(asAt, prevSnapDate)
   const gapLabel = gapDy !== null ? `${gapDy}-day` : 'snapshot'
+  // FIX 2: 'Hoppa Non-Hoppa' → 'Department' (raw dept, e.g. 'Sales Mo')
+  // Add 'Team' column (rolled-up, e.g. 'EAM Chris') so the file reconciles to the screen.
+  // Someone pivoting by Team gets 19 (16+3) for EAM Chris, matching the grouped view.
   const head = [
-    'Hoppa Non-Hoppa', 'customer_name',
+    'Department', 'Team', 'customer_name',
     `Original Sales Amount vs ${bl}`, `Original Sales Amount %vs ${bl}`,
     'Sales Amount', `${bl} MTD Sales Amount`,
     `Total Profit vs ${bl}`, `Total Profit %vs ${bl}`,
@@ -150,15 +153,22 @@ function exportCsv(rows, basis, asAt, prevSnapDate, prevMap, targets) {
   const q = s => `"${String(s ?? '').replace(/"/g, '""')}"`
   const lines = [head.join(',')]
   rows.forEach(r => {
-    const key = `${r.dept}||${r.cust}`
-    const delta = prevMap[key] ?? null
+    const key        = `${r.dept}||${r.cust}`
+    const delta      = prevMap[key] ?? null
     const parentDept = rollupDept(r.dept)
-    const tgt = SUBTEAM_TARGET[r.dept] ?? targets?.dept?.[parentDept] ?? null
-    const growthProfit = delta !== null ? (_num(r.profit) - delta) : ''
-    const growthPts    = (delta !== null && tgt && tgt > 0 && r.profit !== null)
-      ? ((_num(r.profit) - delta) / tgt * 100).toFixed(2) : ''
+    const tgt        = SUBTEAM_TARGET[r.dept] ?? targets?.dept?.[parentDept] ?? null
+    const growthProfit = delta !== undefined && delta !== null
+      ? (_num(r.profit) - delta)
+      : delta === null ? '' : ''
+    const curP = r.profit !== null ? _num(r.profit) : null
+    const prevP = (prevMap[key] !== undefined && prevMap[key] !== null) ? prevMap[key] : null
+    const dp = (curP !== null && prevP !== null) ? curP - prevP
+      : (curP !== null && prevMap[key] === null) ? curP - 0
+      : null
+    const growthPts = (dp !== null && tgt && tgt > 0)
+      ? (dp / tgt * 100).toFixed(2) : ''
     lines.push([
-      q(r.dept), q(r.cust),
+      q(r.dept), q(parentDept), q(r.cust),
       r.s_delta?.toFixed(2) ?? '',
       r.s_pct !== null ? r.s_pct.toFixed(4) : '',
       r.sales.toFixed(2),
@@ -169,14 +179,13 @@ function exportCsv(rows, basis, asAt, prevSnapDate, prevMap, targets) {
       r.base_profit.toFixed(2),
       r.revenue.toFixed(2),
       r.margin !== null ? r.margin.toFixed(4) : '',
-      growthProfit !== '' ? Number(growthProfit).toFixed(2) : '',
+      dp !== null ? dp.toFixed(2) : '',
       growthPts,
     ].join(','))
   })
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
-  // Include both snapshot dates in filename so a downloaded file is self-describing (§5)
   const tag = (asAt && prevSnapDate) ? `_${prevSnapDate}_to_${asAt}` : `_${new Date().toISOString().slice(0,10)}`
   a.download = `EAM Customer Performance${tag}.csv`
   a.click()
@@ -474,11 +483,43 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
     )
   }
 
-  // Growth cell for group-level sub-team summary row (§1.2)
-  const growthCellSubteam = (subDept, subProfit, parentDept) => {
-    const tgt = SUBTEAM_TARGET[subDept] ?? null
+  // FIX 1: Group-level growth aggregated from items.
+  // Sum deltaProfit over all customers in the group (rollupDept maps Sales Mo → EAM Chris etc.).
+  // deltaPts = sumDp / parentTarget. (Unassigned) has no target → pts null.
+  const groupGrowthCell = (g) => {
+    if (!hasDelta) return null
+    let sumDp = 0; let anyDelta = false
+    g.items.forEach(r => {
+      const key  = `${r.dept}||${r.cust}`
+      const prev = prevMap[key]
+      if (prev === undefined) return     // not in prev snapshot
+      anyDelta = true
+      const curP  = r.profit !== null ? _num(r.profit) : null
+      const prevP = prev !== null ? prev : 0
+      if (curP !== null) sumDp += curP - prevP
+    })
+    if (!anyDelta) {
+      return <td style={{ padding:'8px 14px', textAlign:'right', verticalAlign:'middle', color:T.text3, fontSize:13 }}>—</td>
+    }
+    const isUnassigned = g.dept === '(Unassigned)'
+    const tgt  = isUnassigned ? null : (targets?.dept?.[g.dept] ?? null)
+    const dPts = (tgt && tgt > 0) ? (sumDp / tgt) * 100 : null
+    const c    = sumDp > 0 ? T.green : sumDp < 0 ? T.red : T.text3
     return (
-      <td style={{ padding:'8px 14px', textAlign:'right', verticalAlign:'middle', color:T.text3, fontSize:13 }}>—</td>
+      <td style={{ padding:'8px 14px', textAlign:'right', verticalAlign:'middle' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:1, alignItems:'flex-end' }}>
+          <span style={{ fontVariantNumeric:'tabular-nums', fontWeight:700, fontSize:13, color:c }}>
+            {sumDp > 0 ? '+' : ''}{usd(sumDp)}
+          </span>
+          {(!isUnassigned && dPts !== null) ? (
+            <span style={{ fontSize:11, color:c, fontVariantNumeric:'tabular-nums' }}>
+              {dPts > 0 ? '+' : ''}{dPts.toFixed(2)} pts
+            </span>
+          ) : (
+            <span style={{ fontSize:11, color:T.text3 }}>—</span>
+          )}
+        </div>
+      </td>
     )
   }
 
@@ -527,7 +568,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
           </div>
         </td>
         <CustCells r={g} />
-        {hasDelta && <td style={{ padding:'8px 14px', textAlign:'right', verticalAlign:'middle', color:T.text3, fontSize:13 }}>—</td>}
+        {hasDelta && groupGrowthCell(g)}
       </tr>
     )
 
@@ -676,9 +717,25 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
 
       {/* KPI row */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:16 }}>
-        <KpiTile label="Accounts shown" value={numFmt(rows.length)} sub={`of ${numFmt((cust||[]).length)} on file`} />
-        <KpiTile label={`Sales Amount (${short})`} value={usdC(st.sales)} sub={`${signed(stx.s_delta)} vs ${blLabel}`} subColor={deltaColor(stx.s_delta)} />
-        <KpiTile label={`Total Profit (${short})`} value={usdC(st.profit)} sub={`${signed(stx.p_delta)} vs ${blLabel}`} subColor={deltaColor(stx.p_delta)} />
+        {/* FIX 4: distinct customer count (118 = 117 named + (Unknown)), same definition as Exec Summary */}
+        <KpiTile
+          label="Accounts shown"
+          value={numFmt(rows.length)}
+          sub={`of ${numFmt(new Set((cust||[]).map(r => r.cust)).size)} on file`}
+        />
+        {/* FIX 3: sub-label makes explicit that delta is against active-only baseline when filter is active */}
+        <KpiTile
+          label={`Sales Amount (${short})`}
+          value={usdC(st.sales)}
+          sub={`${signed(stx.s_delta)} vs ${blLabel}${filters.active==='active'?' · active accounts only':''}`}
+          subColor={deltaColor(stx.s_delta)}
+        />
+        <KpiTile
+          label={`Total Profit (${short})`}
+          value={usdC(st.profit)}
+          sub={`${signed(stx.p_delta)} vs ${blLabel}${filters.active==='active'?' · active accounts only':''}`}
+          subColor={deltaColor(stx.p_delta)}
+        />
         <KpiTile label="Blended margin" value={pctFmt(stx.margin, 1)} sub={`Revenue ${usdC(st.revenue)}`} />
       </div>
 
