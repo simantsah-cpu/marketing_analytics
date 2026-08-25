@@ -336,10 +336,14 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
   const topAccounts=useMemo(()=>(D.fcc||[]).filter(r=>r.ym===nextM).sort((a,b)=>num(b.pro)-num(a.pro)).slice(0,20),[D.fcc,nextM])
 
   // §4 — company target for current month
+  // MUST sum only DEPT_TARGET_KEYS (4 depts). Sales Mo / Sales Jojo are sub-teams
+  // already inside their parent — including them gives 2,064,299 instead of 2,045,426
+  // and makes the attainment read 85% instead of the correct 86%. §1.1 of Departments spec.
+  const DEPT_TARGET_KEYS_FC = ['EAM Chris','EAM Renaldo','EAM Gloria','B2C Matt']
   const company=useMemo(()=>{
-    let t=0
-    ;(D.targets||[]).forEach(r=>{if(r.kind==='dept'&&r.ym===CUR_MONTH)t+=num(r.tgt)})
-    return t
+    const deptTgts={}
+    ;(D.targets||[]).forEach(r=>{if(r.kind==='dept'&&r.ym===CUR_MONTH)deptTgts[r.dim]=num(r.tgt)})
+    return DEPT_TARGET_KEYS_FC.reduce((a,k)=>a+(deptTgts[k]||0),0)
   },[D.targets,CUR_MONTH])
 
   // fdate from first fc row (backwards-compat: fdate is now also fcVintage prop)

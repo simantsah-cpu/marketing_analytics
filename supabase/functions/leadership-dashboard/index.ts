@@ -799,6 +799,24 @@ serve(async (req) => {
     // buildSnapFilter throws if the date string is malformed.
     const snapFilter = buildSnapFilter(rawAsAt)
 
+    // Wave 1 — fetch snap dates first so prevSnapFilter can be derived before wave 2.
+    // All other queries don't depend on the previous snapshot date.
+    const snapDatesRows: any[] = USE_SNAP
+      ? await runQuery(projectId, Q_SNAP_DATES, accessToken).catch(() => [])
+      : []
+
+    // snapDates is sorted DESC (most recent first).
+    // Index 0 = current (asAt), index 1 = previous snapshot.
+    // §4.1 of Departments spec: month boundary guard is done client-side.
+    const allSnapDates: string[] = snapDatesRows.map((r: any) => r.snapshot_date).filter(Boolean)
+    const resolvedCurrent = allSnapDates[0] ?? null
+    const prevDateStr:    string | null = allSnapDates[1] ?? null
+    const prevSnapFilter: string | null = prevDateStr ? `DATE '${prevDateStr}'` : null
+
+    // Build Q_CUST_PREV — same subquery as Q_CUST but pinned to the previous snapshot date.
+    // §1 of Departments spec: reuse the existing v2 subquery, do not write a second parser.
+    const Q_CUST_PREV = (USE_SNAP && prevSnapFilter !== null) ? makeQCust(prevSnapFilter) : null
+
     // Build queries — snap variants replace the FROM clause when USE_SNAP=true
     const Q_CUST    = makeQCust(snapFilter)
     const Q_TARGETS = makeQTargets(snapFilter)
@@ -806,20 +824,15 @@ serve(async (req) => {
     const Q_PROD    = makeQProd(snapFilter)
     const Q_FCC     = makeQFCC(snapFilter)
 
-    // Snap metadata — only fetched when USE_SNAP is on
-    const snapDatesPromise = USE_SNAP
-      ? runQuery(projectId, Q_SNAP_DATES, accessToken).catch(() => [])
-      : Promise.resolve([])
+    // Wave 2 — run all remaining queries in parallel, including custPrev.
     const stalenessPromise = USE_SNAP
       ? runQuery(projectId, makeQStaleness(snapFilter), accessToken).catch(() => [])
       : Promise.resolve([])
 
-    // Run Q_RH first (heaviest query, §11) then remaining in parallel.
-    // All non-CUST queries are non-fatal — tabs show empty states on failure.
     const [
       custRows, targetsRows, fcRows, monthsRows, fccRows,
       prodRows, geoRows, b2cRows, b2cMRows, rhRows, mqRows,
-      snapDatesRows, stalenessRows,
+      stalenessRows, custPrevRows,
     ] = await Promise.all([
       runQuery(projectId, Q_CUST,    accessToken),
       runQuery(projectId, Q_TARGETS, accessToken),
@@ -832,12 +845,12 @@ serve(async (req) => {
       runQuery(projectId, Q_B2C_M,   accessToken).catch(() => []),
       runQuery(projectId, Q_RH,      accessToken).catch(() => []),
       runQuery(projectId, Q_MQ,      accessToken).catch(() => []),
-      snapDatesPromise,
       stalenessPromise,
+      Q_CUST_PREV ? runQuery(projectId, Q_CUST_PREV, accessToken).catch(() => []) : Promise.resolve([]),
     ])
 
     // Resolve the actual snapshot date used (may differ from rawAsAt if default was used)
-    const resolvedAsAt: string | null = custRows[0]?.snapshot_date ?? rawAsAt
+    const resolvedAsAt: string | null = custRows[0]?.snapshot_date ?? resolvedCurrent ?? rawAsAt
     const staleness = stalenessRows[0] ?? null
 
     // Resolved forecast vintages — returned so the UI can label which week is on screen.
@@ -848,25 +861,27 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        queried_at:  new Date().toISOString(),
-        cust:        custRows,
-        targets:     targetsRows,
-        fc:          fcRows,
-        months:      monthsRows,
-        fcc:         fccRows,
-        prod:        prodRows,
-        geo:         geoRows,
-        b2c:         b2cRows,
-        b2cM:        b2cMRows,
-        rh:          rhRows,
-        mq:          mqRows,
+        queried_at:   new Date().toISOString(),
+        cust:         custRows,
+        custPrev:     custPrevRows,   // previous snapshot rows — Departments weekly delta (§3)
+        prevSnapDate: prevDateStr,    // ISO date string of the previous snapshot
+        targets:      targetsRows,
+        fc:           fcRows,
+        months:       monthsRows,
+        fcc:          fccRows,
+        prod:         prodRows,
+        geo:          geoRows,
+        b2c:          b2cRows,
+        b2cM:         b2cMRows,
+        rh:           rhRows,
+        mq:           mqRows,
         // snap metadata
-        snapDates:   snapDatesRows.map((r: any) => r.snapshot_date).filter(Boolean),
-        asAt:        resolvedAsAt,
-        staleness:   staleness ? { is_stale: staleness.is_stale === 'true', staleness_days: Number(staleness.staleness_days) } : null,
+        snapDates:    allSnapDates,
+        asAt:         resolvedAsAt,
+        staleness:    staleness ? { is_stale: staleness.is_stale === 'true', staleness_days: Number(staleness.staleness_days) } : null,
         // forecast vintage metadata (§2.2 of forecast spec)
-        fcVintage:   fcVintage,
-        fccVintage:  fccVintage,
+        fcVintage:    fcVintage,
+        fccVintage:   fccVintage,
       }),
       { headers: { ...CORS, 'Content-Type': 'application/json' } },
     )

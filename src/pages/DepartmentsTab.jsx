@@ -10,6 +10,13 @@
  *  - Sub-teams are NEVER added to the Total — they are already inside their parent
  *  - Company target = exactly 4 depts, not the sum of the target column
  *  - Profit is summed from Q_CUST rows, never recomputed
+ *
+ * §3 — snap-based weekly growth:
+ *  - custPrev holds Q_CUST run against the previous snapshot date (same subquery)
+ *  - deltaProfit = mtdProfit(asAt) − mtdProfit(prevSnapshot), per department
+ *  - deltaPts    = deltaProfit / target × 100 (exact, because target is constant)
+ *  - §4.1 gap labelling: N-day, not "weekly", until a genuine 7-day pair exists
+ *  - §4.2 month boundary: only compare when both snapshots share the same MTD month
  */
 
 import { useState, useMemo } from 'react'
@@ -337,7 +344,7 @@ function AttainmentBar({ ach }) {
 // DepartmentsTab
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSpan, PC }) {
+export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, period, CUR_MONTH, targets, tgtSpan, PC }) {
   // §2 — collapse state, persisted in localStorage
   const [expandedDepts, setExpandedDepts] = useState(() => {
     return {} // always start collapsed
@@ -346,6 +353,60 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
   // Data arrives pre-normalized from LeadershipDashboard.normCust() — no period resolution needed
   const { depts, deptKids } = useMemo(() => buildDepts(cust, targets), [cust, targets])
   const t = useMemo(() => deptTotals(depts), [depts])
+
+  // ── §3 — snap-based weekly growth ──────────────────────────────────────────
+  // prevDepts: buildDepts on the previous snapshot rows (same function, same parser)
+  const prevDepts = useMemo(
+    () => custPrev?.length ? buildDepts(custPrev, targets).depts : [],
+    [custPrev, targets]
+  )
+
+  // MTD month of a snapshot_date: snapshot_date − 1 day, then YYYY-MM.
+  // Example: '2026-08-24' → '2026-08-23' → '2026-08'
+  // §4.2: v2's MTD belongs to the month containing (snapshot_date − 1 day).
+  function snapMtdMonth(dateStr) {
+    if (!dateStr) return null
+    const d = new Date(dateStr + 'T00:00:00Z')
+    d.setUTCDate(d.getUTCDate() - 1)
+    return d.toISOString().slice(0, 7) // 'YYYY-MM'
+  }
+
+  // Gap in days between two ISO date strings (asAt − prevSnapDate)
+  function gapDays(a, b) {
+    if (!a || !b) return null
+    return Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000)
+  }
+
+  const asAtMtdMonth  = snapMtdMonth(asAt)
+  const prevMtdMonth  = snapMtdMonth(prevSnapDate)
+  // §4.2: only show delta when both snapshots' MTD belongs to the same month
+  const sameMonth     = asAtMtdMonth && prevMtdMonth && asAtMtdMonth === prevMtdMonth
+  const deltaGapDays  = gapDays(asAt, prevSnapDate)
+  const hasDelta      = Boolean(sameMonth && prevDepts.length > 0 && deltaGapDays !== null)
+
+  // Build delta map: dept → { deltaProfit, deltaPts }
+  const deptDelta = useMemo(() => {
+    if (!hasDelta) return {}
+    const prevMap = {}
+    prevDepts.forEach(d => { prevMap[d.dept] = d.profit })
+    const out = {}
+    depts.forEach(d => {
+      const prev = prevMap[d.dept] ?? null
+      if (prev === null) { out[d.dept] = null; return }
+      const dp = d.profit - prev
+      const tgt = d.target
+      // §3.1: deltaPts = deltaProfit / target × 100 — exact because target is constant
+      const dPts = (tgt && tgt > 0) ? (dp / tgt) * 100 : null
+      out[d.dept] = { deltaProfit: dp, deltaPts: dPts }
+    })
+    return out
+  }, [hasDelta, depts, prevDepts])
+
+  // §4.1: label the gap correctly — "3-day" for the 21→24 Aug pair, "7-day" for weekly pairs.
+  // Do NOT label as "weekly" until deltaGapDays === 7.
+  const deltaLabel = deltaGapDays === 7 ? 'Weekly growth'
+    : deltaGapDays !== null ? `${deltaGapDays}-day growth`
+    : null
 
   // Company target from parent's tgtSpan (already spans full period, §6)
   const company    = tgtSpan?.total ?? targets.company ?? 0
@@ -395,6 +456,10 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
     const pp       = _profitPct(d.profit, d.lm_profit)
     const sp       = _salesPct(d.sales, d.lm_sales)
     const dColor   = delta > 0 ? T.green : delta < 0 ? T.red : T.text3
+
+    // §3 — snap-based delta for parent rows only (sub-teams excluded per §6)
+    const snapDelta = !isKid && hasDelta ? (deptDelta[d.dept] ?? null) : null
+    const sdColor   = snapDelta ? (snapDelta.deltaProfit > 0 ? T.green : T.red) : T.text3
 
     return (
       <tr
@@ -495,6 +560,28 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
         <td style={{ ...TD, textAlign: 'right', color: T.text3, fontVariantNumeric: 'tabular-nums' }}>
           {d.active} / {d.customers}
         </td>
+
+        {/* Col 9 — Snap-based growth (§3) — parent rows only */}
+        {hasDelta && (
+          <td style={{ ...TD, textAlign: 'right' }}>
+            {isKid ? (
+              <span style={{ color: T.text3 }}>—</span>
+            ) : snapDelta ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                <span style={{ fontWeight: 600, color: sdColor, fontVariantNumeric: 'tabular-nums' }}>
+                  {snapDelta.deltaProfit > 0 ? '+' : ''}{_usd(snapDelta.deltaProfit)}
+                </span>
+                {snapDelta.deltaPts !== null && (
+                  <span style={{ fontSize: 11, color: sdColor, fontVariantNumeric: 'tabular-nums' }}>
+                    {snapDelta.deltaPts > 0 ? '+' : ''}{snapDelta.deltaPts.toFixed(2)} pts
+                  </span>
+                )}
+              </div>
+            ) : (
+              <span style={{ color: T.text3 }}>—</span>
+            )}
+          </td>
+        )}
       </tr>
     )
   }
@@ -510,10 +597,13 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: T.text, margin: 0 }}>Departments</h1>
+          {/* Snap date badge — replaces LIVE badge (this tab reads from snap) */}
           <span style={{
-            fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-            background: 'rgba(29,158,117,.11)', color: '#1D9E75', letterSpacing: '0.06em',
-          }}>● LIVE</span>
+            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+            background: 'rgba(0,0,0,.06)', color: T.text3, letterSpacing: '0.04em',
+          }}>
+            Data as of {asAt ?? '…'}
+          </span>
         </div>
         <div style={{ fontSize: 13, color: T.text3, marginTop: 4 }}>
           {PC.short} Total Profit, Complete GMV and Original Sales Amount by owning team, versus target and versus {PC.baseShort}
@@ -530,6 +620,17 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
           ⚠️ <strong>Unexpected department.</strong> Targets on screen sum to {_usd(tgtSum)} against a company
           target of {_usd(company)}. A department outside the agreed four is carrying a target — worth
           checking the mapping table.
+        </div>
+      )}
+
+      {/* §4.2 — month boundary notice: cross-month pair suppressed */}
+      {prevSnapDate && !sameMonth && prevDepts.length > 0 && (
+        <div style={{
+          background: 'rgba(234,179,8,.12)', border: '1px solid #EAB308',
+          borderRadius: 8, padding: '10px 14px', marginBottom: 12,
+          fontSize: 12.5, color: '#78590A', lineHeight: 1.6,
+        }}>
+          {deltaLabel ?? 'Growth'} column hidden — snapshots {asAt} and {prevSnapDate} span a month boundary (MTD resets). Will show once both snapshots share the same month.
         </div>
       )}
 
@@ -575,6 +676,12 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
                   <span style={{ fontWeight: 400, fontSize: 9 }}>vs {PC.baseShort}</span>
                 </th>
                 <th style={{ ...TH, textAlign: 'right' }}>Accounts</th>
+                {hasDelta && (
+                  <th style={{ ...TH, textAlign: 'right', minWidth: 130 }}>
+                    {deltaLabel}<br />
+                    <span style={{ fontWeight: 400, fontSize: 9 }}>Δ profit · Δ pts</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -628,6 +735,27 @@ export default function DepartmentsTab({ cust, period, CUR_MONTH, targets, tgtSp
                 <td style={{ ...TD, textAlign: 'right', color: T.text3, fontVariantNumeric: 'tabular-nums' }}>
                   {cust.length}
                 </td>
+                {/* Total row delta — company-level (§3.1) */}
+                {hasDelta && (() => {
+                  const prevTotalProfit = prevDepts.reduce((a, d) => a + d.profit, 0)
+                  const dp = t.profit - prevTotalProfit
+                  const dPts = company > 0 ? (dp / company) * 100 : null
+                  const c = dp >= 0 ? T.green : T.red
+                  return (
+                    <td style={{ ...TD, textAlign: 'right' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                        <span style={{ fontWeight: 700, color: c, fontVariantNumeric: 'tabular-nums' }}>
+                          {dp > 0 ? '+' : ''}{_usd(dp)}
+                        </span>
+                        {dPts !== null && (
+                          <span style={{ fontSize: 11, color: c, fontVariantNumeric: 'tabular-nums' }}>
+                            {dPts > 0 ? '+' : ''}{dPts.toFixed(2)} pts
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  )
+                })()}
               </tr>
             </tbody>
           </table>

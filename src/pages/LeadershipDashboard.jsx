@@ -580,7 +580,7 @@ export default function LeadershipDashboard() {
   const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(8, tabParam))
   const [period,     setPeriodState] = useState('2026-08') // always default to Aug 2026
   const [asAt,       setAsAt]        = useState(null)       // null = latest snapshot
-  const [D,          setD]           = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], mq: [], snapDates: [], asAt: null, staleness: null, fcVintage: null, fccVintage: null })
+  const [D,          setD]           = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], mq: [], snapDates: [], asAt: null, staleness: null, fcVintage: null, fccVintage: null, custPrev: [], prevSnapDate: null })
   const [loading,    setLoading]     = useState(false)
   const [error,      setError]       = useState(null)
   const [usingCache, setUsingCache]  = useState(false)
@@ -636,8 +636,10 @@ export default function LeadershipDashboard() {
         snapDates: Array.isArray(data.snapDates) ? data.snapDates : [],
         asAt:      data.asAt      ?? null,
         staleness: data.staleness ?? null,
-        fcVintage:  data.fcVintage  ?? null,
-        fccVintage: data.fccVintage ?? null,
+        fcVintage:    data.fcVintage   ?? null,
+        fccVintage:   data.fccVintage  ?? null,
+        custPrev:     Array.isArray(data.custPrev) ? data.custPrev : [],
+        prevSnapDate: data.prevSnapDate ?? null,
       }
       setD(result)
       cacheWrite(result)
@@ -1137,6 +1139,9 @@ export default function LeadershipDashboard() {
           !loading && cust.length > 0 ? (
             <DepartmentsTab
               cust={cust}
+              custPrev={D.custPrev}
+              prevSnapDate={D.prevSnapDate}
+              asAt={D.asAt}
               period={period}
               CUR_MONTH={CUR_MONTH}
               targets={targets}
