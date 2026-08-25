@@ -358,14 +358,21 @@ FROM u
 `
 }
 
-// §1.3 Q_FC — forward-booking forecast
-// model_version MUST be "fwd_v2" (§1.3). Always MAX(forecast_date) — never hardcode.
-// When USE_SNAP=true, pin the vintage to the snapshot date so historical views
-// don't mix old actuals with today's forecast (§5 of migration spec).
+// §1.3 Q_FC — geo-level forward-booking forecast
+// model_version MUST be "fwd_v2" (§1.3).
+//
+// §2 LATENT BUG FIX — resolve the vintage on the version you are using.
+// The old code: SELECT MAX(forecast_date) WHERE forecast_date <= as_at
+// resolves across ALL versions. On Monday between 02:00–07:18, fwd_v1 exists
+// for that Monday but fwd_v2 does not — so MAX returns today, and the
+// WHERE fwd_v2 filter matches zero rows. Panel goes blank.
+//
+// The fix: resolve MAX within model_version='fwd_v2' only.
+// If this Monday's fwd_v2 has not landed, falls back to last Monday's —
+// one week stale but complete and coherent, strictly better than blank.
+// Same pattern applied to Q_FCC (fwd_cust_v1).
 function makeQFC(snapFilter: string | null): string {
-  // The vintage guard: forecast_date <= snapshot_date ensures the forecast
-  // vintage aligns with the data. Without this, a past asAt shows today's
-  // forecast against old actuals, making every historical view look prescient.
+  // Vintage guard: resolve on fwd_v2 specifically. Never on all versions.
   const vintageGuard = (USE_SNAP && snapFilter !== null)
     ? `AND forecast_date <= ${snapFilter}`
     : ''
@@ -397,13 +404,22 @@ WHERE f.model_version = "fwd_v2" AND f.forecast_date = mx.fd
 
 // §1.5 Q_FCC — customer-level forward-booking forecast
 // model_version MUST be "fwd_cust_v1" (NOT fwd_v2). Two different models, two different tables.
-const Q_FCC = `
+// Same §2 vintage-pinning fix as Q_FC: resolve MAX within fwd_cust_v1 only.
+// Customer cadence changed 2026-08-03: was weekly Wednesday, now weekly Monday.
+// Do not assume fcc and fc share a vintage date — resolve each independently.
+function makeQFCC(snapFilter: string | null): string {
+  const vintageGuard = (USE_SNAP && snapFilter !== null)
+    ? `AND forecast_date <= ${snapFilter}`
+    : ''
+  return `
 WITH mx AS (
   SELECT MAX(forecast_date) AS fd
   FROM \`elife-data-warehouse-prod.ads.ads_forward_booking_forecast_customer\`
   WHERE model_version = "fwd_cust_v1"
+  ${vintageGuard}
 )
 SELECT
+  CAST(f.forecast_date AS STRING) AS fdate,
   f.pickup_month                        AS ym,
   IFNULL(f.customer,  "(Unknown)")      AS cust,
   IFNULL(f.cust_type, "\u2014")         AS ctype,
@@ -413,6 +429,7 @@ SELECT
 FROM \`elife-data-warehouse-prod.ads.ads_forward_booking_forecast_customer\` f, mx
 WHERE f.model_version = "fwd_cust_v1" AND f.forecast_date = mx.fd
 `
+}
 // §1.6 Q_MONTHS — single-month reconstruction (completed rides only)
 // NOTE: not equivalent to the DAX measure. 2–4% high vs notebook. Label accordingly.
 // Date floor 2025-12-01 because Dec 2025 is Jan 2026's comparison base.
@@ -787,6 +804,7 @@ serve(async (req) => {
     const Q_TARGETS = makeQTargets(snapFilter)
     const Q_FC      = makeQFC(snapFilter)
     const Q_PROD    = makeQProd(snapFilter)
+    const Q_FCC     = makeQFCC(snapFilter)
 
     // Snap metadata — only fetched when USE_SNAP is on
     const snapDatesPromise = USE_SNAP
@@ -822,24 +840,33 @@ serve(async (req) => {
     const resolvedAsAt: string | null = custRows[0]?.snapshot_date ?? rawAsAt
     const staleness = stalenessRows[0] ?? null
 
+    // Resolved forecast vintages — returned so the UI can label which week is on screen.
+    // fdate is the resolved forecast_date on each row (all rows share the same value).
+    // If the vintage is older than asAt, the frontend shows a stale-vintage warning.
+    const fcVintage:  string | null = fcRows[0]?.fdate  ?? null
+    const fccVintage: string | null = fccRows[0]?.fdate ?? null
+
     return new Response(
       JSON.stringify({
-        queried_at: new Date().toISOString(),
-        cust:       custRows,
-        targets:    targetsRows,
-        fc:         fcRows,
-        months:     monthsRows,
-        fcc:        fccRows,
-        prod:       prodRows,
-        geo:        geoRows,
-        b2c:        b2cRows,
-        b2cM:       b2cMRows,
-        rh:         rhRows,
-        mq:         mqRows,
+        queried_at:  new Date().toISOString(),
+        cust:        custRows,
+        targets:     targetsRows,
+        fc:          fcRows,
+        months:      monthsRows,
+        fcc:         fccRows,
+        prod:        prodRows,
+        geo:         geoRows,
+        b2c:         b2cRows,
+        b2cM:        b2cMRows,
+        rh:          rhRows,
+        mq:          mqRows,
         // snap metadata
-        snapDates:  snapDatesRows.map((r: any) => r.snapshot_date).filter(Boolean),
-        asAt:       resolvedAsAt,
-        staleness:  staleness ? { is_stale: staleness.is_stale === 'true', staleness_days: Number(staleness.staleness_days) } : null,
+        snapDates:   snapDatesRows.map((r: any) => r.snapshot_date).filter(Boolean),
+        asAt:        resolvedAsAt,
+        staleness:   staleness ? { is_stale: staleness.is_stale === 'true', staleness_days: Number(staleness.staleness_days) } : null,
+        // forecast vintage metadata (§2.2 of forecast spec)
+        fcVintage:   fcVintage,
+        fccVintage:  fccVintage,
       }),
       { headers: { ...CORS, 'Content-Type': 'application/json' } },
     )

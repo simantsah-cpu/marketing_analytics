@@ -47,6 +47,7 @@ const pctFmt=(v,d=1)=>(v===null||v===undefined||!isFinite(Number(v)))?'—':(num
 const GEO_COLOR={
   'Americas':'#185FA5',
   'America&Africa, Asia, Oceania':'#185FA5',
+  'Americas/Asia/Africa/Oceania':'#185FA5',   // taxonomy post-2026-08-17
   'Europe':'#1D9E75',
   'Asia/Africa/Oceania':'#D85A30',
   '(Unassigned)':'#8b8a83',
@@ -301,7 +302,12 @@ function CovChart({months, mAgg}) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
+// GEO_MERGE_DATE — Americas/Asia/Africa/Oceania merged into one geo on this date.
+// Vintages >= this date have 2 geos; earlier vintages have 3.
+// Do not compare geo splits across this boundary without annotating it.
+const GEO_MERGE_DATE = '2026-08-17'
+
+export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fccVintage,asAt}){
   // §6.1 — expand state persisted
   const[fcOpen,setFcOpen]=useState({})
   const toggleFc=m=>{setFcOpen(prev=>{const n={...prev,[m]:!prev[m]};localStorage.setItem('eam.fcOpen',JSON.stringify(n));return n})}
@@ -336,8 +342,16 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
     return t
   },[D.targets,CUR_MONTH])
 
-  // fdate from first fc row
-  const fdate=(D.fc&&D.fc[0]?.fdate)||null
+  // fdate from first fc row (backwards-compat: fdate is now also fcVintage prop)
+  const fdate = fcVintage ?? (D.fc&&D.fc[0]?.fdate) ?? null
+  const fdateFCC = fccVintage ?? null
+
+  // §2.2 — stale vintage: resolved forecast is older than the snap asAt
+  const fcIsStale = fdate && asAt && fdate < asAt
+  const fccIsStale = fdateFCC && asAt && fdateFCC < asAt
+
+  // §3 — geo taxonomy note: vintage >= 2026-08-17 has 2 geos; older has 3
+  const geoIsMerged = fdate && fdate >= GEO_MERGE_DATE
 
   // Geo totals for legend
   const geoTotals=useMemo(()=>{
@@ -368,13 +382,30 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
       <div style={{marginBottom:12}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           <h1 style={{fontSize:20,fontWeight:700,color:T.text,margin:0}}>Forward-Booking Forecast</h1>
-          <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:10,background:'rgba(29,158,117,.11)',color:'#1D9E75',letterSpacing:'0.06em'}}>● LIVE</span>
+          {/* Vintage badge — replaces LIVE. Forecast tables already accumulate immutable
+              vintages; this is not a snap source but the date is still meaningful. */}
+          <span style={{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:'rgba(0,0,0,.06)',color:T.text3,letterSpacing:'0.04em'}}>
+            Vintage {fdate ? String(fdate).slice(0,10) : '…'}
+          </span>
         </div>
         <div style={{fontSize:13,color:T.text3,marginTop:4}}>
           Model <code style={{fontSize:12,background:T.bg4,padding:'1px 5px',borderRadius:4}}>fwd_v2</code>
-          {fdate&&<> · forecast date {String(fdate).slice(0,10)}</>}
+          {' · geo'}
+          {fdateFCC&&<> · customer vintage {String(fdateFCC).slice(0,10)}</>}
         </div>
       </div>
+
+      {/* §2.2 — stale vintage warning: forecast older than the snap asAt */}
+      {fcIsStale&&(
+        <div style={{background:'rgba(234,179,8,.12)',border:'1px solid #EAB308',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12.5,color:'#78590A',lineHeight:1.7}}>
+          <strong>Forecast vintage {String(fdate).slice(0,10)}</strong> · this week's model had not published when the snapshot was taken.
+        </div>
+      )}
+      {fccIsStale&&!fcIsStale&&(
+        <div style={{background:'rgba(234,179,8,.12)',border:'1px solid #EAB308',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12.5,color:'#78590A',lineHeight:1.7}}>
+          <strong>Customer forecast vintage {String(fdateFCC).slice(0,10)}</strong> · the customer model had not published when the snapshot was taken.
+        </div>
+      )}
 
       {/* §8 — Period notice for non-MTD */}
       {period!=='mtd'&&(
@@ -439,6 +470,8 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
           <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Forecast total profit by geography</div>
           <div style={{fontSize:11.5,color:T.text3,marginBottom:14}}>
             Four months ahead · totals above each column, {usdC(geoAll)} in aggregate
+            {/* §3 — geo taxonomy note */}
+            {geoIsMerged&&<span style={{marginLeft:8,fontSize:10,background:'rgba(234,179,8,.15)',color:'#78590A',padding:'1px 6px',borderRadius:9,border:'1px solid rgba(234,179,8,.4)'}}>Americas &amp; Asia/Africa/Oceania merged from Aug 17</span>}
           </div>
           <div style={{height:300}}>
             <GeoChart months={months} geos={geos} D={D}/>
@@ -551,8 +584,9 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC}){
       {/* ── §7 Top forecast accounts ──────────────────────────────────────── */}
       {topAccounts.length>0&&(
         <div style={{marginBottom:24}}>
-          <div style={{fontSize:10,fontWeight:700,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:10}}>
-            Top forecast accounts — {nextM}
+          <div style={{fontSize:10,fontWeight:700,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
+            <span>Top forecast accounts — {nextM}</span>
+            {fdateFCC&&<span style={{fontSize:10,fontWeight:500,textTransform:'none',letterSpacing:0,color:T.text3,background:T.bg4,padding:'2px 8px',borderRadius:8}}>vintage {String(fdateFCC).slice(0,10)}{fccIsStale?' · stale':''}</span>}
           </div>
           <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden'}}>
             <div style={{overflowX:'auto'}}>
