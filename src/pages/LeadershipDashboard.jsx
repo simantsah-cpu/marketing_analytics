@@ -579,22 +579,34 @@ export default function LeadershipDashboard() {
   const tabParam = parseInt(searchParams.get('tab') || '0', 10)
   const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(8, tabParam))
   const [period,     setPeriodState] = useState('2026-08') // always default to Aug 2026
-  const [D,          setD]          = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], mq: [] })
-  const [loading,    setLoading]    = useState(false)
-  const [error,      setError]      = useState(null)
-  const [usingCache, setUsingCache] = useState(false)
-  const [cachedAt,   setCachedAt]   = useState(null)
-  const [refreshKey, setRefreshKey] = useState(0)
+  const [asAt,       setAsAt]        = useState(null)       // null = latest snapshot
+  const [D,          setD]           = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], mq: [], snapDates: [], asAt: null, staleness: null })
+  const [loading,    setLoading]     = useState(false)
+  const [error,      setError]       = useState(null)
+  const [usingCache, setUsingCache]  = useState(false)
+  const [cachedAt,   setCachedAt]    = useState(null)
+  const [refreshKey, setRefreshKey]  = useState(0)
 
   const CUR_MONTH = curMonth()
   const PC        = PM(period)           // §4 — always use PM(), never branch on period directly
 
   // §2.1 — correct guard: month keys are valid even though they're not in PERIOD_META
+  // Issue 7: when a historical asAt is selected, reset period to 'mtd' if it
+  // was a month key — Q_MONTHS reads live ads_ride_summary, mixing it with a
+  // frozen snapshot creates a vintage mismatch.
   const setPeriod = k => {
     if (!PERIOD_META[k] && !isMonthKey(k)) return
     setPeriodState(k)
     localStorage.setItem('eam.period', k)
   }
+
+  // Derived: is the selected asAt the latest available snapshot?
+  const isLatestSnap = !asAt || asAt === D.snapDates[0]
+
+  // When user switches to a historical snapshot and period is a month key, reset
+  useEffect(() => {
+    if (!isLatestSnap && isMonthKey(period)) setPeriod('mtd')
+  }, [asAt, isLatestSnap]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Data fetch (§9.2) ──────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -603,22 +615,27 @@ export default function LeadershipDashboard() {
     setUsingCache(false)
 
     try {
-      const { data, error: fnErr } = await supabase.functions.invoke(EDGE_FN, { body: {} })
+      // Pass asAt so the edge function can bind the snapshot filter.
+      // null means 'use MAX(snapshot_date)' — the edge function handles that.
+      const { data, error: fnErr } = await supabase.functions.invoke(EDGE_FN, { body: { asAt } })
       if (fnErr || data?.error) {
         throw new Error(fnErr?.message || data?.error || 'Edge function returned an error')
       }
       const result = {
-        cust:    Array.isArray(data.cust)    ? data.cust    : [],
-        targets: Array.isArray(data.targets) ? data.targets : [],
-        fc:      Array.isArray(data.fc)      ? data.fc      : [],
-        months:  Array.isArray(data.months)  ? data.months  : [],
-        fcc:     Array.isArray(data.fcc)     ? data.fcc     : [],
-        prod:    Array.isArray(data.prod)    ? data.prod    : [],
-        geo:     Array.isArray(data.geo)     ? data.geo     : [],
-        b2c:     Array.isArray(data.b2c)     ? data.b2c     : [],
-        b2cM:    Array.isArray(data.b2cM)    ? data.b2cM    : [],
-        rh:      Array.isArray(data.rh)      ? data.rh      : [],
-        mq:      Array.isArray(data.mq)      ? data.mq       : [],
+        cust:      Array.isArray(data.cust)      ? data.cust      : [],
+        targets:   Array.isArray(data.targets)   ? data.targets   : [],
+        fc:        Array.isArray(data.fc)        ? data.fc        : [],
+        months:    Array.isArray(data.months)    ? data.months    : [],
+        fcc:       Array.isArray(data.fcc)       ? data.fcc       : [],
+        prod:      Array.isArray(data.prod)      ? data.prod      : [],
+        geo:       Array.isArray(data.geo)       ? data.geo       : [],
+        b2c:       Array.isArray(data.b2c)       ? data.b2c       : [],
+        b2cM:      Array.isArray(data.b2cM)      ? data.b2cM      : [],
+        rh:        Array.isArray(data.rh)        ? data.rh        : [],
+        mq:        Array.isArray(data.mq)        ? data.mq        : [],
+        snapDates: Array.isArray(data.snapDates) ? data.snapDates : [],
+        asAt:      data.asAt   ?? null,
+        staleness: data.staleness ?? null,
       }
       setD(result)
       cacheWrite(result)
@@ -636,7 +653,7 @@ export default function LeadershipDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [asAt]) // re-fetch whenever asAt changes
 
   useEffect(() => { fetchData() }, [fetchData, refreshKey])
 
@@ -930,6 +947,48 @@ export default function LeadershipDashboard() {
             {contextChip}
           </div>
 
+          {/* Snapshot date badge */}
+          <div style={{
+            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+            background: T.bg4, color: T.text3, letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+          }}>
+            Data as of {D.asAt ?? '…'}
+          </div>
+
+          {/* 'As at' snapshot selector — only shown when snap metadata is loaded */}
+          {D.snapDates.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <select
+                id="ld-snap-select"
+                value={asAt ?? ''}
+                onChange={e => {
+                  const val = e.target.value || null
+                  setAsAt(val)
+                }}
+                style={{
+                  fontSize: 13, fontWeight: 600,
+                  border: `1px solid ${T.border2}`, borderRadius: 6,
+                  padding: '5px 30px 5px 10px', background: T.bg,
+                  color: T.text, cursor: 'pointer', outline: 'none',
+                  fontFamily: 'inherit', appearance: 'none',
+                  minWidth: 160,
+                }}
+              >
+                <option value="">Latest ({D.snapDates[0] ?? '…'})</option>
+                {D.snapDates.slice(1).map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <svg
+                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: T.text3 }}
+                width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+              >
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+          )}
+
           {/* Period selector — §7 two optgroups */}
           <div style={{ position: 'relative' }}>
             <select
@@ -951,15 +1010,21 @@ export default function LeadershipDashboard() {
                 <option value="ytd">Year to date</option>
               </optgroup>
 
-              {monthList.length > 0 ? (
-                <optgroup label="Single month — reconstructed">
-                  {monthList.map(m => (
-                    <option key={m} value={m}>{monthLabel(m)}</option>
-                  ))}
-                </optgroup>
+              {isLatestSnap ? (
+                monthList.length > 0 ? (
+                  <optgroup label="Single month — reconstructed">
+                    {monthList.map(m => (
+                      <option key={m} value={m}>{monthLabel(m)}</option>
+                    ))}
+                  </optgroup>
+                ) : (
+                  <optgroup label="Single month — not loaded">
+                    <option value="mtd" disabled>Monthly history failed to load — press Refresh</option>
+                  </optgroup>
+                )
               ) : (
-                <optgroup label="Single month — not loaded">
-                  <option value="mtd" disabled>Monthly history failed to load — press Refresh</option>
+                <optgroup label="Single month — unavailable on historical snapshot">
+                  <option value="mtd" disabled>Switch to Latest snapshot to use monthly view</option>
                 </optgroup>
               )}
             </select>
@@ -1106,11 +1171,13 @@ export default function LeadershipDashboard() {
             <h1 style={{ fontSize: 20, fontWeight: 700, color: T.text, margin: 0 }}>
               Executive Summary
             </h1>
+            {/* Snapshot date badge — replaces LIVE badge (§1 migration spec). */}
+            {/* Muted grey: this is weekly data captured on Monday, not a live stream. */}
             <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-              background: T.greenBg, color: T.green, letterSpacing: '0.06em',
+              fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+              background: T.bg4, color: T.text3, letterSpacing: '0.04em',
             }}>
-              ● LIVE
+              Data as of {D.asAt ?? '…'}
             </span>
           </div>
           <div style={{ fontSize: 13, color: T.text3, marginTop: 4 }}>
@@ -1133,6 +1200,20 @@ export default function LeadershipDashboard() {
                 color: T.amberInk, cursor: 'pointer', fontFamily: 'inherit',
               }}
             >Retry now</button>
+          </Banner>
+        )}
+
+        {/* Staleness banner — shown when source was stale at capture (§7 migration spec) */}
+        {D.staleness?.is_stale && (
+          <Banner kind="warn">
+            ⚠️ Source data was {D.staleness.staleness_days} day(s) stale when this snapshot was captured.
+          </Banner>
+        )}
+
+        {/* Historical snapshot banner — shown when viewing a past snapshot */}
+        {!isLatestSnap && D.asAt && (
+          <Banner kind="info">
+            Showing snapshot {D.asAt} · not the current week
           </Banner>
         )}
 

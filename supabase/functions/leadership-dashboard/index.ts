@@ -153,12 +153,94 @@ async function runQuery(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Snap migration flag — opt-out to fall back to live without redeploy
+// Set USE_SNAP=false in Supabase edge function env vars to revert instantly.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const USE_SNAP = Deno.env.get('USE_SNAP') !== 'false'
+
+// buildSnapFilter — returns a BigQuery DATE expression for the snapshot filter.
+// For the default (latest), uses a scalar subquery so no DECLARE is needed.
+// For a user-chosen date, substitutes a validated DATE literal.
+// NOTE: no DECLARE — DECLARE turns a SELECT into a multi-statement script and
+//       breaks the REST parser's {schema,rows} response shape.
+function buildSnapFilter(asAt: string | null): string {
+  if (!asAt) {
+    return `(SELECT MAX(snapshot_date)
+               FROM \`elife-data-warehouse-prod.snap.class_c_raw_weekly\`
+              WHERE source_object = 'ads.ads_weekly_meeting_revenue_and_profit_v2')`
+  }
+  // Validate: must be YYYY-MM-DD
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(asAt)) {
+    throw new Error(`Invalid as_at date: ${asAt}`)
+  }
+  return `DATE '${asAt}'`
+}
+
+// v2 snap subquery — reconstitutes the identical 38-column shape from JSON.
+// JSON_VALUE (not JSON_EXTRACT) — unwraps quotes. Every numeric field has an
+// explicit CAST. NULLs round-trip correctly; do not wrap in IFNULL here.
+function v2SnapSubquery(snapFilter: string): string {
+  return `(
+  SELECT
+    JSON_VALUE(row_json, '$.department')                              AS department,
+    JSON_VALUE(row_json, '$.customer_name')                           AS customer_name,
+    JSON_VALUE(row_json, '$.product_line')                            AS product_line,
+    CAST(JSON_VALUE(row_json, '$.complete')                AS INT64)   AS complete,
+    CAST(JSON_VALUE(row_json, '$.dispatched')              AS INT64)   AS dispatched,
+    CAST(JSON_VALUE(row_json, '$.mtd_sales')               AS FLOAT64) AS mtd_sales,
+    CAST(JSON_VALUE(row_json, '$.lmmtd_sales')             AS FLOAT64) AS lmmtd_sales,
+    CAST(JSON_VALUE(row_json, '$.lymtd_sales')             AS FLOAT64) AS lymtd_sales,
+    CAST(JSON_VALUE(row_json, '$.current_mtd_revenue')     AS FLOAT64) AS current_mtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.current_mtd_cost')        AS FLOAT64) AS current_mtd_cost,
+    CAST(JSON_VALUE(row_json, '$.lmmtd_revenue')           AS FLOAT64) AS lmmtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.lmmtd_cost')              AS FLOAT64) AS lmmtd_cost,
+    CAST(JSON_VALUE(row_json, '$.lymtd_revenue')           AS FLOAT64) AS lymtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.lymtd_cost')              AS FLOAT64) AS lymtd_cost,
+    CAST(JSON_VALUE(row_json, '$.last_week_revenue')       AS FLOAT64) AS last_week_revenue,
+    CAST(JSON_VALUE(row_json, '$.last_week_sales')         AS FLOAT64) AS last_week_sales,
+    CAST(JSON_VALUE(row_json, '$.last_week_cost')          AS FLOAT64) AS last_week_cost,
+    CAST(JSON_VALUE(row_json, '$.prev_week_revenue')       AS FLOAT64) AS prev_week_revenue,
+    CAST(JSON_VALUE(row_json, '$.prev_week_sales')         AS FLOAT64) AS prev_week_sales,
+    CAST(JSON_VALUE(row_json, '$.prev_week_cost')          AS FLOAT64) AS prev_week_cost,
+    CAST(JSON_VALUE(row_json, '$.current_qtd_revenue')     AS FLOAT64) AS current_qtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.current_qtd_cost')        AS FLOAT64) AS current_qtd_cost,
+    CAST(JSON_VALUE(row_json, '$.prev_qtd_revenue')        AS FLOAT64) AS prev_qtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.prev_qtd_cost')           AS FLOAT64) AS prev_qtd_cost,
+    CAST(JSON_VALUE(row_json, '$.current_qtd_sales')       AS FLOAT64) AS current_qtd_sales,
+    CAST(JSON_VALUE(row_json, '$.prev_qtd_sales')          AS FLOAT64) AS prev_qtd_sales,
+    CAST(JSON_VALUE(row_json, '$.current_ytd_revenue')     AS FLOAT64) AS current_ytd_revenue,
+    CAST(JSON_VALUE(row_json, '$.current_ytd_cost')        AS FLOAT64) AS current_ytd_cost,
+    CAST(JSON_VALUE(row_json, '$.last_year_ytd_revenue')   AS FLOAT64) AS last_year_ytd_revenue,
+    CAST(JSON_VALUE(row_json, '$.last_year_ytd_cost')      AS FLOAT64) AS last_year_ytd_cost,
+    CAST(JSON_VALUE(row_json, '$.current_ytd_sales')       AS FLOAT64) AS current_ytd_sales,
+    CAST(JSON_VALUE(row_json, '$.last_year_ytd_sales')     AS FLOAT64) AS last_year_ytd_sales,
+    CAST(JSON_VALUE(row_json, '$.nm_mtd_revenue')          AS FLOAT64) AS nm_mtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.nm_mtd_cost')             AS FLOAT64) AS nm_mtd_cost,
+    CAST(JSON_VALUE(row_json, '$.nm_lmmtd_revenue')        AS FLOAT64) AS nm_lmmtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.nm_lmmtd_cost')           AS FLOAT64) AS nm_lmmtd_cost,
+    CAST(JSON_VALUE(row_json, '$.nm_lymtd_revenue')        AS FLOAT64) AS nm_lymtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.nm_lymtd_cost')           AS FLOAT64) AS nm_lymtd_cost,
+    snapshot_date
+  FROM \`elife-data-warehouse-prod.snap.class_c_raw_weekly\`
+  WHERE source_object = 'ads.ads_weekly_meeting_revenue_and_profit_v2'
+    AND snapshot_date = ${snapFilter}
+)`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SQL — verbatim from build spec §1
 // ─────────────────────────────────────────────────────────────────────────────
 
 // §1.1 Q_CUST — month/quarter/year to date, per (department, customer_name)
 // Profit measure evaluated at customer grain (§2.3). SAFE_DIVIDE is deliberate (§1.1).
-const Q_CUST = `
+// FROM clause is swapped to snap.class_c_raw_weekly when USE_SNAP=true.
+// All DAX formulas and SELECT columns are verbatim — §0 non-negotiable.
+function makeQCust(snapFilter: string | null): string {
+  const fromClause = (USE_SNAP && snapFilter !== null)
+    ? v2SnapSubquery(snapFilter)
+    : '`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v2`'
+  return `
 WITH agg AS (
   SELECT
     department,
@@ -196,7 +278,7 @@ WITH agg AS (
     SUM(lymtd_revenue        - lymtd_cost)         AS ly_profit,
     SUM(prev_qtd_revenue     - prev_qtd_cost)      AS pq_profit,
     SUM(last_year_ytd_revenue- last_year_ytd_cost) AS lyy_profit
-  FROM \`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v2\`
+  FROM ${fromClause}
   GROUP BY 1,2
 )
 SELECT
@@ -224,17 +306,38 @@ SELECT
   CAST(ROUND(lyy_profit,2) AS FLOAT64) AS lyy_profit
 FROM agg
 `
+}
 
 // §1.2 Q_TARGETS — profit targets from three mapping tables
 // Executive Summary uses kind='dept' only; others fetched for future tabs.
-const Q_TARGETS = `
-WITH u AS (
-  SELECT "dept" AS kind,
-         FORMAT_DATE("%Y-%m", target_month) AS ym,
+// When USE_SNAP=true, the dept sub-query reads snap.mapping_weekly instead of
+// mapping.mapping_profit_target_by_department. All rows for the snapshot are
+// returned — no month filter here; the client owns period logic via targetAcross.
+// Geo and product-line targets remain on live mapping tables (not in snap yet).
+function makeQTargets(snapFilter: string | null): string {
+  const deptFrom = (USE_SNAP && snapFilter !== null)
+    ? `(
+  SELECT
+    'dept'                                     AS kind,
+    FORMAT_DATE('%Y-%m', key_date)             AS ym,
+    key_1                                      AS dim,
+    CAST(ROUND(value_num, 2) AS FLOAT64)       AS tgt,
+    ''                                         AS notes
+  FROM \`elife-data-warehouse-prod.snap.mapping_weekly\`
+  WHERE snapshot_date = ${snapFilter}
+    AND mapping_name  = 'profit_target_by_department'
+)`
+    : `(
+  SELECT 'dept' AS kind,
+         FORMAT_DATE('%Y-%m', target_month) AS ym,
          department AS dim,
          CAST(ROUND(profit_target,2) AS FLOAT64) AS tgt,
          notes
   FROM \`elife-data-warehouse-prod.mapping.mapping_profit_target_by_department\`
+)`
+  return `
+WITH u AS (
+  SELECT kind, ym, dim, tgt, notes FROM ${deptFrom}
   UNION ALL
   SELECT "geo",
          FORMAT_DATE("%Y-%m", target_month),
@@ -253,14 +356,25 @@ WITH u AS (
 SELECT kind, ym, IFNULL(dim,"(Unassigned)") AS dim, tgt, IFNULL(notes,"") AS notes
 FROM u
 `
+}
 
 // §1.3 Q_FC — forward-booking forecast
 // model_version MUST be "fwd_v2" (§1.3). Always MAX(forecast_date) — never hardcode.
-const Q_FC = `
+// When USE_SNAP=true, pin the vintage to the snapshot date so historical views
+// don't mix old actuals with today's forecast (§5 of migration spec).
+function makeQFC(snapFilter: string | null): string {
+  // The vintage guard: forecast_date <= snapshot_date ensures the forecast
+  // vintage aligns with the data. Without this, a past asAt shows today's
+  // forecast against old actuals, making every historical view look prescient.
+  const vintageGuard = (USE_SNAP && snapFilter !== null)
+    ? `AND forecast_date <= ${snapFilter}`
+    : ''
+  return `
 WITH mx AS (
   SELECT MAX(forecast_date) AS fd
   FROM \`elife-data-warehouse-prod.ads.ads_forward_booking_forecast\`
   WHERE model_version = "fwd_v2"
+  ${vintageGuard}
 )
 SELECT
   CAST(f.forecast_date AS STRING) AS fdate,
@@ -277,6 +391,7 @@ SELECT
 FROM \`elife-data-warehouse-prod.ads.ads_forward_booking_forecast\` f, mx
 WHERE f.model_version = "fwd_v2" AND f.forecast_date = mx.fd
 `
+}
 
 // §1.4 Q_FC end
 
@@ -334,7 +449,12 @@ FROM base
 `
 
 // §1.7 Q_PROD — product line from v2 (same table as Q_CUST, different GROUP BY)
-const Q_PROD = `
+// FROM clause swapped to snap when USE_SNAP=true — same DAX formula verbatim.
+function makeQProd(snapFilter: string | null): string {
+  const fromClause = (USE_SNAP && snapFilter !== null)
+    ? v2SnapSubquery(snapFilter)
+    : '`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v2`'
+  return `
 WITH agg AS (
   SELECT
     product_line,
@@ -345,7 +465,7 @@ WITH agg AS (
     SUM(IF(complete=0 AND dispatched=1, current_mtd_revenue-current_mtd_cost,0)) AS dp,
     SUM(IF(complete=0 AND dispatched=0, current_mtd_revenue-current_mtd_cost,0)) AS ep,
     SUM(lmmtd_revenue - lmmtd_cost)                                              AS lm_profit
-  FROM \`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v2\`
+  FROM ${fromClause}
   GROUP BY 1
 )
 SELECT
@@ -356,6 +476,30 @@ SELECT
   CAST(ROUND(lm_profit,2) AS FLOAT64) AS lm_profit
 FROM agg
 `
+}
+
+// §1.8 snap metadata queries (used only when USE_SNAP=true)
+// Q_SNAP_DATES — populates the 'as at' selector. Reads class_c_raw_weekly
+// (not kpi_weekly) so every offered date is guaranteed to have v2 data.
+const Q_SNAP_DATES = `
+SELECT DISTINCT CAST(snapshot_date AS STRING) AS snapshot_date
+FROM \`elife-data-warehouse-prod.snap.class_c_raw_weekly\`
+WHERE source_object = 'ads.ads_weekly_meeting_revenue_and_profit_v2'
+ORDER BY snapshot_date DESC
+`
+
+// Q_STALENESS — records whether the source was stale at capture.
+// Allows the frontend to warn users in a way the live page never could.
+function makeQStaleness(snapFilter: string): string {
+  return `
+SELECT
+  is_stale,
+  CAST(staleness_days AS FLOAT64) AS staleness_days
+FROM \`elife-data-warehouse-prod.snap.source_lineage_weekly\`
+WHERE snapshot_date = ${snapFilter}
+  AND source_object  = 'ads.ads_weekly_meeting_revenue_and_profit_v2'
+`
+}
 
 // §1.8 Q_GEO — geography from v3 (DIFFERENT TABLE — not v2 — by design)
 // v3 carries ~70% of v2's profit level; mix is representative, level is under-reported.
@@ -629,11 +773,35 @@ serve(async (req) => {
 
     const accessToken = await getBQAccessToken(serviceAccountJson)
 
+    // Parse and validate asAt from request body
+    let bodyJson: any = {}
+    try { bodyJson = await req.json() } catch { /* empty body is fine */ }
+    const rawAsAt: string | null = typeof bodyJson?.asAt === 'string' ? bodyJson.asAt : null
+
+    // Build the snap filter expression (scalar subquery or DATE literal)
+    // buildSnapFilter throws if the date string is malformed.
+    const snapFilter = buildSnapFilter(rawAsAt)
+
+    // Build queries — snap variants replace the FROM clause when USE_SNAP=true
+    const Q_CUST    = makeQCust(snapFilter)
+    const Q_TARGETS = makeQTargets(snapFilter)
+    const Q_FC      = makeQFC(snapFilter)
+    const Q_PROD    = makeQProd(snapFilter)
+
+    // Snap metadata — only fetched when USE_SNAP is on
+    const snapDatesPromise = USE_SNAP
+      ? runQuery(projectId, Q_SNAP_DATES, accessToken).catch(() => [])
+      : Promise.resolve([])
+    const stalenessPromise = USE_SNAP
+      ? runQuery(projectId, makeQStaleness(snapFilter), accessToken).catch(() => [])
+      : Promise.resolve([])
+
     // Run Q_RH first (heaviest query, §11) then remaining in parallel.
     // All non-CUST queries are non-fatal — tabs show empty states on failure.
     const [
       custRows, targetsRows, fcRows, monthsRows, fccRows,
       prodRows, geoRows, b2cRows, b2cMRows, rhRows, mqRows,
+      snapDatesRows, stalenessRows,
     ] = await Promise.all([
       runQuery(projectId, Q_CUST,    accessToken),
       runQuery(projectId, Q_TARGETS, accessToken),
@@ -646,22 +814,32 @@ serve(async (req) => {
       runQuery(projectId, Q_B2C_M,   accessToken).catch(() => []),
       runQuery(projectId, Q_RH,      accessToken).catch(() => []),
       runQuery(projectId, Q_MQ,      accessToken).catch(() => []),
+      snapDatesPromise,
+      stalenessPromise,
     ])
+
+    // Resolve the actual snapshot date used (may differ from rawAsAt if default was used)
+    const resolvedAsAt: string | null = custRows[0]?.snapshot_date ?? rawAsAt
+    const staleness = stalenessRows[0] ?? null
 
     return new Response(
       JSON.stringify({
         queried_at: new Date().toISOString(),
-        cust:    custRows,
-        targets: targetsRows,
-        fc:      fcRows,
-        months:  monthsRows,
-        fcc:     fccRows,
-        prod:    prodRows,
-        geo:     geoRows,
-        b2c:     b2cRows,
-        b2cM:    b2cMRows,
-        rh:      rhRows,
-        mq:      mqRows,
+        cust:       custRows,
+        targets:    targetsRows,
+        fc:         fcRows,
+        months:     monthsRows,
+        fcc:        fccRows,
+        prod:       prodRows,
+        geo:        geoRows,
+        b2c:        b2cRows,
+        b2cM:       b2cMRows,
+        rh:         rhRows,
+        mq:         mqRows,
+        // snap metadata
+        snapDates:  snapDatesRows.map((r: any) => r.snapshot_date).filter(Boolean),
+        asAt:       resolvedAsAt,
+        staleness:  staleness ? { is_stale: staleness.is_stale === 'true', staleness_days: Number(staleness.staleness_days) } : null,
       }),
       { headers: { ...CORS, 'Content-Type': 'application/json' } },
     )
