@@ -939,22 +939,7 @@ export default function LeadershipDashboard() {
           display: 'flex', alignItems: 'center', gap: 10, height: 52,
         }}>
           <div style={{ flex: 1 }} />
-          {/* Context chip */}
-          <div style={{
-            fontSize: 12, color: T.text2, background: T.bg4,
-            padding: '4px 10px', borderRadius: 6, whiteSpace: 'nowrap',
-          }}>
-            {contextChip}
-          </div>
 
-          {/* Snapshot date badge */}
-          <div style={{
-            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-            background: T.bg4, color: T.text3, letterSpacing: '0.04em',
-            whiteSpace: 'nowrap',
-          }}>
-            Data as of {D.asAt ?? '…'}
-          </div>
 
           {/* 'As at' snapshot selector — only shown when snap metadata is loaded */}
           {D.snapDates.length > 0 && (
