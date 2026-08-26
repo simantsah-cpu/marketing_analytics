@@ -438,18 +438,49 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
 const MIN_GEO=100
 
 function GeoSection({MQ, months, forceOpen}){
-  const [open,setOpen]=useState(false)
+  const [open, setOpen]   = useState(false)
+  const [split, setSplit] = useState(false)  // toggle: aggregated vs split by product line
+
   useEffect(()=>{
     if(typeof forceOpen==='boolean') setOpen(forceOpen)
   },[forceOpen])
 
-  const rows=Object.keys(MQ.geo||{}).map(dim=>{
-    const t=mqFor(MQ,'geo',dim,months)
-    return {dim,t}
-  }).filter(r=>r.t&&r.t.valid>0).sort((a,b)=>b.t.valid-a.t.valid)
+  // Build geo groups: dim is "Biz | Geo"
+  const geoMap = {}
+  Object.keys(MQ.geo||{}).forEach(dim => {
+    const parts = dim.split(' | ')
+    const biz   = parts[0]
+    const geo   = parts.slice(1).join(' | ') || dim
+    const t     = mqFor(MQ,'geo',dim,months)
+    if (!t || t.valid <= 0) return
+    if (!geoMap[geo]) geoMap[geo] = { valid:0, pex:0, plost:0, lines:[] }
+    const g = geoMap[geo]
+    g.valid  += t.valid
+    g.pex    += t.pex
+    g.plost  += t.plost
+    g.lines.push({ biz, t })
+  })
+
+  // Aggregate rate: weighted sum (never an average of rates)
+  const geos = Object.entries(geoMap)
+    .map(([geo, g]) => ({
+      geo,
+      valid:  g.valid,
+      pex:    g.pex,
+      plost:  g.plost,
+      rate:   g.valid > 0 ? g.plost / g.valid : null,
+      lines:  [...g.lines].sort((a,b)=>{
+        const ord = { Prebooked:0, 'Ride Hailing':1 }
+        return (ord[a.biz]??2) - (ord[b.biz]??2)
+      }),
+    }))
+    .sort((a,b) => b.valid - a.valid)
+
+  const BIZ_COL = { Prebooked: T.blue, 'Ride Hailing': T.amber }
 
   return (
     <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
+      {/* Card header */}
       <div onClick={()=>setOpen(o=>!o)}
         style={{padding:'10px 16px 8px',borderBottom:open?`1px solid ${T.border}`:'none',
           cursor:'pointer',display:'flex',alignItems:'center',gap:8,userSelect:'none'}}>
@@ -457,62 +488,118 @@ function GeoSection({MQ, months, forceOpen}){
           transform:open?'rotate(90deg)':'rotate(0deg)',transition:'transform .15s',display:'inline-block'}}>▶</span>
         <div style={{flex:1}}>
           <div style={{fontWeight:700,fontSize:13.5,color:T.text}}>By geography</div>
-          <div style={{fontSize:11.5,color:T.text3,marginTop:2}}>Prebooked and Ride Hailing split · {rows.length} rows · sorted by valid trips</div>
+          <div style={{fontSize:11.5,color:T.text3,marginTop:2}}>{geos.length} geographies · sorted by valid trips</div>
         </div>
         <span style={{fontSize:11,fontWeight:600,color:T.blue,background:T.bg2,
           padding:'3px 10px',borderRadius:6,border:`1px solid ${T.border}`,flexShrink:0}}>
           {open ? 'Collapse ▲' : 'Expand ▼'}
         </span>
       </div>
+
       {open&&(
-        <div style={{overflowX:'auto'}}>
-          <table style={{width:'100%',borderCollapse:'collapse',minWidth:480}}>
-            <colgroup>
-              <col style={{width:'32%'}}/>
-              <col style={{width:'18%'}}/>
-              <col style={{width:'14%'}}/>
-              <col style={{width:'14%'}}/>
-              <col style={{width:'22%'}}/>
-            </colgroup>
-            <thead><tr>
-              <th style={{...TH,textAlign:'left',paddingLeft:16}}>Line · Geo</th>
-              <th style={TH}>Valid trips</th>
-              <th style={TH}>Ex</th>
-              <th style={TH}>Lost</th>
-              <th style={TH}>Lost rate</th>
-            </tr></thead>
-            <tbody>
-              {rows.map(({dim,t})=>{
-                const parts=dim.split(' | ')
-                const bizP=parts[0], geoP=parts.slice(1).join(' | ')||dim
-                const suppressed=t.valid<MIN_GEO
-                return (
-                  <tr key={dim} style={ROW}>
-                    <td style={{...TD,paddingLeft:16}}>
-                      <div style={{fontWeight:600,fontSize:12}}>{geoP}</div>
-                      <div style={{fontSize:10.5,color:T.text3}}>{bizP}</div>
-                    </td>
-                    <td style={{...TD,textAlign:'right'}}>{numFmt(t.valid)}</td>
-                    <td style={{...TD,textAlign:'right'}}>{numFmt(t.pex)}</td>
-                    <td style={{...TD,textAlign:'right',fontWeight:600,color:!suppressed&&t.rateLost<0.01?T.green:T.red}}>{numFmt(t.plost)}</td>
-                    <td style={{...TD,textAlign:'right'}}>
-                      {suppressed
-                        ?<span style={{color:T.text3,fontSize:11}}>n/a ({numFmt(t.valid)} trips)</span>
-                        :<span style={{fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{pct(t.rateLost,3)}</span>
-                      }
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Split toggle */}
+          <div style={{padding:'7px 16px',borderBottom:`1px solid ${T.border}`,background:T.bg2,
+            display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:11.5,color:T.text3}}>View:</span>
+            <div style={{display:'flex',background:T.bg4,borderRadius:7,padding:2,gap:2}}>
+              {[{k:false,l:'Aggregated'},{k:true,l:'By product line'}].map(({k,l})=>(
+                <button key={String(k)} onClick={e=>{e.stopPropagation();setSplit(k)}}
+                  style={{padding:'3px 12px',borderRadius:5,border:'none',cursor:'pointer',
+                    fontSize:11,fontWeight:700,transition:'all 0.15s',
+                    background: split===k ? T.blue : 'transparent',
+                    color: split===k ? '#fff' : T.text3,
+                    boxShadow: split===k ? '0 1px 4px rgba(0,0,0,.18)' : 'none',
+                  }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',minWidth:480}}>
+              <colgroup>
+                <col style={{width:'34%'}}/>
+                <col style={{width:'18%'}}/>
+                <col style={{width:'14%'}}/>
+                <col style={{width:'12%'}}/>
+                <col style={{width:'22%'}}/>
+              </colgroup>
+              <thead><tr>
+                <th style={{...TH,textAlign:'left',paddingLeft:16}}>Geography</th>
+                <th style={TH}>Valid trips</th>
+                <th style={TH}>Ex</th>
+                <th style={TH}>Lost</th>
+                <th style={TH}>Lost rate</th>
+              </tr></thead>
+              <tbody>
+                {geos.map(({geo, valid, pex, plost, rate, lines}) => {
+                  const suppressed = valid < MIN_GEO
+                  if (!split) {
+                    // ── Aggregated row ──────────────────────────────────────
+                    return (
+                      <tr key={geo} style={ROW}>
+                        <td style={{...TD,paddingLeft:16,fontWeight:600,fontSize:12.5}}>{geo}</td>
+                        <td style={{...TD,textAlign:'right'}}>{numFmt(valid)}</td>
+                        <td style={{...TD,textAlign:'right'}}>{numFmt(pex)}</td>
+                        <td style={{...TD,textAlign:'right',fontWeight:600,
+                          color:!suppressed&&rate<0.01?T.green:T.red}}>{numFmt(plost)}</td>
+                        <td style={{...TD,textAlign:'right'}}>
+                          {suppressed
+                            ? <span style={{color:T.text3,fontSize:11}}>n/a ({numFmt(valid)} trips)</span>
+                            : <span style={{fontWeight:600,color:rate<0.01?T.green:T.red}}>{pct(rate,3)}</span>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  }
+                  // ── Split view: geo header + product-line sub-rows ────────
+                  return lines.map(({biz, t}, li) => {
+                    const isFirst      = li === 0
+                    const isLastInGrp  = li === lines.length - 1
+                    const bSup         = t.valid < MIN_GEO
+                    const bc           = BIZ_COL[biz] || T.text3
+                    return (
+                      <tr key={`${geo}|${biz}`} style={{
+                        borderBottom: isLastInGrp
+                          ? `1px solid ${T.border2||T.border}`
+                          : `1px solid ${T.border}`,
+                      }}>
+                        <td style={{...TD,paddingLeft:16}}>
+                          {isFirst&&<div style={{fontWeight:700,fontSize:12.5,color:T.text,marginBottom:3}}>{geo}</div>}
+                          <span style={{
+                            display:'inline-block',fontSize:10,fontWeight:700,
+                            padding:'1px 6px',borderRadius:4,
+                            background:`${bc}15`,color:bc,border:`1px solid ${bc}30`,
+                            marginLeft:8,
+                          }}>{biz}</span>
+                        </td>
+                        <td style={{...TD,textAlign:'right'}}>{numFmt(t.valid)}</td>
+                        <td style={{...TD,textAlign:'right'}}>{numFmt(t.pex)}</td>
+                        <td style={{...TD,textAlign:'right',fontWeight:600,
+                          color:!bSup&&t.rateLost<0.01?T.green:T.red}}>{numFmt(t.plost)}</td>
+                        <td style={{...TD,textAlign:'right'}}>
+                          {bSup
+                            ?<span style={{color:T.text3,fontSize:11}}>n/a ({numFmt(t.valid)} trips)</span>
+                            :<span style={{fontWeight:600,color:t.rateLost<0.01?T.green:T.red}}>{pct(t.rateLost,3)}</span>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
 // Customer expandable — top 15 by valid trips, sortable
 // ─────────────────────────────────────────────────────────────────────────────
 function CustomerSection({MQ, months, baseMonths, forceOpen}){
@@ -601,6 +688,180 @@ function CustomerSection({MQ, months, baseMonths, forceOpen}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Wilson's Partner Incident Rate (Lost) — 28-day window table
+// Build spec: Quality tab spec §4
+// §3   Option A: both columns recomputed live; prior column labelled accordingly
+// §3.1 Ex% shown as muted secondary text under each Lost% cell
+// §4.1 Total is the ROLLUP row — weighted rate, never an average of two rates
+// §4.2 Round to 2dp (not truncate)
+// §5   Target column: 1% for Prebooked only; blank for Total and Ride Hailing
+// §7.8 RAG colouring only on Prebooked (has a target); Total + RH uncoloured
+// ─────────────────────────────────────────────────────────────────────────────
+function WilsonTable({ wilsonRows, queriedAt }) {
+  if (!wilsonRows || wilsonRows.length === 0) return null
+
+  // Parse date for Option A vintage label
+  function fmtDate(iso) {
+    if (!iso) return null
+    try {
+      const d = new Date(iso)
+      const dd = d.getUTCDate()
+      const mo = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
+      return `${dd} ${mo} ${d.getUTCFullYear()}`
+    } catch { return null }
+  }
+
+  // Format date range for column headers (e.g. "Jul 20 – Aug 16")
+  function fmtRange(startStr, endStr) {
+    if (!startStr || !endStr) return null
+    function fmtD(s) {
+      const d = new Date(s + 'T00:00:00Z')
+      return d.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    }
+    return `${fmtD(startStr)} – ${fmtD(endStr)}`
+  }
+
+  // Index rows by col × product_line
+  const idx = {}
+  wilsonRows.forEach(r => {
+    if (!r.col) return
+    ;(idx[r.col] = idx[r.col] || {})[r.product_line] = r
+  })
+
+  // Extract window metadata for headers
+  function meta(col) {
+    const r = idx[col]?.Total || Object.values(idx[col] || {})[0]
+    if (!r) return { range: null, start: null, end: null }
+    return { range: fmtRange(r.window_start, r.window_end), start: r.window_start, end: r.window_end }
+  }
+  const prevMeta = meta('prev_28d')
+  const curMeta  = meta('cur_28d')
+  const ytdMeta  = meta('ytd')
+
+  const vintageLabel = fmtDate(queriedAt)
+
+  // Rate cell renderer: §4.2 round to 2dp; §3.1 Ex% secondary; §5 RAG only if hasTarget
+  function RCell({ col, pl }) {
+    const r = idx[col]?.[pl]
+    if (!r) return <span style={{ color: T.text3, fontStyle: 'italic', fontSize: 11 }}>—</span>
+    const valid = Number(r.valid_trips)
+    const lost  = Number(r.incidents_lost)
+    const ex    = Number(r.incidents_ex)
+    if (!valid) return <span style={{ color: T.text3, fontStyle: 'italic', fontSize: 11 }}>n/a</span>
+    const rateLost = lost / valid
+    const rateEx   = ex   / valid
+    const hasTarget = pl === 'Prebooked'
+    const col_rag = hasTarget
+      ? (rateLost < 0.01 ? T.green : T.red)
+      : T.text  // no target → neutral colour
+    return (
+      <div>
+        <div style={{ fontWeight: pl === 'Total' ? 700 : 600, color: col_rag, fontSize: 13 }}>
+          {(rateLost * 100).toFixed(2)}%
+        </div>
+        <div style={{ fontSize: 10, color: T.text3, marginTop: 1 }}>
+          {(rateEx * 100).toFixed(2)}% incl. open
+        </div>
+      </div>
+    )
+  }
+
+  // Target cell
+  function TargetCell({ pl }) {
+    if (pl === 'Prebooked') {
+      return (
+        <span style={{
+          display: 'inline-block', fontSize: 10.5, fontWeight: 700,
+          padding: '1px 7px', borderRadius: 5,
+          background: 'rgba(29,158,117,.11)', color: T.green,
+          border: `1px solid rgba(29,158,117,.25)`
+        }}>1%</span>
+      )
+    }
+    return null  // blank for Total + Ride Hailing (§5)
+  }
+
+  const ROWS = [
+    { pl: 'Total',        bold: true },
+    { pl: 'Prebooked',   bold: false },
+    { pl: 'Ride Hailing', bold: false },
+  ]
+
+  const tableStyle = {
+    width: '100%', borderCollapse: 'collapse', fontSize: 12.5,
+  }
+  const thStyle = {
+    ...TH, padding: '8px 12px', fontSize: 10, textAlign: 'right',
+  }
+  const tdStyle = { ...TD, padding: '10px 12px' }
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <SectionLabel>Partner Incident Rate (Lost)</SectionLabel>
+      <div style={{
+        background: T.bg, borderRadius: 12, boxShadow: T.lift,
+        border: `1px solid ${T.border}`, overflow: 'hidden',
+      }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={tableStyle}>
+            <colgroup>
+              <col style={{ width: '24%' }}/>
+              <col style={{ width: '8%'  }}/>
+              <col style={{ width: '23%' }}/>
+              <col style={{ width: '23%' }}/>
+              <col style={{ width: '22%' }}/>
+            </colgroup>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, textAlign: 'left', paddingLeft: 16 }}>Product Line</th>
+                <th style={thStyle}>Target</th>
+                {/* Prior 28d — Option A: recomputed live (§3) */}
+                <th style={thStyle}>
+                  <div>Prior 28d</div>
+                  {prevMeta.range && <div style={{ fontWeight: 400, opacity: 0.8 }}>{prevMeta.range}</div>}
+                  {vintageLabel && (
+                    <div style={{ fontWeight: 400, fontSize: 9, color: T.text3, marginTop: 1, textTransform: 'none' }}>
+                      recomputed {vintageLabel}
+                    </div>
+                  )}
+                </th>
+                <th style={thStyle}>
+                  <div>Current 28d</div>
+                  {curMeta.range && <div style={{ fontWeight: 400, opacity: 0.8 }}>{curMeta.range}</div>}
+                </th>
+                <th style={thStyle}>
+                  <div>YTD</div>
+                  {ytdMeta.start && ytdMeta.end && (
+                    <div style={{ fontWeight: 400, opacity: 0.8 }}>
+                      Jan 1 – {fmtRange(ytdMeta.end, ytdMeta.end)?.split('–')[0]?.trim()}
+                    </div>
+                  )}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {ROWS.map(({ pl, bold }) => (
+                <tr key={pl} style={{
+                  ...ROW,
+                  background: bold ? T.bg3 : T.bg,
+                }}>
+                  <td style={{ ...tdStyle, paddingLeft: 16, fontWeight: bold ? 700 : 600 }}>{pl}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}><TargetCell pl={pl} /></td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}><RCell col="prev_28d" pl={pl} /></td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}><RCell col="cur_28d"  pl={pl} /></td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}><RCell col="ytd"      pl={pl} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main QualityTab component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function QualityTab({D, period, CUR_MONTH, PM}){
@@ -656,6 +917,9 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
         </div>
       ) : (
         <>
+      {/* ── Wilson's Partner Incident Rate table ── */}
+          <WilsonTable wilsonRows={D.wilson || []} queriedAt={D.queried_at} />
+
           {/* ── §8 KPI Tiles — two tiles, NEVER combined (§0.7) ── */}
           <SectionLabel>Headline Metrics</SectionLabel>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24,flexWrap:'wrap'}}>

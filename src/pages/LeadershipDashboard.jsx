@@ -13,7 +13,7 @@
  *  - QA log on every render (§9.3).
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../services/supabase'
 import DepartmentsTab  from './DepartmentsTab'
@@ -575,12 +575,16 @@ const TABS = [
 ]
 
 export default function LeadershipDashboard() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = parseInt(searchParams.get('tab') || '0', 10)
   const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(8, tabParam))
   const [period,     setPeriodState] = useState('2026-08') // always default to Aug 2026
+  // Read `snapshot` (or `asAt`) param on mount — stored raw; validated against snapDates after first fetch
+  const pendingSnapRef = React.useRef(
+    searchParams.get('snapshot') || searchParams.get('asAt') || null
+  )
   const [asAt,       setAsAt]        = useState(null)       // null = latest snapshot
-  const [D,          setD]           = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], mq: [], snapDates: [], asAt: null, staleness: null, fcVintage: null, fccVintage: null, custPrev: [], prevSnapDate: null })
+  const [D,          setD]           = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], mq: [], ai: [], wilson: [], snapDates: [], asAt: null, queried_at: null, staleness: null, fcVintage: null, fccVintage: null, custPrev: [], prevSnapDate: null })
   const [loading,    setLoading]     = useState(false)
   const [error,      setError]       = useState(null)
   const [usingCache, setUsingCache]  = useState(false)
@@ -633,8 +637,11 @@ export default function LeadershipDashboard() {
         b2cM:      Array.isArray(data.b2cM)      ? data.b2cM      : [],
         rh:        Array.isArray(data.rh)        ? data.rh        : [],
         mq:        Array.isArray(data.mq)        ? data.mq        : [],
+        ai:        Array.isArray(data.ai)        ? data.ai        : [],
+        wilson:    Array.isArray(data.wilson)    ? data.wilson    : [],
         snapDates: Array.isArray(data.snapDates) ? data.snapDates : [],
         asAt:      data.asAt      ?? null,
+        queried_at: data.queried_at ?? null,
         staleness: data.staleness ?? null,
         fcVintage:    data.fcVintage   ?? null,
         fccVintage:   data.fccVintage  ?? null,
@@ -658,6 +665,18 @@ export default function LeadershipDashboard() {
       setLoading(false)
     }
   }, [asAt]) // re-fetch whenever asAt changes
+
+  // After the first successful fetch, apply pendingSnapRef if it's a valid date
+  useEffect(() => {
+    if (!pendingSnapRef.current) return
+    if (!D.snapDates.length) return
+    const candidate = pendingSnapRef.current
+    pendingSnapRef.current = null // consume it — only runs once
+    if (D.snapDates.includes(candidate)) {
+      setAsAt(candidate)
+    }
+    // if candidate isn't a known date, silently fall back to latest (no-op)
+  }, [D.snapDates]) // runs whenever snapDates loads (first fetch only in practice)
 
   useEffect(() => { fetchData() }, [fetchData, refreshKey])
 
@@ -971,6 +990,13 @@ export default function LeadershipDashboard() {
                 onChange={e => {
                   const val = e.target.value || null
                   setAsAt(val)
+                  // Write back to URL so the view is shareable
+                  setSearchParams(prev => {
+                    const next = new URLSearchParams(prev)
+                    if (val) next.set('snapshot', val)
+                    else next.delete('snapshot')
+                    return next
+                  }, { replace: true })
                 }}
                 style={{
                   fontSize: 13, fontWeight: 600,
@@ -1092,7 +1118,7 @@ export default function LeadershipDashboard() {
 
         {/* ── AI Code & Test tab ───────────────────────────────────────────── */}
         {activeTab === 8 ? (
-          <AIEngineeringTab/>
+          <AIEngineeringTab D={D}/>
         ) : null}
 
         {/* ── GEO & Product tab ─────────────────────────────────────────── */}
@@ -1103,6 +1129,7 @@ export default function LeadershipDashboard() {
               period={period}
               CUR_MONTH={CUR_MONTH}
               PC={PC}
+              asAt={D.asAt}
             />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: T.text3, fontSize: 13 }}>Loading…</div>

@@ -152,6 +152,71 @@ async function runQuery(
   return rows
 }
 
+// runQueryParameterised — same as runQuery but accepts a pre-built BQ request body
+// (used by makeQB2C which needs queryParameters for @as_at)
+async function runQueryParameterised(
+  projectId:   string,
+  body:        object,
+  accessToken: string,
+  timeoutMs =  25000,
+): Promise<Record<string, string | null>[]> {
+  const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries`
+
+  const res = await fetch(url, {
+    method:  'POST',
+    headers: {
+      Authorization:  `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ...body, timeoutMs }),
+  })
+
+  if (!res.ok) {
+    const errText = await res.text()
+    throw new Error(`BigQuery HTTP ${res.status}: ${errText}`)
+  }
+
+  let result = await res.json()
+
+  if (result.errors?.length) {
+    throw new Error(`BigQuery errors: ${JSON.stringify(result.errors)}`)
+  }
+
+  if (!result.jobComplete) {
+    const jobId    = result.jobReference?.jobId
+    const location = result.jobReference?.location ?? 'US'
+    if (!jobId) throw new Error('BQ job incomplete and no jobId returned')
+
+    for (let attempt = 0; attempt < 12 && !result.jobComplete; attempt++) {
+      await new Promise((r) => setTimeout(r, 2500))
+      const pollRes = await fetch(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries/${jobId}?timeoutMs=5000&maxResults=10000&location=${location}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      )
+      result = await pollRes.json()
+    }
+    if (!result.jobComplete) throw new Error('BigQuery job timed out after polling')
+  }
+
+  const schemaFields: any[] = result.schema?.fields ?? []
+  let rows = extractRows(result, schemaFields)
+
+  let pageToken: string | null = result.pageToken ?? null
+  while (pageToken) {
+    const jobId = result.jobReference?.jobId
+    if (!jobId) break
+    const pageRes = await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${projectId}/queries/${jobId}?pageToken=${encodeURIComponent(pageToken)}&maxResults=10000`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+    const pageData = await pageRes.json()
+    rows = rows.concat(extractRows(pageData, schemaFields))
+    pageToken = pageData.pageToken ?? null
+  }
+
+  return rows
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Snap migration flag — opt-out to fall back to live without redeploy
 // Set USE_SNAP=false in Supabase edge function env vars to revert instantly.
@@ -224,6 +289,58 @@ function v2SnapSubquery(snapFilter: string): string {
     snapshot_date
   FROM \`elife-data-warehouse-prod.snap.class_c_raw_weekly\`
   WHERE source_object = 'ads.ads_weekly_meeting_revenue_and_profit_v2'
+    AND snapshot_date = ${snapFilter}
+)`
+}
+
+// v3 snap subquery — 39-field parser (v2 + geo at position 6).
+// IFNULL on geo is mandatory: 64 of 930 rows have NULL geo in the 24 Aug snapshot.
+// All other field names are identical to v2 — same DAX formula, same shape.
+function v3SnapSubquery(snapFilter: string): string {
+  return `(
+  SELECT
+    JSON_VALUE(row_json, '$.department')                              AS department,
+    JSON_VALUE(row_json, '$.customer_name')                           AS customer_name,
+    JSON_VALUE(row_json, '$.product_line')                            AS product_line,
+    CAST(JSON_VALUE(row_json, '$.complete')                AS INT64)   AS complete,
+    CAST(JSON_VALUE(row_json, '$.dispatched')              AS INT64)   AS dispatched,
+    IFNULL(JSON_VALUE(row_json, '$.geo'), '(Unassigned)')             AS geo,
+    CAST(JSON_VALUE(row_json, '$.mtd_sales')               AS FLOAT64) AS mtd_sales,
+    CAST(JSON_VALUE(row_json, '$.lmmtd_sales')             AS FLOAT64) AS lmmtd_sales,
+    CAST(JSON_VALUE(row_json, '$.lymtd_sales')             AS FLOAT64) AS lymtd_sales,
+    CAST(JSON_VALUE(row_json, '$.current_mtd_revenue')     AS FLOAT64) AS current_mtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.current_mtd_cost')        AS FLOAT64) AS current_mtd_cost,
+    CAST(JSON_VALUE(row_json, '$.lmmtd_revenue')           AS FLOAT64) AS lmmtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.lmmtd_cost')              AS FLOAT64) AS lmmtd_cost,
+    CAST(JSON_VALUE(row_json, '$.lymtd_revenue')           AS FLOAT64) AS lymtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.lymtd_cost')              AS FLOAT64) AS lymtd_cost,
+    CAST(JSON_VALUE(row_json, '$.last_week_revenue')       AS FLOAT64) AS last_week_revenue,
+    CAST(JSON_VALUE(row_json, '$.last_week_sales')         AS FLOAT64) AS last_week_sales,
+    CAST(JSON_VALUE(row_json, '$.last_week_cost')          AS FLOAT64) AS last_week_cost,
+    CAST(JSON_VALUE(row_json, '$.prev_week_revenue')       AS FLOAT64) AS prev_week_revenue,
+    CAST(JSON_VALUE(row_json, '$.prev_week_sales')         AS FLOAT64) AS prev_week_sales,
+    CAST(JSON_VALUE(row_json, '$.prev_week_cost')          AS FLOAT64) AS prev_week_cost,
+    CAST(JSON_VALUE(row_json, '$.current_qtd_revenue')     AS FLOAT64) AS current_qtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.current_qtd_cost')        AS FLOAT64) AS current_qtd_cost,
+    CAST(JSON_VALUE(row_json, '$.prev_qtd_revenue')        AS FLOAT64) AS prev_qtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.prev_qtd_cost')           AS FLOAT64) AS prev_qtd_cost,
+    CAST(JSON_VALUE(row_json, '$.current_qtd_sales')       AS FLOAT64) AS current_qtd_sales,
+    CAST(JSON_VALUE(row_json, '$.prev_qtd_sales')          AS FLOAT64) AS prev_qtd_sales,
+    CAST(JSON_VALUE(row_json, '$.current_ytd_revenue')     AS FLOAT64) AS current_ytd_revenue,
+    CAST(JSON_VALUE(row_json, '$.current_ytd_cost')        AS FLOAT64) AS current_ytd_cost,
+    CAST(JSON_VALUE(row_json, '$.last_year_ytd_revenue')   AS FLOAT64) AS last_year_ytd_revenue,
+    CAST(JSON_VALUE(row_json, '$.last_year_ytd_cost')      AS FLOAT64) AS last_year_ytd_cost,
+    CAST(JSON_VALUE(row_json, '$.current_ytd_sales')       AS FLOAT64) AS current_ytd_sales,
+    CAST(JSON_VALUE(row_json, '$.last_year_ytd_sales')     AS FLOAT64) AS last_year_ytd_sales,
+    CAST(JSON_VALUE(row_json, '$.nm_mtd_revenue')          AS FLOAT64) AS nm_mtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.nm_mtd_cost')             AS FLOAT64) AS nm_mtd_cost,
+    CAST(JSON_VALUE(row_json, '$.nm_lmmtd_revenue')        AS FLOAT64) AS nm_lmmtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.nm_lmmtd_cost')           AS FLOAT64) AS nm_lmmtd_cost,
+    CAST(JSON_VALUE(row_json, '$.nm_lymtd_revenue')        AS FLOAT64) AS nm_lymtd_revenue,
+    CAST(JSON_VALUE(row_json, '$.nm_lymtd_cost')           AS FLOAT64) AS nm_lymtd_cost,
+    snapshot_date
+  FROM \`elife-data-warehouse-prod.snap.class_c_raw_weekly\`
+  WHERE source_object = 'ads.ads_weekly_meeting_revenue_and_profit_v3'
     AND snapshot_date = ${snapFilter}
 )`
 }
@@ -309,13 +426,16 @@ FROM agg
 }
 
 // §1.2 Q_TARGETS — profit targets from three mapping tables
-// Executive Summary uses kind='dept' only; others fetched for future tabs.
-// When USE_SNAP=true, the dept sub-query reads snap.mapping_weekly instead of
-// mapping.mapping_profit_target_by_department. All rows for the snapshot are
-// returned — no month filter here; the client owns period logic via targetAcross.
-// Geo and product-line targets remain on live mapping tables (not in snap yet).
+// Executive Summary uses kind='dept' only; others fetched for GEO and product-line tabs.
+// When USE_SNAP=true:
+//   - dept  targets: snap.mapping_weekly, mapping_name='profit_target_by_department'
+//   - geo   targets: snap.mapping_weekly, mapping_name='profit_target_by_geo'
+//   - pl    targets: snap.mapping_weekly, mapping_name='profit_target_by_product_line'
+// All three are pinned to the same snapshot_date so geo/pl targets are consistent with data.
 function makeQTargets(snapFilter: string | null): string {
-  const deptFrom = (USE_SNAP && snapFilter !== null)
+  const useSnap = USE_SNAP && snapFilter !== null
+
+  const deptFrom = useSnap
     ? `(
   SELECT
     'dept'                                     AS kind,
@@ -335,23 +455,56 @@ function makeQTargets(snapFilter: string | null): string {
          notes
   FROM \`elife-data-warehouse-prod.mapping.mapping_profit_target_by_department\`
 )`
+
+  const geoFrom = useSnap
+    ? `(
+  SELECT
+    'geo'                                      AS kind,
+    FORMAT_DATE('%Y-%m', key_date)             AS ym,
+    key_1                                      AS dim,
+    CAST(ROUND(value_num, 2) AS FLOAT64)       AS tgt,
+    ''                                         AS notes
+  FROM \`elife-data-warehouse-prod.snap.mapping_weekly\`
+  WHERE snapshot_date = ${snapFilter}
+    AND mapping_name  = 'profit_target_by_geo'
+)`
+    : `(
+  SELECT 'geo' AS kind,
+         FORMAT_DATE('%Y-%m', target_month) AS ym,
+         geo AS dim,
+         CAST(ROUND(profit_target,2) AS FLOAT64) AS tgt,
+         notes
+  FROM \`elife-data-warehouse-prod.mapping.mapping_profit_target_by_geo\`
+)`
+
+  const plFrom = useSnap
+    ? `(
+  SELECT
+    'pl'                                       AS kind,
+    FORMAT_DATE('%Y-%m', key_date)             AS ym,
+    key_1                                      AS dim,
+    CAST(ROUND(value_num, 2) AS FLOAT64)       AS tgt,
+    ''                                         AS notes
+  FROM \`elife-data-warehouse-prod.snap.mapping_weekly\`
+  WHERE snapshot_date = ${snapFilter}
+    AND mapping_name  = 'profit_target_by_product_line'
+)`
+    : `(
+  SELECT 'pl' AS kind,
+         FORMAT_DATE('%Y-%m', target_month) AS ym,
+         product_line AS dim,
+         CAST(ROUND(profit_target,2) AS FLOAT64) AS tgt,
+         notes
+  FROM \`elife-data-warehouse-prod.mapping.mapping_profit_target_by_product_line\`
+)`
+
   return `
 WITH u AS (
   SELECT kind, ym, dim, tgt, notes FROM ${deptFrom}
   UNION ALL
-  SELECT "geo",
-         FORMAT_DATE("%Y-%m", target_month),
-         geo,
-         CAST(ROUND(profit_target,2) AS FLOAT64),
-         notes
-  FROM \`elife-data-warehouse-prod.mapping.mapping_profit_target_by_geo\`
+  SELECT kind, ym, dim, tgt, notes FROM ${geoFrom}
   UNION ALL
-  SELECT "pl",
-         FORMAT_DATE("%Y-%m", target_month),
-         product_line,
-         CAST(ROUND(profit_target,2) AS FLOAT64),
-         notes
-  FROM \`elife-data-warehouse-prod.mapping.mapping_profit_target_by_product_line\`
+  SELECT kind, ym, dim, tgt, notes FROM ${plFrom}
 )
 SELECT kind, ym, IFNULL(dim,"(Unassigned)") AS dim, tgt, IFNULL(notes,"") AS notes
 FROM u
@@ -518,10 +671,23 @@ WHERE snapshot_date = ${snapFilter}
 `
 }
 
-// §1.8 Q_GEO — geography from v3 (DIFFERENT TABLE — not v2 — by design)
-// v3 carries ~70% of v2's profit level; mix is representative, level is under-reported.
-// GEO attainment is deliberately withheld because of this shortfall.
-const Q_GEO = `
+// §1.8 makeQGeo — geography from v3, snapped when USE_SNAP=true.
+// v3 == v2 on the 2026-08-24 snapshot (verified: revenue 6,842,682 identical).
+// GEO attainment is now enabled — v3 revival confirmed correct.
+// The lm_profit column (lmmtd_revenue - lmmtd_cost) is valid in the snap and must remain.
+// When USE_SNAP=false, falls back to live v3 table (IFNULL(geo,...) handled in SQL).
+function makeQGeo(snapFilter: string | null): string {
+  const fromClause = (USE_SNAP && snapFilter !== null)
+    ? v3SnapSubquery(snapFilter)
+    // Live fallback: v3 table with explicit IFNULL on geo
+    : `(
+  SELECT
+    IFNULL(geo,"(Unassigned)") AS geo,
+    mtd_sales, current_mtd_revenue, current_mtd_cost,
+    lmmtd_revenue, lmmtd_cost, complete, dispatched
+  FROM \`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v3\`
+)`
+  return `
 WITH agg AS (
   SELECT
     geo,
@@ -532,61 +698,108 @@ WITH agg AS (
     SUM(IF(complete=0 AND dispatched=1, current_mtd_revenue-current_mtd_cost,0)) AS dp,
     SUM(IF(complete=0 AND dispatched=0, current_mtd_revenue-current_mtd_cost,0)) AS ep,
     SUM(lmmtd_revenue - lmmtd_cost)                                              AS lm_profit
-  FROM \`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v3\`
+  FROM ${fromClause}
   GROUP BY 1
 )
 SELECT
-  IFNULL(geo,"(Unassigned)") AS geo,
+  geo,
   CAST(ROUND(sales,2)   AS FLOAT64) AS sales,
   CAST(ROUND(revenue,2) AS FLOAT64) AS revenue,
   CAST(ROUND(IFNULL(cp + dp*0.9 + ep*SAFE_DIVIDE(cp,cr)*0.9, 0),2) AS FLOAT64) AS profit,
   CAST(ROUND(lm_profit,2) AS FLOAT64) AS lm_profit
 FROM agg
 `
+}
 
-// §2.1 Q_B2C — MTD vs same-day-range last month
-// GBP spend divided by rate (from_cur='USD',to_cur='GBP') = USD spend
-const Q_B2C = `
-WITH exch AS (
-  SELECT rate AS gbp_usd
+// §2.1 makeQB2C — weekly window from snap.kpi_weekly, live sources, three grains
+// Sources: ads.ads_b2c_dashboard_v (Hoppa) + ads.ads_b2c_dashboard_elife (eLife)
+// NOT b2cdata.ads_ads_b2c_dashboard_v — see spec §1 / §11
+// FX via scalar subquery (not CROSS JOIN — avoids double-counting if a 2nd row appears)
+// period is a ROW dimension ('cur' / 'prev'), never pivoted — preserves NULLs to frontend
+function makeQB2C(asAt: string | null): object {
+  const query = `
+WITH
+w AS (
+  SELECT DISTINCT snapshot_date, week_key, week_start, week_end
+  FROM \`elife-data-warehouse-prod.snap.kpi_weekly\`
+),
+sel AS (SELECT * FROM w WHERE snapshot_date = @as_at),
+prv AS (SELECT * FROM w WHERE snapshot_date < @as_at ORDER BY snapshot_date DESC LIMIT 1),
+win AS (
+  SELECT 'cur'  AS period, week_key, week_start AS s, week_end AS e FROM sel
+  UNION ALL
+  SELECT 'prev', week_key, week_start, week_end FROM prv
+),
+fx AS (
+  SELECT rate AS g
   FROM \`elife-data-warehouse-prod.mapping.mapping_cur_exch_rate\`
-  WHERE from_cur = "USD" AND to_cur = "GBP"
+  WHERE from_cur = 'USD' AND to_cur = 'GBP' LIMIT 1
 ),
 raw AS (
-  SELECT "Hoppa" AS brand, booking_date, marketing_channel, platform,
+  SELECT 'Hoppa' AS brand, booking_date, platform, marketing_channel,
          overall_sessions, keyEvents, ttv, actual_profit, estimate_profit, Spend
-  FROM \`elife-data-warehouse-prod.b2cdata.ads_ads_b2c_dashboard_v\`
+  FROM \`elife-data-warehouse-prod.ads.ads_b2c_dashboard_v\`
   UNION ALL
-  SELECT "Elife", booking_date, marketing_channel, platform,
+  SELECT 'Elife', booking_date, platform, marketing_channel,
          overall_sessions, keyEvents, ttv, actual_profit, estimate_profit, Spend
   FROM \`elife-data-warehouse-prod.ads.ads_b2c_dashboard_elife\`
 ),
-tagged AS (
-  SELECT brand,
-         COALESCE(marketing_channel,"Untracked") AS channel,
-         platform,
-         CASE
-           WHEN booking_date BETWEEN DATE_TRUNC(CURRENT_DATE(),MONTH) AND CURRENT_DATE()
-             THEN "MTD"
-           WHEN booking_date BETWEEN DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH),MONTH)
-                                 AND DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH)
-             THEN "LM"
-         END AS period,
-         overall_sessions, keyEvents, ttv, actual_profit, estimate_profit, Spend
-  FROM raw
-  WHERE platform IN ("APP","WEB")
+t AS (
+  SELECT win.period, win.week_key, win.s, win.e, r.brand, r.platform,
+    CASE COALESCE(r.marketing_channel, 'Untracked')
+      WHEN 'AI Assistants'  THEN 'AI / LLM'
+      WHEN 'Organic Social' THEN 'Social'
+      ELSE COALESCE(r.marketing_channel, 'Untracked')
+    END AS channel,
+    r.overall_sessions, r.keyEvents, r.ttv, r.actual_profit, r.estimate_profit, r.Spend
+  FROM raw r
+  JOIN win ON r.booking_date BETWEEN win.s AND win.e
+  WHERE r.platform IN ('APP', 'WEB')
 )
-SELECT
-  g.brand, g.period, g.channel, g.platform,
-  CAST(ROUND(SUM(g.overall_sessions),0) AS FLOAT64) AS sessions,
-  CAST(ROUND(SUM(g.keyEvents),2)        AS FLOAT64) AS bookings,
-  CAST(ROUND(SUM(g.ttv),2)              AS FLOAT64) AS ttv,
-  CAST(ROUND(SUM(IFNULL(g.actual_profit,0)+IFNULL(g.estimate_profit,0)),2) AS FLOAT64) AS est_profit,
-  CAST(ROUND(SUM(g.Spend)/ANY_VALUE(e.gbp_usd),2) AS FLOAT64) AS spend_usd
-FROM tagged g CROSS JOIN exch e
-WHERE g.period IS NOT NULL
-GROUP BY 1,2,3,4
+SELECT period, week_key, s AS week_start, e AS week_end,
+       grain, dim, parent, platform,
+       sessions, bookings, ttv, profit, spend_usd
+FROM (
+  -- brand grain
+  SELECT period, week_key, s, e,
+         'brand' AS grain, brand AS dim,
+         CAST(NULL AS STRING) AS parent,
+         CAST(NULL AS STRING) AS platform,
+         SUM(overall_sessions)  AS sessions,
+         SUM(keyEvents)         AS bookings,
+         SUM(ttv)               AS ttv,
+         SUM(IFNULL(actual_profit,0) + IFNULL(estimate_profit,0)) AS profit,
+         SUM(Spend) / (SELECT g FROM fx) AS spend_usd
+  FROM t GROUP BY 1,2,3,4,5,6,7,8
+  UNION ALL
+  -- channel grain (aggregated across platforms)
+  SELECT period, week_key, s, e,
+         'channel', channel, brand, CAST(NULL AS STRING),
+         SUM(overall_sessions), SUM(keyEvents), SUM(ttv),
+         SUM(IFNULL(actual_profit,0) + IFNULL(estimate_profit,0)),
+         SUM(Spend) / (SELECT g FROM fx)
+  FROM t GROUP BY 1,2,3,4,5,6,7,8
+  UNION ALL
+  -- channel × platform grain (for UI drill-down)
+  SELECT period, week_key, s, e,
+         'channel_platform', channel, brand, platform,
+         SUM(overall_sessions), SUM(keyEvents), SUM(ttv),
+         SUM(IFNULL(actual_profit,0) + IFNULL(estimate_profit,0)),
+         SUM(Spend) / (SELECT g FROM fx)
+  FROM t GROUP BY 1,2,3,4,5,6,7,8
+)
+ORDER BY period DESC, grain, parent NULLS FIRST, bookings DESC NULLS LAST
 `
+  return {
+    query,
+    queryParameters: [
+      { name: 'as_at', parameterType: { type: 'STRING' },
+        parameterValue: { value: asAt ?? '' } },
+    ],
+    useLegacySql: false,
+  }
+}
+
 
 // §2.2 Q_B2C_M — calendar months from 2025-01-01
 const Q_B2C_M = `
@@ -620,71 +833,229 @@ WHERE g.platform IN ("APP","WEB")
 GROUP BY 1,2,3,4
 `
 
-// Q_RH — Ride Hailing trips, search and scope split
-// §2: partner_name only (STRPOS), not the allow-list — avoids 34 extra July trips
-// §4.2: sam CTE replicates Power BI's page-filter cross-filtering through service_area
-// §3.4: per-row rounding before SUM
-const Q_RH = `
-WITH sa AS (
-  SELECT service_area_id, ANY_VALUE(country) AS country
-  FROM \`elife-data-warehouse-prod.ads.ads_driver_service_area\`
-  WHERE service_area_id IS NOT NULL
-  GROUP BY service_area_id
+// makeQRH — Ride Hailing weekly, live sources, parameterised by @as_at
+// §0:  rh_sales_trips excluded — broken since 2026-07-11
+// §2:  partner_name LIKE '%Ride Hailing%' (case-sensitive, §4.3)
+// §2.1: completed excludes ride_stat='Cancelled' even at dispatch_stat='At destination'
+// §2.2: per-row rounding before SUM (matches Power BI)
+// §2.3: failed_quotes added (by_pickup_date basis)
+// §3:  dim.dim_service_area for Japan/Global — cannot fan out (1,558 rows, all distinct)
+// §4.1: by_pickup_date — NOT by_search_date (10.9× wrong)
+// §4.2: BETWEEN window excludes 2099-12-31 sentinel automatically
+// §4.3: case-sensitive LIKE — 13 Tujing rows excluded, matches snapshot/Power BI basis
+// Long format: 26 rows for 2 periods × (2 scopes × 5 metrics + 1 company × 3 metrics)
+function makeQRH(asAt: string | null): { query: string; queryParameters: any[]; useLegacySql: boolean } {
+  const query = `
+WITH
+w AS (
+  SELECT DISTINCT snapshot_date, week_key, week_start, week_end
+  FROM \`elife-data-warehouse-prod.snap.kpi_weekly\`
+),
+sel AS (SELECT * FROM w WHERE snapshot_date = @as_at),
+prv AS (SELECT * FROM w WHERE snapshot_date < @as_at ORDER BY snapshot_date DESC LIMIT 1),
+win AS (
+  SELECT 'cur'  AS period, week_key, week_start AS s, week_end AS e FROM sel
+  UNION ALL
+  SELECT 'prev', week_key, week_start, week_end FROM prv
 ),
 disp AS (
-  SELECT
-    FORMAT_DATE("%Y-%m", d.pickup_date) AS ym,
-    IF(LOWER(sa.country)="japan","Japan","Global") AS scope,
-    COUNT(*)                                  AS trips,
-    COUNTIF(d.ride_stat="Cancelled")          AS cancelled,
-    COUNTIF(d.dispatch_stat="At destination" AND d.ride_stat<>"Cancelled") AS completed,
-    SUM(ROUND(IFNULL(d.elife_amount_usd,0),2)
-      + ROUND(IFNULL(d.additional_charge_amount_usd,0),2)) AS rev,
-    SUM(ROUND(IFNULL(d.dispatch_amount_net_usd,0),2))      AS cost
-  FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\` d
-  LEFT JOIN sa USING (service_area_id)
-  WHERE d.pickup_date BETWEEN DATE "2025-01-01" AND CURRENT_DATE()
-    AND STRPOS(IFNULL(d.partner_name,""), "Ride Hailing") > 0
-  GROUP BY 1,2
+  SELECT win.period, win.week_key, win.s, win.e,
+    IF(sa.country = 'Japan', 'Japan', 'Global') AS scope,
+    r.dispatch_stat, r.ride_stat,
+    r.elife_amount_usd, r.additional_charge_amount_usd, r.dispatch_amount_net_usd
+  FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\` r
+  LEFT JOIN \`elife-data-warehouse-prod.dim.dim_service_area\` sa
+    ON r.service_area_id = sa.id
+  JOIN win ON r.pickup_date BETWEEN win.s AND win.e
+  WHERE r.partner_name LIKE '%Ride Hailing%'
 ),
-sam AS (
-  SELECT FORMAT_DATE("%Y-%m", pickup_date) AS ym, service_area_id
-  FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\`
-  WHERE pickup_date BETWEEN DATE "2025-01-01" AND CURRENT_DATE()
-    AND ride_stat IN ("Accepted","Cancelled","Pending")
-    AND service_area_id IS NOT NULL
-  GROUP BY 1,2
+disp_agg AS (
+  SELECT period, week_key, s, e, scope,
+    COUNT(*) AS service_trips,
+    COUNTIF(dispatch_stat = 'At destination' AND IFNULL(ride_stat,'') <> 'Cancelled') AS completed_trips,
+    COUNTIF(ride_stat = 'Cancelled') AS cancelled_trips,
+    SUM(ROUND(IFNULL(elife_amount_usd,0),2) + ROUND(IFNULL(additional_charge_amount_usd,0),2)) AS revenue_usd,
+    SUM(ROUND(IFNULL(dispatch_amount_net_usd,0),2)) AS cost_usd
+  FROM disp GROUP BY 1,2,3,4,5
 ),
 srch AS (
-  SELECT
-    FORMAT_DATE("%Y-%m", r.date_calculate) AS ym,
-    IF(LOWER(sa.country)="japan","Japan","Global") AS scope,
-    SUM(r.request_number_by_search_date) AS inq,
-    SUM(r.quote_number_by_search_date)   AS quotes,
-    SUM(r.sales_trip)                    AS sales_trips
-  FROM \`elife-data-warehouse-prod.ads.ads_ride_hailing_search_ride_summary\` r
-  LEFT JOIN sa  ON sa.service_area_id = r.service_area_id
-  LEFT JOIN sam m ON m.ym = FORMAT_DATE("%Y-%m", r.date_calculate)
-                 AND m.service_area_id = r.service_area_id
-  WHERE r.date_calculate BETWEEN DATE "2025-01-01" AND CURRENT_DATE()
-    AND (r.service_area_id IS NULL OR m.service_area_id IS NOT NULL)
-  GROUP BY 1,2
+  SELECT win.period, win.week_key, win.s, win.e,
+    SUM(t.request_number_by_pickup_date)      AS requests,
+    SUM(t.quote_number_by_pickup_date)        AS quotes,
+    SUM(t.failed_quote_number_by_pickup_date) AS failed_quotes
+  FROM \`elife-data-warehouse-prod.ads.ads_ride_hailing_search_ride_summary\` t
+  JOIN win ON t.date_calculate BETWEEN win.s AND win.e
+  GROUP BY 1,2,3,4
+)
+SELECT period, week_key, week_start, week_end, grain, dim, metric, value FROM (
+  SELECT period, week_key, s AS week_start, e AS week_end,
+         'scope' AS grain, scope AS dim, m.metric, m.value
+  FROM disp_agg, UNNEST([
+    STRUCT('rh_service_trips'   AS metric, CAST(service_trips   AS NUMERIC) AS value),
+    STRUCT('rh_completed_trips', CAST(completed_trips AS NUMERIC)),
+    STRUCT('rh_cancelled_trips', CAST(cancelled_trips AS NUMERIC)),
+    STRUCT('rh_revenue_usd',     CAST(revenue_usd     AS NUMERIC)),
+    STRUCT('rh_cost_usd',        CAST(cost_usd        AS NUMERIC))
+  ]) m
+  UNION ALL
+  SELECT period, week_key, s, e, 'company', 'Ride Hailing', m.metric, m.value
+  FROM srch, UNNEST([
+    STRUCT('rh_request_number'  AS metric, CAST(requests      AS NUMERIC) AS value),
+    STRUCT('rh_quote_number',    CAST(quotes        AS NUMERIC)),
+    STRUCT('rh_failed_quotes',   CAST(failed_quotes AS NUMERIC))
+  ]) m
+)
+ORDER BY period DESC, grain, dim, metric
+`
+  return {
+    query,
+    queryParameters: [
+      { name: 'as_at', parameterType: { type: 'STRING' },
+        parameterValue: { value: asAt ?? '' } },
+    ],
+    useLegacySql: false,
+  }
+}
+
+// makeQAI — AI Code & Test, snapshot-only via snap.kpi_weekly
+// §0:  source is snap.manual_kpi_input — no live ads.* table exists
+// §1.1: values stored on 0-100 scale — display as-is, do NOT multiply by 100
+// §1.2: values are % ratios — never summed across periods
+// §3.1: LEFT JOIN (not inner) — missing week returns NULL-metric row, distinguishable from zero
+// §3.2: QUALIFY ROW_NUMBER() — collapses duplicates to latest etl_time
+// §4:   @as_at via queryParameters
+// Returns: 4 rows normal, 2 rows if no prior snapshot, ~1 row if current week has no manual data
+function makeQAI(asAt: string | null): { query: string; queryParameters: any[]; useLegacySql: boolean } {
+  const query = `
+WITH
+w AS (
+  SELECT DISTINCT snapshot_date, week_key, week_start, week_end
+  FROM \`elife-data-warehouse-prod.snap.kpi_weekly\`
+),
+sel AS (SELECT * FROM w WHERE snapshot_date = @as_at),
+prv AS (SELECT * FROM w WHERE snapshot_date < @as_at ORDER BY snapshot_date DESC LIMIT 1),
+win AS (
+  SELECT 'cur'  AS period, snapshot_date, week_key, week_start, week_end FROM sel
+  UNION ALL
+  SELECT 'prev', snapshot_date, week_key, week_start, week_end FROM prv
 )
 SELECT
-  COALESCE(d.ym, s.ym)       AS ym,
-  COALESCE(d.scope, s.scope) AS scope,
-  CAST(IFNULL(s.inq,0)         AS FLOAT64) AS inq,
-  CAST(IFNULL(s.quotes,0)      AS FLOAT64) AS quotes,
-  CAST(IFNULL(s.sales_trips,0) AS FLOAT64) AS sales_trips,
-  CAST(IFNULL(d.trips,0)       AS FLOAT64) AS trips,
-  CAST(IFNULL(d.cancelled,0)   AS FLOAT64) AS cancelled,
-  CAST(IFNULL(d.completed,0)   AS FLOAT64) AS completed,
-  CAST(ROUND(IFNULL(d.rev,0),2)  AS FLOAT64) AS rev,
-  CAST(ROUND(IFNULL(d.cost,0),2) AS FLOAT64) AS cost,
-  CAST(ROUND(IFNULL(d.rev,0) - IFNULL(d.cost,0),2) AS FLOAT64) AS profit
-FROM disp d
-FULL JOIN srch s ON d.ym = s.ym AND d.scope = s.scope
+  win.period,
+  win.week_key,
+  CAST(win.week_start AS STRING) AS week_start,
+  CAST(win.week_end   AS STRING) AS week_end,
+  k.grain,
+  k.dim,
+  k.metric,
+  k.value,
+  CAST(k.etl_time AS STRING) AS etl_time
+FROM win
+LEFT JOIN (
+  SELECT snapshot_date, grain, dim, metric, value, etl_time
+  FROM \`elife-data-warehouse-prod.snap.kpi_weekly\`
+  WHERE page = 'ai_code_test'
+  QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY snapshot_date, grain, dim, metric ORDER BY etl_time DESC
+  ) = 1
+) k
+  ON k.snapshot_date = win.snapshot_date
+ORDER BY win.period DESC, k.metric
 `
+  return {
+    query,
+    queryParameters: [
+      { name: 'as_at', parameterType: { type: 'STRING' },
+        parameterValue: { value: asAt ?? '' } },
+    ],
+    useLegacySql: false,
+  }
+}
+
+// makeQWilson — Wilson's Partner Incident Rate (Lost) table
+// Build spec: Quality tab §4
+// Three windows derived from snap.kpi_weekly week_end for @as_at:
+//   cur_28d  = [week_end-27d .. week_end]
+//   prev_28d = [week_end-34d .. week_end-7d]
+//   ytd      = [Jan 1 .. week_end]
+// Returns 9 rows: 3 windows × (Total + Prebooked + Ride Hailing) via ROLLUP
+// §1.1 guardrails enforced here (exact string, has_complaint, dispatch_stat, dedup, partner_name only)
+function makeQWilson(asAt: string | null): { query: string; queryParameters: any[]; useLegacySql: boolean } {
+  const query = `
+WITH
+-- Anchor: resolve week_end from the selected snapshot
+sel AS (
+  SELECT DISTINCT snapshot_date, week_end
+  FROM \`elife-data-warehouse-prod.snap.kpi_weekly\`
+  WHERE snapshot_date = @as_at
+  LIMIT 1
+),
+-- Three windows derived from week_end (§2)
+win AS (
+  SELECT 'cur_28d'  AS col, DATE_SUB(week_end, INTERVAL 27 DAY) AS s, week_end               AS e FROM sel
+  UNION ALL
+  SELECT 'prev_28d',        DATE_SUB(week_end, INTERVAL 34 DAY),     DATE_SUB(week_end, INTERVAL 7 DAY)  FROM sel
+  UNION ALL
+  SELECT 'ytd',             DATE_TRUNC(week_end, YEAR),               week_end                           FROM sel
+),
+-- Incident flags deduplicated to trip grain (§1.1 — exact string, §1.1.4 dedup)
+inc AS (
+  SELECT
+    dd.ride_id,
+    dd.trip_no,
+    MAX(IF(dc.complaint_reason <> 'Customer No show', 1, 0)) AS pi_in,
+    MAX(IF(dc.complaint_reason <> 'Customer No show'
+           AND dc.complaint_status IN ('Closed against Elife, lost','Initiated'), 1, 0)) AS pi_ex,
+    MAX(IF(dc.complaint_reason <> 'Customer No show'
+           AND dc.complaint_status = 'Closed against Elife, lost', 1, 0)) AS pi_lost
+  FROM \`elife-data-warehouse-prod.dwb.dwb_complaint\` dc
+  JOIN \`elife-data-warehouse-prod.dwb.dwb_dispatch_detail\` dd
+    ON dd.dispatch_id = dc.dispatch_id
+  GROUP BY 1, 2
+),
+-- Valid trips per window, with product line from partner_name only (§1.1.5)
+wt AS (
+  SELECT
+    win.col,
+    win.s,
+    win.e,
+    IF(STRPOS(IFNULL(v.partner_name,''), 'Ride Hailing') > 0,
+       'Ride Hailing', 'Prebooked') AS biz,
+    IFNULL(i.pi_in,   0) AS pi_in,
+    IFNULL(i.pi_ex,   0) AS pi_ex,
+    IFNULL(i.pi_lost, 0) AS pi_lost
+  FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\` v
+  JOIN win ON v.pickup_date BETWEEN win.s AND win.e
+  LEFT JOIN inc i ON i.ride_id = v.ride_id AND i.trip_no = v.trip_no
+  -- §1.1.2: has_complaint trips included in denominator even if ride_stat not Accepted/Pending
+  WHERE (v.ride_stat IN ('Accepted','Pending') OR v.has_complaint = 1)
+  -- §1.1.3: exclude dispatch_stat = '' (empty string — Hoppa self-supply)
+    AND IFNULL(v.dispatch_stat, 'x') <> ''
+)
+-- ROLLUP produces the weighted Total row (§4.1 — not an average of two rates)
+SELECT
+  col,
+  MIN(s)             AS window_start,
+  MAX(e)             AS window_end,
+  IFNULL(biz,'Total') AS product_line,
+  CAST(COUNT(*)       AS FLOAT64) AS valid_trips,
+  CAST(SUM(pi_lost)   AS FLOAT64) AS incidents_lost,
+  CAST(SUM(pi_ex)     AS FLOAT64) AS incidents_ex,
+  CAST(SUM(pi_in)     AS FLOAT64) AS incidents_in
+FROM wt
+GROUP BY ROLLUP(col, biz)
+HAVING col IS NOT NULL
+ORDER BY col,
+  CASE IFNULL(biz,'Total') WHEN 'Total' THEN 0 WHEN 'Prebooked' THEN 1 ELSE 2 END
+`
+  return {
+    query,
+    queryParameters: [
+      { name: 'as_at', parameterType: { type: 'STRING' },
+        parameterValue: { value: asAt ?? '' } },
+    ],
+    useLegacySql: false,
+  }
+}
 
 // Q_MQ — Margin & Quality partner incident rate
 // Reconciled to Power BI RP0036 to the row. Replaces Q_INC entirely.
@@ -822,6 +1193,7 @@ serve(async (req) => {
     const Q_TARGETS = makeQTargets(snapFilter)
     const Q_FC      = makeQFC(snapFilter)
     const Q_PROD    = makeQProd(snapFilter)
+    const Q_GEO     = makeQGeo(snapFilter)
     const Q_FCC     = makeQFCC(snapFilter)
 
     // Wave 2 — run all remaining queries in parallel, including custPrev.
@@ -831,7 +1203,8 @@ serve(async (req) => {
 
     const [
       custRows, targetsRows, fcRows, monthsRows, fccRows,
-      prodRows, geoRows, b2cRows, b2cMRows, rhRows, mqRows,
+      prodRows, geoRows, b2cRows, b2cMRows, rhRows, mqRows, aiRows,
+      wilsonRows,
       stalenessRows, custPrevRows,
     ] = await Promise.all([
       runQuery(projectId, Q_CUST,    accessToken),
@@ -840,11 +1213,13 @@ serve(async (req) => {
       runQuery(projectId, Q_MONTHS,  accessToken),
       runQuery(projectId, Q_FCC,     accessToken).catch(() => []),
       runQuery(projectId, Q_PROD,    accessToken).catch(() => []),
-      runQuery(projectId, Q_GEO,     accessToken).catch(() => []),
-      runQuery(projectId, Q_B2C,     accessToken).catch(() => []),
+      runQuery(projectId, Q_GEO,     accessToken).catch(() => []),  // v3 snapped
+      runQueryParameterised(projectId, makeQB2C(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
       runQuery(projectId, Q_B2C_M,   accessToken).catch(() => []),
-      runQuery(projectId, Q_RH,      accessToken).catch(() => []),
+      runQueryParameterised(projectId, makeQRH(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
       runQuery(projectId, Q_MQ,      accessToken).catch(() => []),
+      runQueryParameterised(projectId, makeQAI(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
+      runQueryParameterised(projectId, makeQWilson(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
       stalenessPromise,
       Q_CUST_PREV ? runQuery(projectId, Q_CUST_PREV, accessToken).catch(() => []) : Promise.resolve([]),
     ])
@@ -875,6 +1250,8 @@ serve(async (req) => {
         b2cM:         b2cMRows,
         rh:           rhRows,
         mq:           mqRows,
+        ai:           aiRows,
+        wilson:       wilsonRows,
         // snap metadata
         snapDates:    allSnapDates,
         asAt:         resolvedAsAt,

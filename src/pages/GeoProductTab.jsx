@@ -2,11 +2,14 @@
  * GeoProductTab.jsx — Weekly EAM Performance, GEO & Product Line tab
  *
  * Spec: ORBIT_GEO_PRODUCT_SPEC.md
+ * Migration: ORBIT_GEO_PRODUCT_SNAPSHOT_MIGRATION.md
  *
  * §0 Non-negotiables:
- *  - Product line → v2 (Q_PROD).  Geography → v3 (Q_GEO). Different tables, different levels.
- *  - GEO attainment is withheld — v3 carries ~70% of v2 profit; pct would be wrong.
- *  - Rollups are conditional on which target keys are present for the selected month.
+ *  - Product line → v2 snap (Q_PROD).  Geography → v3 snap (Q_GEO, makeQGeo).
+ *  - GEO attainment NOW ENABLED — v3 revival confirmed correct (v3 rev == v2 rev on 24 Aug).
+ *  - §1 gate: if v3 revenue ≠ v2 revenue (within $1), geo section refuses to render.
+ *  - Geo targets use Europe-partition logic — NOT a label join (labels change every month).
+ *  - rollupPL: May–Jul SS/Rail show own row with '—' attainment; NOT folded into PT.
  *  - ALL shared helpers live at module scope (§6.3 structural trap avoidance).
  */
 
@@ -42,7 +45,7 @@ const pctFmt=(v,d=1)=>(v===null||v===undefined||!isFinite(Number(v)))?'—':(num
 const achColor=p=>(p===null||!isFinite(Number(p)))?T.text3:p>=0.95?T.green:p>=0.80?T.amberInk:T.red
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §7 — Colours
+// §7 — Colours (updated: two-bucket geo taxonomy from snapped v3)
 // ─────────────────────────────────────────────────────────────────────────────
 const PL_COLOR = {
   'Prebooked':        '#185FA5',
@@ -54,31 +57,25 @@ const PL_COLOR = {
 }
 const plHex = x => PL_COLOR[x] || '#0E8E8E'
 
+// v3 (snapped) emits exactly two real geo values: 'Americas/Asia/Africa/Oceania' and 'Europe'.
+// The old three-bucket taxonomy (Americas / Asia-Africa-Oceania / Europe) no longer exists
+// anywhere in the data — dim_service_area drives the label at query time.
 const GEO_COLOR = {
-  'America&Africa, Asia, Oceania': '#185FA5',
-  'Americas':            '#185FA5',
-  'Europe':              '#1D9E75',
-  'Asia/Africa/Oceania': '#D85A30',
-  '(Unassigned)':        '#8b8a83',
+  'Americas/Asia/Africa/Oceania': '#185FA5',
+  'Europe':                       '#1D9E75',
+  '(Unassigned)':                 '#8b8a83',
 }
 const geoHex = g => GEO_COLOR[g] || '#7F77DD'
 
 const TARGET_GEO_OWNER = {
-  'Europe':            'Morad / CC',
-  'Americas':          'Joe',
-  'Asia/Africa/Oceania':'CC / Chloe',
-  'America&Africa, Asia, Oceania': 'Joe / CC',
+  'Americas/Asia/Africa/Oceania': 'Joe / CC',
+  'Europe':                       'Morad / CC',
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §3 — Rollup constants
 // ─────────────────────────────────────────────────────────────────────────────
 const PREBOOKED_LINES = ['Private Transfer','Shared Shuttle','Rail']
-const MERGED_GEO      = 'America&Africa, Asia, Oceania'
-const MERGED_GEO_SRC  = ['Americas','Asia/Africa/Oceania']
-
-// §3.2 — May 2026 label normalisation
-const normGeo = g => g === 'Africa, Asia, Oceania' ? 'Asia/Africa/Oceania' : g
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §6.3 — ALL shared cell helpers at module scope (structural trap avoidance)
@@ -157,7 +154,7 @@ function gDelta(delta, pct) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Chart: doughnut + legend
 // ─────────────────────────────────────────────────────────────────────────────
-function DonutChart({rows, labelKey, colorFn, totalLabel, totalValue, subtitle}) {
+function DonutChart({rows, labelKey, colorFn, totalLabel, totalValue, subtitle, unitLabel}) {
   const ref = useRef(null)
   const chartRef = useRef(null)
   const labels  = rows.map(r => r[labelKey])
@@ -182,7 +179,7 @@ function DonutChart({rows, labelKey, colorFn, totalLabel, totalValue, subtitle})
         ctx.fillText(totalValue||usdC(tot),cx,cy+11)
         if(rows.length){
           ctx.fillStyle=T.text3;ctx.font=`500 10px sans-serif`
-          ctx.fillText(`${rows.length} regions`,cx,cy+25)
+          ctx.fillText(`${rows.length} ${unitLabel||'items'}`,cx,cy+25)
         }
         ctx.restore()
       },
@@ -403,43 +400,67 @@ function AttBar({rows, companyAch, labelKey}) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
+export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
   const isMonthKey = k => /^\d{4}-\d{2}$/.test(k ?? '')
   const recon = isMonthKey(period)
 
-  // ── §3 — Build target maps for the current month ───────────────────────────
-  // Apply normGeo when reading GEO targets (§3.2)
+  // ── v2 revenue (from D.cust) — used for the §1 geo validity gate ─────────────────
+  // v3 revenue must equal v2 revenue within $1 for geo to be valid.
+  // Self-validates on every load — catches any future v3 revival failure automatically.
+  const v2Revenue = useMemo(() =>
+    (D.cust || []).reduce((a, r) => a + num(r.m_rev), 0),
+  [D.cust])
+
+  // ── §3 — Build target maps for the current month ──────────────────────────────
+  // Geo targets use Europe-partition logic — NOT a label join.
+  // BI renames non-Europe buckets every month; the label join breaks silently.
+  // Partition rule: r.dim === 'Europe' → Europe total; everything else → combined bucket.
   const { targetMonth, TARGETS } = useMemo(()=>{
     const rows = D.targets || []
     const months = [...new Set(rows.map(r=>r.ym))].sort()
     const tMonth = months.includes(CUR_MONTH) ? CUR_MONTH : (months[months.length-1]||CUR_MONTH)
 
-    const product={}, geo={}, dept={}
+    // Product line: keyed by dim directly (e.g. 'Prebooked', 'Ride Hailing')
+    const product = {}, dept = {}
     rows.filter(r=>r.ym===tMonth).forEach(r=>{
-      if(r.kind==='pl')  product[r.dim]=num(r.tgt)
-      if(r.kind==='geo') geo[normGeo(r.dim)]=num(r.tgt)
-      if(r.kind==='dept')dept[r.dim]=num(r.tgt)
+      if(r.kind==='pl')   product[r.dim] = num(r.tgt)
+      if(r.kind==='dept') dept[r.dim]    = num(r.tgt)
     })
+
+    // Geo targets: Europe-partition.
+    // Sum all non-Europe rows into 'Americas/Asia/Africa/Oceania' regardless of label.
+    // This is robust to BI renaming (May:'Americas'+'Africa, Asia, Oceania',
+    // Jun/Jul:'Americas'+'Asia/Africa/Oceania', Aug:'America&Africa, Asia, Oceania').
+    let geoEurope = 0, geoRest = 0
+    rows.filter(r=>r.ym===tMonth && r.kind==='geo').forEach(r=>{
+      r.dim === 'Europe' ? geoEurope += num(r.tgt) : geoRest += num(r.tgt)
+    })
+    const geo = {
+      'Europe':                       geoEurope,
+      'Americas/Asia/Africa/Oceania': geoRest,
+    }
+
     const company=['EAM Chris','EAM Renaldo','EAM Gloria','B2C Matt'].reduce((a,k)=>a+(dept[k]||0),0)
     return { targetMonth:tMonth, TARGETS:{ product, geo, dept, company } }
   },[D.targets, CUR_MONTH])
 
-  // ── §3.1 — rollupPL — conditional on Prebooked target existence ────────────
+  // ── §3.1 — rollupPL ─────────────────────────────────────────────────────────────────
+  // Aug 2026+: 'Prebooked' target exists — fold PT+SS+Rail into Prebooked bucket.
+  // May–Jul: 'Private Transfer' is the only mapped line. SS and Rail have NO target
+  // — they pass through unchanged and render with attainment '—'. They must NOT be
+  // folded into Private Transfer's denominator.
   const rollupPL = pl => {
     if (TARGETS.product['Prebooked'] !== undefined) {
-      if (pl === 'Ride Hailing') return 'Ride Hailing'
       if (PREBOOKED_LINES.includes(pl)) return 'Prebooked'
-      return pl
+      return pl  // Ride Hailing passes through
     }
-    if (pl === 'Shared Shuttle') return 'Private Transfer'
+    // May–Jul: SS and Rail return unchanged (own row, no target, '—' attainment)
     return pl
   }
 
-  // ── §3.2 — rollupGeo — conditional on merged GEO target existence ──────────
-  const rollupGeo = g => {
-    if (TARGETS.geo[MERGED_GEO] !== undefined && MERGED_GEO_SRC.includes(g)) return MERGED_GEO
-    return g
-  }
+  // ── §3.2 — rollupGeo — identity (data arrives in 2-bucket form from snapped v3) ───
+  // dim_service_area drives the label at query time; no merging needed on the frontend.
+  const rollupGeo = g => g
 
   // ── §6 — geoSrc: monthly branch vs v3 branch ──────────────────────────────
   const geoSrc = useMemo(()=>{
@@ -474,7 +495,10 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
       plMap[k].lm_profit +=num(r.lm_profit)
       if(k!==r.pl) plMap[k].parts.push(r.pl)
     })
-    const prod=Object.values(plMap).sort((a,b)=>num(b.profit)-num(a.profit))
+    // Hide Rail when zero (spec §7.2d: render only if non-zero)
+    const prod=Object.values(plMap)
+      .filter(r => r.pl !== 'Rail' || num(r.profit) !== 0 || num(r.revenue) !== 0)
+      .sort((a,b)=>num(b.profit)-num(a.profit))
     const pT=prod.reduce((a,r)=>({profit:a.profit+num(r.profit),revenue:a.revenue+num(r.revenue),sales:a.sales+num(r.sales),lm:a.lm+num(r.lm_profit)}),{profit:0,revenue:0,sales:0,lm:0})
     return {prod,pT}
   },[D.prod, rollupPL])
@@ -497,8 +521,15 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
     return {geoRows,geoTot,geoRev}
   },[geoSrc, rollupGeo])
 
-  // Company attainment for refLine in attainment chart
-  const companyAch = TARGETS.company > 0 ? null : null  // pass actual from parent if available
+  // ── §1 gate — self-validating geo validity check ───────────────────────────────
+  // v3 revenue must equal v2 revenue within $1. On 2026-08-21, v3 held Feb data:
+  // v3 rev ≈ 5,233,310 vs v2 ≈ 6,226,655 — gate fails, banner shown.
+  const geoValid = geoRows.length > 0 && Math.abs(geoRev - v2Revenue) < 1
+
+  // ── §3/$76 footnote — dynamic gap between geo and pl target totals ────────────
+  const geoTargetTotal = Object.values(TARGETS.geo).reduce((a,v)=>a+v, 0)
+  const plTargetTotal  = Object.values(TARGETS.product).reduce((a,v)=>a+v, 0)
+  const targetGap      = Math.round(Math.abs(plTargetTotal - geoTargetTotal))
 
   const SHORT = PC?.short || 'MTD'
   const BASE  = PC?.baseShort || 'LM'
@@ -592,6 +623,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
                 <DonutChart
                   rows={prod} labelKey="pl" colorFn={plHex}
                   totalLabel={`${SHORT} TOTAL PROFIT`} totalValue={usdC(pT.profit)}
+                  unitLabel="product lines"
                 />
               </div>
               {/* Attainment bar */}
@@ -614,10 +646,28 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
       )}
 
       {/* ── §5 Geography section ────────────────────────────────────────────── */}
-      <SecLabel label="Geography" badge="MIX ONLY · ATTAINMENT WITHHELD"/>
+      <SecLabel label="Geography"/>
 
       {geoRows.length===0 ? (
         <div style={{textAlign:'center',padding:'32px 0',color:T.text3,fontSize:13}}>No geography data — click Refresh.</div>
+      ) : !geoValid ? (
+        /* §1 gate — v3 revenue ≠ v2 revenue: this snapshot holds stale/dead v3 data */
+        <div style={{background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:8,padding:'16px 20px',marginBottom:24}}>
+          <div style={{fontWeight:700,fontSize:13,color:'#92400E',marginBottom:6}}>Geography unavailable for this snapshot</div>
+          <div style={{fontSize:12.5,color:'#92400E',lineHeight:1.6}}>
+            <code style={{fontFamily:'monospace',background:'rgba(0,0,0,.06)',padding:'1px 5px',borderRadius:3}}>
+              ads_weekly_meeting_revenue_and_profit_v3
+            </code>{' '}
+            had not been refreshed when this snapshot was taken.
+            <br/><br/>
+            <span style={{opacity:.75,fontSize:11.5}}>
+              Diagnostic: v3 revenue {usd(geoRev)} ≠ v2 revenue {usd(v2Revenue)} (gap {usd(Math.abs(geoRev-v2Revenue))})
+            </span>
+          </div>
+          <div style={{marginTop:12,fontSize:12,color:'#92400E',opacity:.8}}>
+            The <strong>Product Line</strong> section above is unaffected — it reads v2 data and is correct for this snapshot.
+          </div>
+        </div>
       ) : (
         <>
           <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
@@ -626,8 +676,8 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
                 <thead>
                   <tr>
                     <th style={{...TH,textAlign:'left',paddingLeft:14,width:'22%'}}>GEO</th>
-                    <th style={{...TH}}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Total Profit (v3)</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>target, reference only</span></div></th>
-                    <th style={{...TH}}>Share of Mix</th>
+                    <th style={{...TH}}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Total Profit</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>vs target</span></div></th>
+                    <th style={TH}>Attainment</th>
                     <th style={TH}>vs {BASE}</th>
                     <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Complete GMV</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>margin</span></div></th>
                     <th style={TH}>Owner</th>
@@ -636,20 +686,22 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
                 <tbody>
                   {geoRows.map(r=>{
                     const tg = TARGETS.geo[r.geo]
+                    const isUnassigned = r.geo === '(Unassigned)'
+                    const ach = (!isUnassigned && tg && tg>0) ? num(r.profit)/tg : null
                     const delta=num(r.profit)-num(r.lm_profit)
                     const dPct=num(r.lm_profit)!==0?delta/Math.abs(num(r.lm_profit)):null
                     const margin=num(r.revenue)>0?num(r.profit)/num(r.revenue):null
                     const owner=TARGET_GEO_OWNER[r.geo]
                     return (
                       <tr key={r.geo} style={{...ROW,background:T.bg}} onMouseEnter={e=>{e.currentTarget.style.background='#EFF6FF'}} onMouseLeave={e=>{e.currentTarget.style.background=T.bg}}>
-                        <td style={{...TD,paddingLeft:14}}>
+                        <td style={{...TD,paddingLeft:14,color:isUnassigned?T.text3:T.text,fontStyle:isUnassigned?'italic':'normal'}}>
                           {dotSpan(r.geo,geoHex(r.geo))}
-                          {r.parts.length>0&&<div style={{marginTop:3}}><span style={{fontSize:10,color:T.text3,background:T.bg4,border:`1px solid ${T.border}`,borderRadius:9,padding:'1px 7px'}}>{r.parts.join(' + ')}</span></div>}
+                          {r.parts&&r.parts.length>0&&<div style={{marginTop:3}}><span style={{fontSize:10,color:T.text3,background:T.bg4,border:`1px solid ${T.border}`,borderRadius:9,padding:'1px 7px'}}>{r.parts.join(' + ')}</span></div>}
                         </td>
-                        <td style={{...TD,textAlign:'right'}}>{gPair(usd(num(r.profit)),tg?usd(tg):'no target')}</td>
-                        <td style={{...TD,textAlign:'right'}}>{gShare(geoTot>0?num(r.profit)/geoTot:null,geoHex(r.geo))}</td>
-                        <td style={{...TD,textAlign:'right'}}>{gDelta(delta,dPct)}</td>
-                        <td style={{...TD,textAlign:'right'}}>{gPair(usd(num(r.revenue)),pctFmt(margin,1))}</td>
+                        <td style={{...TD,textAlign:'right',color:isUnassigned?T.text3:T.text}}>{gPair(usd(num(r.profit)),tg?usd(tg):'no target')}</td>
+                        <td style={{...TD,textAlign:'right'}}>{isUnassigned?<span style={{color:T.text3}}>—</span>:gAtt(ach)}</td>
+                        <td style={{...TD,textAlign:'right'}}>{isUnassigned?<span style={{color:T.text3}}>—</span>:gDelta(delta,dPct)}</td>
+                        <td style={{...TD,textAlign:'right',color:isUnassigned?T.text3:T.text}}>{gPair(usd(num(r.revenue)),pctFmt(margin,1))}</td>
                         <td style={{...TD,textAlign:'right'}}>
                           {owner
                             ? <span style={{fontSize:11,background:T.bg4,border:`1px solid ${T.border}`,borderRadius:9,padding:'2px 8px',whiteSpace:'nowrap'}}>{owner}</span>
@@ -661,8 +713,8 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
                   {/* Total row */}
                   <tr style={{background:T.bg,borderTop:`2px solid ${T.border}`}}>
                     <td style={{...TD,paddingLeft:14,fontWeight:700}}>Total</td>
-                    <td style={{...TD,textAlign:'right'}}>{gPair(usd(geoTot),Object.values(TARGETS.geo).length?usd(Object.values(TARGETS.geo).reduce((a,v)=>a+v,0)):'—')}</td>
-                    <td style={{...TD,textAlign:'right',fontWeight:600}}>100.0%</td>
+                    <td style={{...TD,textAlign:'right'}}>{gPair(usd(geoTot),geoTargetTotal>0?usd(geoTargetTotal):'—')}</td>
+                    <td style={{...TD,textAlign:'right'}}>{gAtt(geoTargetTotal>0?geoTot/geoTargetTotal:null)}</td>
                     <td style={{...TD,textAlign:'right'}}>—</td>
                     <td style={{...TD,textAlign:'right'}}>{gPair(usd(geoRev),pctFmt(geoRev>0?geoTot/geoRev:null,1))}</td>
                     <td style={{...TD,textAlign:'right'}}>—</td>
@@ -672,6 +724,18 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
             </div>
           </div>
 
+          {/* §3 — $76 target gap footnote (dynamic: only when gap > 0) */}
+          {targetGap > 0 && geoTargetTotal > 0 && plTargetTotal > 0 && (
+            <div style={{fontSize:11.5,color:T.text3,marginBottom:8,padding:'0 4px',lineHeight:1.55}}>
+              ⚠ Geo targets sum to <strong>{usd(geoTargetTotal)}</strong> against a company target of <strong>{usd(plTargetTotal)}</strong> — a <strong>{usd(targetGap)}</strong> difference in the source table. This is a data-entry error in the target row, not a reporting variance.
+            </div>
+          )}
+
+          {/* §4 — Grain footnote */}
+          <div style={{fontSize:11.5,color:T.text3,marginBottom:16,padding:'0 4px',lineHeight:1.55}}>
+            ℹ Total profit is computed at geo grain. The profit measure includes a revenue-weighted ratio and is not additive across grains — expect a difference of up to a few hundred dollars against the Executive Summary.
+          </div>
+
           {/* GEO charts */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24}}>
             {/* Doughnut */}
@@ -679,14 +743,14 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC}) {
               <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Total profit mix by geography</div>
               <DonutChart
                 rows={geoRows} labelKey="geo" colorFn={geoHex}
-                totalLabel="V3 TOTAL PROFIT" totalValue={usdC(geoTot)}
-                subtitle="Level is under-reported by v3; the mix itself is representative"
+                totalLabel="TOTAL PROFIT" totalValue={usdC(geoTot)}
+                unitLabel="geos"
               />
             </div>
             {/* Margin bar */}
             <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'16px 20px 14px'}}>
               <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Margin by geography</div>
-              <div style={{fontSize:11.5,color:T.text3,marginBottom:12}}>Profit ÷ revenue within v3 · ratios are more reliable than levels here</div>
+              <div style={{fontSize:11.5,color:T.text3,marginBottom:12}}>Profit ÷ revenue by geography</div>
               <div style={{height:Math.max(140,geoRows.length*64+24)}}>
                 <MarginBar
                   rows={geoRows} labelKey="geo" colorFn={geoHex}
