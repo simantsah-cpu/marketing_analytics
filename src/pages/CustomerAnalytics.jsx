@@ -236,14 +236,14 @@ function KpiTile2({ label, value, valueColor, sub }) {
 
 // ─── Chart.js — Monthly trend ─────────────────────────────────────────────────
 const CHART_METRICS = [
-  { key: 'revenue',    label: 'Revenue',   color: T.blue,   fmt: usdC },
-  { key: 'margin',     label: 'Margin',    color: T.green,  fmt: usdC },
-  { key: 'cancel_pct', label: 'Cancel %',  color: T.red,    fmt: v => pct(v) },
-  { key: 'aov',        label: 'AOV',       color: T.coral,  fmt: v => usd(v, 2) },
+  { key: 'complete_gmv',    label: 'Complete GMV',  color: T.blue,   fmt: usdC },
+  { key: 'profit',          label: 'Profit',        color: T.green,  fmt: usdC },
+  { key: 'cancel_pct',     label: 'Cancel %',      color: T.red,    fmt: v => pct(v) },
+  { key: 'avg_gmv_per_trip', label: 'AOV',          color: T.coral,  fmt: v => usd(v, 2) },
 ]
 
 function MonthlyTrendChart({ monthly }) {
-  const [metric, setMetric] = useState('revenue')
+  const [metric, setMetric] = useState('complete_gmv')
   const cfg = CHART_METRICS.find(m => m.key === metric)
   if (!monthly?.length) return <div style={{ padding: '40px 20px', textAlign: 'center', color: T.text3, fontSize: 13 }}>No monthly data in this date range</div>
 
@@ -415,7 +415,7 @@ function CohortHeatmap({ cells, startDate, sizeKey = 'accounts', mode = 'retenti
   const { order, map, maxMi } = toGrid(cells)
   const sizes = {}
   order.forEach(c => { sizes[c] = map.get(c)?.get(0)?.[sizeKey] ?? 0 })
-  const allRevs = cells.map(c => c.revenue).filter(v => v > 0)
+  const allRevs = cells.map(c => c.gmv).filter(v => v > 0)
   const mLog = allRevs.length ? Math.log10(Math.max(...allRevs)) : 1
   const cols = Math.min(maxMi + 1, 20)
 
@@ -457,15 +457,15 @@ function CohortHeatmap({ cells, startDate, sizeKey = 'accounts', mode = 'retenti
                       textColor = rp != null && rp > 60 ? '#fff' : T.navy
                       fontWeight = mi === 0 ? 700 : 500
                     } else {
-                      bg = revColor(c.revenue, mLog)
-                      label = usdC(c.revenue)
-                      textColor = c.revenue > 50000 ? '#fff' : T.navy
+                      bg = revColor(c.gmv, mLog)
+                      label = usdC(c.gmv)
+                      textColor = c.gmv > 50000 ? '#fff' : T.navy
                     }
                   }
 
                   return (
                     <td key={mi}
-                      title={c ? `${cLabel(cohort, startDate)} +${mi}: ${nfmt(c[sizeKey])} ${sizeKey}, ${usd(c.revenue)}` : ''}
+                      title={c ? `${cLabel(cohort, startDate)} +${mi}: ${nfmt(c[sizeKey])} ${sizeKey}, ${usd(c.gmv)}` : ''}
                       style={{ height: 28, textAlign: 'center', background: bg, borderRadius: 3, color: textColor, fontSize: 10, fontWeight, verticalAlign: 'middle', cursor: c ? 'help' : 'default' }}>
                       {label}
                     </td>
@@ -671,16 +671,16 @@ export default function CustomerAnalytics() {
   const meta      = data?.meta
   const kpis      = data?.kpis
   const monthly   = data?.monthly      ?? []
-  const acCohort  = data?.account_cohort  ?? []
-  const ptCohort  = data?.partner_cohort  ?? []
-  const flow      = data?.flow         ?? []
-  const tiers     = data?.tiers        ?? []
-  const partners  = data?.partners     ?? []
-  const pax       = data?.passengers   ?? []
+  const acCohort  = data?.account_cohort   ?? []
+  const ptCohort  = data?.customer_cohort  ?? []
+  const flow      = data?.flow             ?? []
+  const tiers     = data?.tiers            ?? []
+  const partners  = data?.partners         ?? []
+  const pax       = data?.passengers       ?? []
 
-  const complPct  = kpis && kpis.booked_rides > 0 ? kpis.completed_rides / kpis.booked_rides : null
+  const cancelPct = kpis?.cancel_pct ?? 0
   const TIER_COLORS = { 'A. $1M+': T.purple, 'B. $100k-1M': T.blue, 'C. $10k-100k': T.teal, 'D. $1k-10k': T.amber, 'E. <$1k': T.text3 }
-  const maxPaxRev = Math.max(...pax.map(p => n(p.pct_revenue)), 1)
+  const maxPaxGmv = Math.max(...pax.map(p => n(p.pct_gmv)), 1)
 
   return (
     <>
@@ -720,71 +720,69 @@ export default function CustomerAnalytics() {
                 <CardHead title="Overview" sub={`${start} → ${meta?.end_date ?? end}${meta?.cached ? ' · ⚡ cached' : ''}`} />
                 <div style={{ padding: '16px 16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
 
-                  {/* Row 1 — Primary metrics with bars */}
+                  {/* Row 1 — Primary metrics */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
                     <KpiTile1
-                      label="Revenue"
-                      value={usdC(kpis.revenue)}
+                      label="Complete GMV"
+                      value={usdC(kpis.complete_gmv)}
                       valueColor={T.navy}
                       sub="Completed rides only"
                     />
                     <KpiTile1
-                      label="Margin"
-                      value={usdC(kpis.margin)}
-                      valueColor={n(kpis.margin) >= 0 ? T.green : T.red}
-                      sub={`${pct(kpis.margin_pct, 1)} margin rate`}
+                      label="Profit"
+                      value={usdC(kpis.profit)}
+                      valueColor={n(kpis.profit) >= 0 ? T.green : T.red}
+                      sub={`${pct(kpis.profit_margin_pct, 1)} margin rate`}
                     />
                     <KpiTile1
-                      label="Avg Order Value"
-                      value={usd(kpis.aov, 2)}
+                      label="Avg GMV / Trip"
+                      value={usd(kpis.avg_gmv_per_trip, 2)}
                       valueColor={T.blue}
-                      sub="Per completed ride"
+                      sub="Per service trip"
                     />
                     <KpiTile1
-                      label="Completed Rides"
-                      value={nfmt(kpis.completed_rides)}
+                      label="Service Trips"
+                      value={nfmt(kpis.service_trips)}
                       valueColor={T.text}
-                      sub={complPct != null ? `${pct(complPct * 100, 1)} of booked rides` : ''}
-                      goal={`vs booked: ${nfmt(kpis.booked_rides)}`}
-                      bar={complPct != null ? { pct: complPct, color: T.green } : null}
+                      sub={`${nfmt(kpis.service_rides)} distinct rides`}
+                      goal={`Delivered: ${nfmt(kpis.delivered_trips)}`}
                     />
                     <KpiTile1
-                      label="Cancelled Rides"
-                      value={nfmt(kpis.cancelled_rides)}
-                      valueColor={n(kpis.cancel_pct) > 35 ? T.red : T.text}
+                      label="Cancelled Trips"
+                      value={nfmt(kpis.cancelled_trips)}
+                      valueColor={cancelPct > 35 ? T.red : T.text}
                       sub={`${pct(kpis.cancel_pct, 1)} cancel rate`}
-                      goal={`of booked: ${nfmt(kpis.booked_rides)}`}
-                      goalLabel={n(kpis.cancel_pct) > 35 ? '⚠ High' : null}
+                      goalLabel={cancelPct > 35 ? '⚠ High' : null}
                       goalLabelColor={T.red}
-                      bar={kpis.booked_rides > 0 ? { pct: n(kpis.cancelled_rides) / n(kpis.booked_rides), color: n(kpis.cancel_pct) > 35 ? T.red : T.amber } : null}
+                      bar={kpis.service_trips > 0 ? { pct: n(kpis.cancelled_trips) / n(kpis.service_trips), color: cancelPct > 35 ? T.red : T.amber } : null}
                     />
                   </div>
 
-                  {/* Row 2 — Account & partner summary */}
+                  {/* Row 2 — Accounts, customers, complaints */}
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
                     <KpiTile2
-                      label="Accounts Booked"
-                      value={nfmt(kpis.accounts_booked)}
+                      label="Accounts"
+                      value={nfmt(kpis.accounts)}
                       valueColor={T.text}
-                      sub={`${nfmt(kpis.accounts_completed)} completed ≥1 ride`}
+                      sub={`${nfmt(kpis.customer_names)} named customers`}
                     />
                     <KpiTile2
-                      label="Partners Booked"
-                      value={nfmt(kpis.partners_booked)}
+                      label="Partners"
+                      value={nfmt(kpis.partners)}
                       valueColor={T.text}
-                      sub={`${nfmt(kpis.partners_completed)} completed ≥1 ride`}
+                      sub="Active in window"
                     />
                     <KpiTile2
-                      label="Booked Rides"
-                      value={nfmt(kpis.booked_rides)}
+                      label="Valid Trips"
+                      value={nfmt(kpis.valid_trips)}
                       valueColor={T.text}
-                      sub="All ride bookings in window"
+                      sub="Accepted/Pending + complained cancels"
                     />
                     <KpiTile2
                       label="Cancel Rate"
                       value={pct(kpis.cancel_pct, 1)}
-                      valueColor={n(kpis.cancel_pct) > 35 ? T.red : n(kpis.cancel_pct) > 25 ? T.amber : T.green}
-                      sub="Of all booked rides"
+                      valueColor={cancelPct > 35 ? T.red : cancelPct > 25 ? T.amber : T.green}
+                      sub="Of all service trips"
                     />
                   </div>
                 </div>
@@ -792,7 +790,7 @@ export default function CustomerAnalytics() {
 
               {/* ══ 2. MONTHLY TREND ══════════════════════════════════════════ */}
               <Card>
-                <CardHead title="Monthly Trend" sub="Revenue, margin, cancellation rate and AOV — click a metric to switch" />
+                <CardHead title="Monthly Trend" sub="Complete GMV, profit, cancellation rate and avg GMV/trip — click a metric to switch" />
                 <MonthlyTrendChart monthly={monthly} />
               </Card>
 
@@ -819,10 +817,10 @@ export default function CustomerAnalytics() {
                   <CohortHeatmap cells={acCohort} startDate={start} sizeKey="accounts" mode={cohortMode} />
                 </Card>
 
-                {/* Partner cohort */}
+                {/* Customer cohort */}
                 <Card>
-                  <CardHead title="Partner Cohort Retention" sub="Partner % retained by cohort × months since first ride" />
-                  <CohortHeatmap cells={ptCohort} startDate={start} sizeKey="partners" mode="retention" />
+                  <CardHead title="Customer Cohort Retention" sub="Customer % retained by cohort × months since first trip" />
+                  <CohortHeatmap cells={ptCohort} startDate={start} sizeKey="customers" mode="retention" />
                 </Card>
               </div>
 
@@ -842,7 +840,7 @@ export default function CustomerAnalytics() {
                         { key: 'new_accounts',label: 'New',         render: r => nfmt(r.new_accounts),  color: () => T.green },
                         { key: 'retained',    label: 'Retained',    render: r => nfmt(r.retained),       color: () => T.blue },
                         { key: 'reactivated', label: 'Reactivated', render: r => nfmt(r.reactivated),    color: () => T.amber },
-                        { key: 'revenue',     label: 'Revenue',     render: r => usdC(r.revenue),        bold: () => true },
+                        { key: 'gmv',         label: 'GMV',         render: r => usdC(r.gmv),            bold: () => true },
                         { key: 'expansion',   label: 'Expansion',   render: r => usdC(r.expansion),      color: () => T.green },
                         { key: 'contraction', label: 'Contraction', render: r => usdC(r.contraction),    color: () => T.red },
                       ]}
@@ -854,15 +852,16 @@ export default function CustomerAnalytics() {
 
               {/* ══ 6. VALUE TIERS (full-width) ════════════════════════════════ */}
               <Card>
-                <CardHead title="Account Value Tiers" sub="Accounts with ≥1 completed ride in window, bucketed by total revenue" />
+                <CardHead title="Account Value Tiers" sub="All accounts in window, bucketed by Complete GMV" />
                 <DataTable
                   keyField="tier"
                   cols={[
                     { key: 'tier',             label: 'Tier',          align: 'left', bold: () => true, color: r => TIER_COLORS[r.tier] ?? T.text },
                     { key: 'accounts',         label: 'Accounts',      render: r => nfmt(r.accounts) },
-                    { key: 'revenue',          label: 'Revenue',       render: r => usd(r.revenue), bold: () => true, color: () => T.navy },
-                    { key: 'pct_revenue',      label: '% Revenue',     render: r => <BarPill value={n(r.pct_revenue)} max={100} color={TIER_COLORS[r.tier] ?? T.blue} /> },
-                    { key: 'rides',            label: 'Rides',         render: r => nfmt(r.rides), color: () => T.text3 },
+                    { key: 'gmv',              label: 'Complete GMV',  render: r => usd(r.gmv),    bold: () => true, color: () => T.navy },
+                    { key: 'pct_gmv',          label: '% GMV',         render: r => <BarPill value={n(r.pct_gmv)} max={100} color={TIER_COLORS[r.tier] ?? T.blue} /> },
+                    { key: 'profit',           label: 'Profit',        render: r => usd(r.profit),  color: r => n(r.profit) < 0 ? T.red : T.green },
+                    { key: 'trips',            label: 'Trips',         render: r => nfmt(r.trips),  color: () => T.text3 },
                     { key: 'avg_months_active',label: 'Avg Active Mo.',render: r => r.avg_months_active ?? '—', color: () => T.text3 },
                     { key: 'dormant_90d',      label: 'Dormant 90d',   render: r => nfmt(r.dormant_90d), color: r => n(r.dormant_90d) > 0 ? T.red : T.text3 },
                   ]}
@@ -874,31 +873,24 @@ export default function CustomerAnalytics() {
               <Card>
                 <CardHead title="Partner Profitability" sub="All partners active in the selected date range — click any column header to sort" />
                 <DataTable
-                  keyField="partner_name"
-                  defaultSort="booked"
+                  keyField="customer_name"
+                  defaultSort="complete_gmv"
                   defaultDir="desc"
                   pageSize={50}
                   cols={[
-                    { key: 'partner_name', label: 'Partner',    align: 'left', bold: () => true, color: () => T.navy,
-                      render: r => (
-                        <span>
-                          {r.partner_name}
-                          {['Hoppa', 'HoppaGo'].some(x => r.partner_name?.includes(x)) && (
-                            <span style={{ marginLeft: 6, fontSize: 9, background: T.amberBg, color: T.amberInk, padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>margin unverified</span>
-                          )}
-                        </span>
-                      )
-                    },
-                    { key: 'accounts',   label: 'Accounts',   render: r => nfmt(r.accounts),   color: () => T.text3 },
-                    { key: 'booked',     label: 'Booked',     render: r => nfmt(r.booked),      color: () => T.text3 },
-                    { key: 'completed',  label: 'Completed',  render: r => nfmt(r.completed) },
-                    { key: 'cancel_pct', label: 'Cancel %',   render: r => pct(r.cancel_pct, 1), color: r => n(r.cancel_pct) > 30 ? T.red : T.text3 },
-                    { key: 'aov',        label: 'AOV',         render: r => usd(r.aov, 2) },
-                    { key: 'revenue',    label: 'Revenue',    render: r => usd(r.revenue),       bold: () => true, color: () => T.navy },
-                    { key: 'margin',     label: 'Margin',     render: r => usd(r.margin),        color: r => n(r.margin) < 0 ? T.red : T.text },
-                    { key: 'margin_pct', label: 'Margin %',   bold: () => true,
-                      render: r => pct(r.margin_pct, 1),
-                      color: r => n(r.margin_pct) < 0 ? T.red : n(r.margin_pct) < 5 ? T.amber : T.green },
+                    { key: 'customer_name',    label: 'Customer',   align: 'left', bold: () => true, color: () => T.navy },
+                    { key: 'partner',          label: 'Partner',    align: 'left', color: () => T.text3 },
+                    { key: 'accounts',         label: 'Accounts',   render: r => nfmt(r.accounts),   color: () => T.text3 },
+                    { key: 'service_trips',    label: 'Trips',      render: r => nfmt(r.service_trips),  color: () => T.text3 },
+                    { key: 'service_rides',    label: 'Rides',      render: r => nfmt(r.service_rides),  color: () => T.text3 },
+                    { key: 'cancel_pct',       label: 'Cancel %',   render: r => pct(r.cancel_pct, 1), color: r => n(r.cancel_pct) > 30 ? T.red : T.text3 },
+                    { key: 'complaint_rate',   label: 'Complaint %', render: r => pct(r.complaint_rate, 2), color: r => n(r.complaint_rate) > 3 ? T.red : T.text3 },
+                    { key: 'avg_gmv_per_trip', label: 'Avg GMV',    render: r => usd(r.avg_gmv_per_trip, 2) },
+                    { key: 'complete_gmv',     label: 'Complete GMV', render: r => usd(r.complete_gmv), bold: () => true, color: () => T.navy },
+                    { key: 'profit',           label: 'Profit',     render: r => usd(r.profit), color: () => T.green },
+                    { key: 'profit_margin_pct', label: 'Margin %',  bold: () => true,
+                      render: r => pct(r.profit_margin_pct, 1),
+                      color: r => n(r.profit_margin_pct) < 5 ? T.amber : T.green },
                   ]}
                   rows={partners}
                 />
@@ -906,17 +898,18 @@ export default function CustomerAnalytics() {
 
               {/* ══ 8. PASSENGERS ════════════════════════════════════════════ */}
               <Card>
-                <CardHead title="Passenger Repeat Purchase" sub="Person-level frequency buckets — ~76% of completed rides matched to a person_id" />
+                <CardHead title="Passenger Repeat Purchase" sub="Person-level frequency — bucketed by distinct bookings (ride_id), not trips" />
                 <DataTable
                   keyField="bucket"
                   cols={[
-                    { key: 'bucket',        label: 'Frequency',   align: 'left', bold: () => true, color: () => T.navy },
-                    { key: 'customers',     label: 'Customers',   render: r => nfmt(r.customers) },
-                    { key: 'pct_customers', label: '% Customers', render: r => pct(r.pct_customers, 2), color: () => T.text3 },
-                    { key: 'rides',         label: 'Rides',       render: r => nfmt(r.rides),      color: () => T.text3 },
-                    { key: 'revenue',       label: 'Revenue',     render: r => usd(r.revenue),      bold: () => true, color: () => T.navy },
-                    { key: 'pct_revenue',   label: '% Revenue',   render: r => <BarPill value={n(r.pct_revenue)} max={maxPaxRev} color={T.blue} /> },
-                    { key: 'avg_ltv',       label: 'Avg LTV',     render: r => usd(r.avg_ltv, 2),  color: () => T.text3 },
+                    { key: 'bucket',        label: 'Frequency',    align: 'left', bold: () => true, color: () => T.navy },
+                    { key: 'customers',     label: 'Customers',    render: r => nfmt(r.customers) },
+                    { key: 'pct_customers', label: '% Customers',  render: r => pct(r.pct_customers, 2), color: () => T.text3 },
+                    { key: 'bookings',      label: 'Bookings',     render: r => nfmt(r.bookings),   color: () => T.text3 },
+                    { key: 'trips',         label: 'Trips',        render: r => nfmt(r.trips),      color: () => T.text3 },
+                    { key: 'gmv',           label: 'Complete GMV', render: r => usd(r.gmv),         bold: () => true, color: () => T.navy },
+                    { key: 'pct_gmv',       label: '% GMV',        render: r => <BarPill value={n(r.pct_gmv)} max={maxPaxGmv} color={T.blue} /> },
+                    { key: 'avg_ltv',       label: 'Avg LTV',      render: r => usd(r.avg_ltv, 2),  color: () => T.text3 },
                   ]}
                   rows={pax}
                 />

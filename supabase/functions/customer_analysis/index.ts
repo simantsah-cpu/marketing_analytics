@@ -11,7 +11,6 @@ const CORS = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BigQuery auth — verbatim from leadership-dashboard / destination-analysis
-// Uses BIGQUERY_SERVICE_ACCOUNT_JSON (full JSON blob, already set in project)
 // ─────────────────────────────────────────────────────────────────────────────
 async function getBQAccessToken(serviceAccountJson: string): Promise<string> {
   const sa = JSON.parse(serviceAccountJson)
@@ -71,7 +70,6 @@ async function getBQAccessToken(serviceAccountJson: string): Promise<string> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BigQuery query runner — uses polling for long-running jobs (>120s timeout)
-// Returns ONE row with 8 JSON string columns; parses each with JSON.parse()
 // ─────────────────────────────────────────────────────────────────────────────
 async function extractJsonRow(result: any): Promise<Record<string, unknown>> {
   const fields: string[] = (result.schema?.fields ?? []).map((f: { name: string }) => f.name)
@@ -150,7 +148,6 @@ async function runQuery(
   let payload = await res.json()
   if (!res.ok) throw new Error(`BigQuery error: ${JSON.stringify(payload.error ?? payload)}`)
 
-  // Long-running jobs return jobComplete: false — poll until done
   if (!payload.jobComplete) {
     const jobId = payload.jobReference?.jobId
     if (!jobId) throw new Error('BigQuery did not return a job ID')
@@ -171,7 +168,17 @@ const CACHE_TTL_MS = 15 * 60 * 1000
 const cache = new Map<string, { at: number; value: unknown }>()
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The SQL query (embedded to avoid Deno.readTextFile path issues in deploy)
+// SQL v2 — rebuilt per Wilson review + Complaint Summary Report Data Dictionary
+// All auth / caching / param wiring above is unchanged from v1.
+//
+// Key changes from v1:
+//   1. Grain = trip (ride_id + trip_no), already unique — no GROUP BY ride_id
+//   2. ride_stat 'Unpaid' excluded
+//   3. Revenue -> Complete GMV = elife_amount_usd + additional_charge_amount_usd
+//   4. "Complete" = pickup_datetime < NOW() (not dispatch_stat = 'At destination')
+//   5. customer_name / partner from dim.dim_fleet_as_customer
+//   6. Complaint rate uses Valid Trips denominator
+//   7. customer_cohort replaces partner_cohort
 // ─────────────────────────────────────────────────────────────────────────────
 const SQL = `
 WITH
@@ -183,260 +190,300 @@ params AS (
     DATE_SUB(DATE_TRUNC(@start_date, MONTH), INTERVAL 1 MONTH)         AS lag_floor,
     DATE '2019-01-01'                                                  AS history_floor
 ),
-acct_names AS (
-  SELECT fleet_id, IFNULL(NULLIF(customer_name,''), fleet_name) AS account_name
-  FROM \`elife-data-warehouse-prod.dim.dim_fleet_as_customer\`
-),
-base AS (
+
+-- ONE scan. Grain = trip (ride_id + trip_no), which is already unique.
+-- Scanned from history_floor so cohort anchors see full history.
+scope AS (
   SELECT
-    v.ride_id,
-    MIN(v.pickup_date)                                     AS pickup_date,
-    ANY_VALUE(v.partner_id)                                AS partner_id,
-    ANY_VALUE(v.partner_name)                              AS partner_name,
-    ANY_VALUE(v.from_fleet_id_as_customer)                 AS account_id,
-    ANY_VALUE(an.account_name)                             AS account_name,
-    ANY_VALUE(v.passenger_id)                              AS passenger_id,
-    MAX(IF(v.dispatch_stat = 'At destination', 1, 0))      AS is_completed,
-    MAX(IF(v.ride_stat = 'Cancelled', 1, 0))               AS is_cancelled,
-    MAX(v.has_complaint)                                   AS has_complaint,
-    CAST(ANY_VALUE(v.elife_amount_usd_by_trip) AS FLOAT64) AS revenue,
-    CAST(SUM(v.dispatch_amount_net_usd)        AS FLOAT64) AS cost
+    v.ride_id, v.trip_no, v.pickup_date,
+    v.from_fleet_id_as_customer                        AS fleet_id,
+    d.customer_name,
+    COALESCE(d.partner, '(unmapped)')                  AS partner,
+    d.customer_type, d.existing_partner,
+    v.passenger_id, v.ride_stat, v.dispatch_stat,
+    v.has_complaint, v.has_ops_complaint,
+    CAST(IFNULL(v.elife_amount_usd, 0)                 AS FLOAT64)
+      + CAST(IFNULL(v.additional_charge_amount_usd, 0) AS FLOAT64)     AS gmv,
+    CAST(IFNULL(v.dispatch_amount_net_usd, 0)          AS FLOAT64)     AS cost
   FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\` v
-  LEFT JOIN acct_names an ON an.fleet_id = v.from_fleet_id_as_customer
+  LEFT JOIN \`elife-data-warehouse-prod.dim.dim_fleet_as_customer\` d
+    ON v.from_fleet_id_as_customer = d.fleet_id
   , params p
   WHERE v.pickup_date BETWEEN p.history_floor AND p.win_end
-  GROUP BY v.ride_id
+    AND v.ride_stat IN ('Cancelled', 'Accepted', 'Pending')
+    AND v.pickup_datetime < CURRENT_TIMESTAMP()
 ),
-acct_first AS (
-  SELECT account_id, DATE_TRUNC(MIN(pickup_date), MONTH) AS first_month
-  FROM base WHERE is_completed = 1 GROUP BY account_id
-),
-partner_first AS (
-  SELECT partner_id, DATE_TRUNC(MIN(pickup_date), MONTH) AS first_month
-  FROM base WHERE is_completed = 1 GROUP BY partner_id
-),
-rides AS (
-  SELECT b.* FROM base b, params p
-  WHERE b.pickup_date BETWEEN p.win_start AND p.win_end
+
+-- Window-filtered trips. __ACCOUNT_FILTER__ is replaced at runtime.
+trips AS (
+  SELECT s.* FROM scope s, params p
+  WHERE s.pickup_date BETWEEN p.win_start AND p.win_end
   __ACCOUNT_FILTER__
 ),
-comp AS (SELECT * FROM rides WHERE is_completed = 1),
+
+-- Cohort anchors from facts, NOT dim.first_trade_date
+-- (NULL for 64.5% of active fleets; disagrees with facts for the rest).
+fleet_first AS (
+  SELECT fleet_id, DATE_TRUNC(MIN(pickup_date), MONTH) AS first_month
+  FROM scope GROUP BY fleet_id
+),
+cust_first AS (
+  SELECT customer_name, DATE_TRUNC(MIN(pickup_date), MONTH) AS first_month
+  FROM scope WHERE customer_name IS NOT NULL GROUP BY customer_name
+),
+
+-- Activity seeded one month before window (feeds LAG in flow).
 act_ext AS (
-  SELECT b.account_id, DATE_TRUNC(b.pickup_date, MONTH) AS am,
-         COUNT(*) AS rides, SUM(b.revenue) AS revenue
-  FROM base b, params p
-  WHERE b.is_completed = 1 AND b.pickup_date >= p.lag_floor AND b.pickup_date <= p.win_end
+  SELECT s.fleet_id, DATE_TRUNC(s.pickup_date, MONTH) AS am,
+         COUNT(*) AS n_trips, SUM(s.gmv) AS gmv
+  FROM scope s, params p WHERE s.pickup_date >= p.lag_floor
   GROUP BY 1, 2
 ),
 acct_activity AS (
   SELECT a.* FROM act_ext a, params p WHERE a.am >= p.win_start_month
 ),
+
+-- 1. KPI header
 kpis AS (
   SELECT TO_JSON_STRING(STRUCT(
-    COUNT(*)                                                     AS booked_rides,
-    COUNTIF(is_completed = 1)                                    AS completed_rides,
-    COUNTIF(is_cancelled = 1)                                    AS cancelled_rides,
-    ROUND(SUM(IF(is_completed=1, revenue, 0)), 2)                AS revenue,
-    ROUND(SUM(IF(is_completed=1, revenue - cost, 0)), 2)         AS margin,
-    ROUND(SAFE_DIVIDE(SUM(IF(is_completed=1, revenue-cost, 0)),
-                      SUM(IF(is_completed=1, revenue, 0)))*100,2) AS margin_pct,
-    ROUND(SAFE_DIVIDE(COUNTIF(is_cancelled=1), COUNT(*))*100, 2) AS cancel_pct,
-    ROUND(SAFE_DIVIDE(SUM(IF(is_completed=1, revenue, 0)),
-                      COUNTIF(is_completed=1)), 2)               AS aov,
-    COUNT(DISTINCT IF(is_completed=1, account_id, NULL))         AS accounts_completed,
-    COUNT(DISTINCT account_id)                                   AS accounts_booked,
-    COUNT(DISTINCT IF(is_completed=1, partner_id, NULL))         AS partners_completed,
-    COUNT(DISTINCT partner_id)                                   AS partners_booked
-  )) AS j FROM rides
+    COUNT(*)                                                   AS service_trips,
+    COUNT(DISTINCT ride_id)                                    AS service_rides,
+    COUNTIF(ride_stat = 'Cancelled')                           AS cancelled_trips,
+    COUNTIF(dispatch_stat = 'At destination')                  AS delivered_trips,
+    ROUND(SUM(gmv), 2)                                         AS complete_gmv,
+    ROUND(SUM(cost), 2)                                        AS cost,
+    ROUND(SUM(gmv) - SUM(cost), 2)                             AS profit,
+    ROUND(SAFE_DIVIDE(SUM(gmv)-SUM(cost), SUM(gmv))*100, 2)    AS profit_margin_pct,
+    ROUND(SAFE_DIVIDE(COUNTIF(ride_stat='Cancelled'), COUNT(*))*100, 2) AS cancel_pct,
+    ROUND(SAFE_DIVIDE(SUM(gmv), COUNT(*)), 2)                  AS avg_gmv_per_trip,
+    COUNTIF(ride_stat IN ('Accepted','Pending')
+            OR (ride_stat='Cancelled' AND has_complaint=1))    AS valid_trips,
+    ROUND(SAFE_DIVIDE(SUM(has_ops_complaint),
+      COUNTIF(ride_stat IN ('Accepted','Pending')
+              OR (ride_stat='Cancelled' AND has_complaint=1)))*100, 2) AS complaint_rate,
+    ROUND(SAFE_DIVIDE(SUM(has_complaint),
+      COUNTIF(ride_stat IN ('Accepted','Pending')
+              OR (ride_stat='Cancelled' AND has_complaint=1)))*100, 2) AS all_incidence_rate,
+    COUNT(DISTINCT fleet_id)                                   AS accounts,
+    COUNT(DISTINCT customer_name)                              AS customer_names,
+    COUNT(DISTINCT partner)                                    AS partners
+  )) AS j FROM trips
 ),
+
+-- 2. Monthly trend
 monthly AS (
-  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(m, booked, completed, cancel_pct,
-           complaint_pct, revenue, margin, margin_pct, aov) ORDER BY m)) AS j
+  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(m, service_trips, service_rides,
+           cancel_pct, complaint_rate, complete_gmv, cost, profit, profit_margin_pct,
+           avg_gmv_per_trip) ORDER BY m)) AS j
   FROM (
     SELECT FORMAT_DATE('%Y-%m', DATE_TRUNC(pickup_date, MONTH)) AS m,
-      COUNT(*) AS booked,
-      COUNTIF(is_completed=1) AS completed,
-      ROUND(SAFE_DIVIDE(COUNTIF(is_cancelled=1), COUNT(*))*100, 2) AS cancel_pct,
-      ROUND(SAFE_DIVIDE(COUNTIF(is_completed=1 AND has_complaint=1),
-                        COUNTIF(is_completed=1))*100, 2) AS complaint_pct,
-      ROUND(SUM(IF(is_completed=1, revenue, 0)), 2) AS revenue,
-      ROUND(SUM(IF(is_completed=1, revenue-cost, 0)), 2) AS margin,
-      ROUND(SAFE_DIVIDE(SUM(IF(is_completed=1, revenue-cost, 0)),
-                        SUM(IF(is_completed=1, revenue, 0)))*100, 2) AS margin_pct,
-      ROUND(SAFE_DIVIDE(SUM(IF(is_completed=1, revenue, 0)),
-                        COUNTIF(is_completed=1)), 2) AS aov
-    FROM rides GROUP BY m
+      COUNT(*)                AS service_trips,
+      COUNT(DISTINCT ride_id) AS service_rides,
+      ROUND(SAFE_DIVIDE(COUNTIF(ride_stat='Cancelled'), COUNT(*))*100, 2) AS cancel_pct,
+      ROUND(SAFE_DIVIDE(SUM(has_ops_complaint),
+        COUNTIF(ride_stat IN ('Accepted','Pending')
+                OR (ride_stat='Cancelled' AND has_complaint=1)))*100, 2) AS complaint_rate,
+      ROUND(SUM(gmv), 2)                AS complete_gmv,
+      ROUND(SUM(cost), 2)               AS cost,
+      ROUND(SUM(gmv)-SUM(cost), 2)      AS profit,
+      ROUND(SAFE_DIVIDE(SUM(gmv)-SUM(cost), SUM(gmv))*100, 2) AS profit_margin_pct,
+      ROUND(SAFE_DIVIDE(SUM(gmv), COUNT(*)), 2) AS avg_gmv_per_trip
+    FROM trips GROUP BY m
   )
 ),
+
+-- 3. Account cohort grid (fleet_id)
 account_cohort AS (
-  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(cohort, mi, accounts, rides, revenue)
+  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(cohort, mi, accounts, trips, gmv)
            ORDER BY cohort, mi)) AS j
   FROM (
     SELECT
       IF(f.first_month < p.win_start_month, '__PRE__',
-         FORMAT_DATE('%Y-%m', f.first_month))                    AS cohort,
+         FORMAT_DATE('%Y-%m', f.first_month))               AS cohort,
       IF(f.first_month < p.win_start_month,
          DATE_DIFF(a.am, p.win_start_month, MONTH),
-         DATE_DIFF(a.am, f.first_month, MONTH))                  AS mi,
-      COUNT(DISTINCT a.account_id) AS accounts,
-      SUM(a.rides)                 AS rides,
-      ROUND(SUM(a.revenue), 2)     AS revenue
-    FROM acct_activity a JOIN acct_first f USING (account_id), params p
-    GROUP BY cohort, mi
-    HAVING mi >= 0
+         DATE_DIFF(a.am, f.first_month, MONTH))             AS mi,
+      COUNT(DISTINCT a.fleet_id) AS accounts,
+      SUM(a.n_trips)             AS trips,
+      ROUND(SUM(a.gmv), 2)       AS gmv
+    FROM acct_activity a JOIN fleet_first f USING (fleet_id), params p
+    GROUP BY cohort, mi HAVING mi >= 0
   )
 ),
-partner_activity AS (
-  SELECT partner_id, DATE_TRUNC(pickup_date, MONTH) AS am,
-         COUNT(*) AS rides, SUM(revenue) AS revenue
-  FROM comp GROUP BY 1, 2
+
+-- 4. Customer cohort grid (customer_name from dim) — replaces v1 partner_id cohort
+cust_activity AS (
+  SELECT customer_name, DATE_TRUNC(pickup_date, MONTH) AS am,
+         COUNT(*) AS n_trips, SUM(gmv) AS gmv
+  FROM trips WHERE customer_name IS NOT NULL GROUP BY 1, 2
 ),
-partner_cohort AS (
-  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(cohort, mi, partners, rides, revenue)
+customer_cohort AS (
+  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(cohort, mi, customers, trips, gmv)
            ORDER BY cohort, mi)) AS j
   FROM (
     SELECT
       IF(f.first_month < p.win_start_month, '__PRE__',
-         FORMAT_DATE('%Y-%m', f.first_month))                    AS cohort,
+         FORMAT_DATE('%Y-%m', f.first_month))               AS cohort,
       IF(f.first_month < p.win_start_month,
          DATE_DIFF(a.am, p.win_start_month, MONTH),
-         DATE_DIFF(a.am, f.first_month, MONTH))                  AS mi,
-      COUNT(DISTINCT a.partner_id) AS partners,
-      SUM(a.rides)             AS rides,
-      ROUND(SUM(a.revenue), 2) AS revenue
-    FROM partner_activity a JOIN partner_first f USING (partner_id), params p
-    GROUP BY cohort, mi
-    HAVING mi >= 0
+         DATE_DIFF(a.am, f.first_month, MONTH))             AS mi,
+      COUNT(DISTINCT a.customer_name) AS customers,
+      SUM(a.n_trips)                  AS trips,
+      ROUND(SUM(a.gmv), 2)            AS gmv
+    FROM cust_activity a JOIN cust_first f USING (customer_name), params p
+    GROUP BY cohort, mi HAVING mi >= 0
   )
 ),
+
+-- 5. Account flow
 flow_base AS (
-  SELECT a.account_id, a.am, a.revenue, f.first_month,
-    LAG(a.revenue) OVER (PARTITION BY a.account_id ORDER BY a.am) AS prev_rev,
-    DATE_DIFF(a.am, LAG(a.am) OVER (PARTITION BY a.account_id ORDER BY a.am),
-              MONTH)                                              AS gap
-  FROM act_ext a JOIN acct_first f USING (account_id)
+  SELECT a.fleet_id, a.am, a.gmv, f.first_month,
+    LAG(a.gmv) OVER (PARTITION BY a.fleet_id ORDER BY a.am) AS prev_gmv,
+    DATE_DIFF(a.am, LAG(a.am) OVER (PARTITION BY a.fleet_id ORDER BY a.am),
+              MONTH)                                        AS gap
+  FROM act_ext a JOIN fleet_first f USING (fleet_id)
 ),
 flow AS (
   SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(m, active, new_accounts, retained,
-           reactivated, revenue, new_revenue, expansion, contraction)
-           ORDER BY m)) AS j
+           reactivated, gmv, new_gmv, expansion, contraction) ORDER BY m)) AS j
   FROM (
     SELECT FORMAT_DATE('%Y-%m', fb.am) AS m,
-      COUNT(DISTINCT fb.account_id) AS active,
-      COUNT(DISTINCT IF(fb.first_month = fb.am, fb.account_id, NULL)) AS new_accounts,
+      COUNT(DISTINCT fb.fleet_id) AS active,
+      COUNT(DISTINCT IF(fb.first_month = fb.am, fb.fleet_id, NULL)) AS new_accounts,
       COUNT(DISTINCT IF(fb.first_month < fb.am AND fb.gap = 1,
-                        fb.account_id, NULL)) AS retained,
+                        fb.fleet_id, NULL)) AS retained,
       COUNT(DISTINCT IF(fb.first_month < fb.am AND (fb.gap > 1 OR fb.gap IS NULL),
-                        fb.account_id, NULL)) AS reactivated,
-      ROUND(SUM(fb.revenue), 2) AS revenue,
-      ROUND(SUM(IF(fb.first_month = fb.am, fb.revenue, 0)), 2) AS new_revenue,
-      ROUND(SUM(IF(fb.first_month < fb.am AND fb.gap = 1 AND fb.revenue > fb.prev_rev,
-                   fb.revenue - fb.prev_rev, 0)), 2) AS expansion,
-      ROUND(SUM(IF(fb.first_month < fb.am AND fb.gap = 1 AND fb.revenue < fb.prev_rev,
-                   fb.prev_rev - fb.revenue, 0)), 2) AS contraction
+                        fb.fleet_id, NULL)) AS reactivated,
+      ROUND(SUM(fb.gmv), 2) AS gmv,
+      ROUND(SUM(IF(fb.first_month = fb.am, fb.gmv, 0)), 2) AS new_gmv,
+      ROUND(SUM(IF(fb.first_month < fb.am AND fb.gap = 1 AND fb.gmv > fb.prev_gmv,
+                   fb.gmv - fb.prev_gmv, 0)), 2) AS expansion,
+      ROUND(SUM(IF(fb.first_month < fb.am AND fb.gap = 1 AND fb.gmv < fb.prev_gmv,
+                   fb.prev_gmv - fb.gmv, 0)), 2) AS contraction
     FROM flow_base fb, params p
     WHERE fb.am >= p.win_start_month
     GROUP BY m
   )
 ),
+
+-- 6. Account value tiers (banded on Complete GMV)
 acct_totals AS (
-  SELECT c.account_id,
-    COUNT(*) AS rides,
-    SUM(c.revenue) AS revenue,
-    COUNT(DISTINCT DATE_TRUNC(c.pickup_date, MONTH)) AS months_active,
-    DATE_DIFF((SELECT win_end FROM params), MAX(c.pickup_date), DAY) AS recency_days
-  FROM comp c GROUP BY c.account_id
+  SELECT t.fleet_id,
+    COUNT(*) AS n_trips, SUM(t.gmv) AS gmv, SUM(t.cost) AS cost,
+    COUNT(DISTINCT DATE_TRUNC(t.pickup_date, MONTH)) AS months_active,
+    DATE_DIFF((SELECT win_end FROM params), MAX(t.pickup_date), DAY) AS recency_days
+  FROM trips t GROUP BY t.fleet_id
 ),
 tiers AS (
-  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(tier, accounts, revenue, pct_revenue,
-           rides, avg_months_active, dormant_90d) ORDER BY tier)) AS j
+  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(tier, accounts, gmv, pct_gmv, profit,
+           trips, avg_months_active, dormant_90d) ORDER BY tier)) AS j
   FROM (
     SELECT
-      CASE WHEN revenue >= 1000000 THEN 'A. $1M+'
-           WHEN revenue >=  100000 THEN 'B. $100k-1M'
-           WHEN revenue >=   10000 THEN 'C. $10k-100k'
-           WHEN revenue >=    1000 THEN 'D. $1k-10k'
-           ELSE                         'E. <$1k' END AS tier,
-      COUNT(*)                 AS accounts,
-      ROUND(SUM(revenue), 2)   AS revenue,
-      ROUND(SUM(revenue) / SUM(SUM(revenue)) OVER () * 100, 2) AS pct_revenue,
-      SUM(rides)               AS rides,
+      CASE WHEN gmv >= 1000000 THEN 'A. $1M+'
+           WHEN gmv >=  100000 THEN 'B. $100k-1M'
+           WHEN gmv >=   10000 THEN 'C. $10k-100k'
+           WHEN gmv >=    1000 THEN 'D. $1k-10k'
+           ELSE                     'E. <$1k' END AS tier,
+      COUNT(*)               AS accounts,
+      ROUND(SUM(gmv), 2)     AS gmv,
+      ROUND(SUM(gmv) / SUM(SUM(gmv)) OVER () * 100, 2) AS pct_gmv,
+      ROUND(SUM(gmv) - SUM(cost), 2) AS profit,
+      SUM(n_trips)           AS trips,
       ROUND(AVG(months_active), 1) AS avg_months_active,
       COUNTIF(recency_days > 90)   AS dormant_90d
     FROM acct_totals GROUP BY tier
   )
 ),
+
+-- 7. Partner profitability (Wilson sign-off)
+-- Grouped by customer_name + partner — do NOT collapse by partner alone
+-- (130 partners map to >1 customer_name). All margins positive in v2.
 partners AS (
-  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(partner_name, accounts, booked, completed,
-           cancelled, cancel_pct, complaint_pct, aov, revenue, margin, margin_pct)
-           ORDER BY revenue DESC)) AS j
+  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(customer_name, partner, customer_type,
+           existing_partner, accounts, service_trips, service_rides, cancelled_trips,
+           cancel_pct, complaint_rate, complete_gmv, cost, profit, profit_margin_pct,
+           avg_gmv_per_trip) ORDER BY complete_gmv DESC)) AS j
   FROM (
-    SELECT partner_name,
-      COUNT(DISTINCT account_id) AS accounts,
-      COUNT(*)                   AS booked,
-      COUNTIF(is_completed = 1)  AS completed,
-      COUNTIF(is_cancelled = 1)  AS cancelled,
-      ROUND(SAFE_DIVIDE(COUNTIF(is_cancelled=1), COUNT(*))*100, 2) AS cancel_pct,
-      ROUND(SAFE_DIVIDE(COUNTIF(is_completed=1 AND has_complaint=1),
-                        COUNTIF(is_completed=1))*100, 2) AS complaint_pct,
-      ROUND(SAFE_DIVIDE(SUM(IF(is_completed=1, revenue, 0)),
-                        COUNTIF(is_completed=1)), 2) AS aov,
-      ROUND(SUM(IF(is_completed=1, revenue, 0)), 2) AS revenue,
-      ROUND(SUM(IF(is_completed=1, revenue - cost, 0)), 2) AS margin,
-      ROUND(SAFE_DIVIDE(SUM(IF(is_completed=1, revenue-cost, 0)),
-                        SUM(IF(is_completed=1, revenue, 0)))*100, 2) AS margin_pct
-    FROM rides GROUP BY partner_name
-    ORDER BY revenue DESC
+    SELECT customer_name, partner,
+      ANY_VALUE(customer_type) AS customer_type,
+      MAX(existing_partner)    AS existing_partner,
+      COUNT(DISTINCT fleet_id) AS accounts,
+      COUNT(*)                 AS service_trips,
+      COUNT(DISTINCT ride_id)  AS service_rides,
+      COUNTIF(ride_stat='Cancelled') AS cancelled_trips,
+      ROUND(SAFE_DIVIDE(COUNTIF(ride_stat='Cancelled'), COUNT(*))*100, 1) AS cancel_pct,
+      ROUND(SAFE_DIVIDE(SUM(has_ops_complaint),
+        COUNTIF(ride_stat IN ('Accepted','Pending')
+                OR (ride_stat='Cancelled' AND has_complaint=1)))*100, 2) AS complaint_rate,
+      ROUND(SUM(gmv), 2)  AS complete_gmv,
+      ROUND(SUM(cost), 2) AS cost,
+      ROUND(SUM(gmv)-SUM(cost), 2) AS profit,
+      ROUND(SAFE_DIVIDE(SUM(gmv)-SUM(cost), SUM(gmv))*100, 1) AS profit_margin_pct,
+      ROUND(SAFE_DIVIDE(SUM(gmv), COUNT(*)), 2) AS avg_gmv_per_trip
+    FROM trips GROUP BY customer_name, partner
   )
 ),
+
+-- 8. Passenger repeat purchase
+-- Bucketed by DISTINCT BOOKINGS (ride_id), not trips.
+-- Trip-based bucketing inflates repeat rate: 10.36% vs true 1.75%.
 person AS (
-  SELECT cu.person_id, COUNT(*) AS n, SUM(c.revenue) AS revenue
-  FROM comp c
-  JOIN \`elife-data-warehouse-prod.ods.ride_customer\` cu ON c.passenger_id = cu.id
+  SELECT cu.person_id,
+         COUNT(DISTINCT t.ride_id) AS n_bookings,
+         COUNT(*)                  AS n_trips,
+         SUM(t.gmv)                AS gmv
+  FROM trips t
+  JOIN \`elife-data-warehouse-prod.ods.ride_customer\` cu ON t.passenger_id = cu.id
   WHERE cu.person_id IS NOT NULL
   GROUP BY cu.person_id
 ),
 passengers AS (
   SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(bucket, customers, pct_customers,
-           rides, revenue, pct_revenue, avg_ltv) ORDER BY sort_key)) AS j
+           bookings, trips, gmv, pct_gmv, avg_ltv) ORDER BY sort_key)) AS j
   FROM (
     SELECT
-      CASE WHEN n = 1 THEN '1 ride'    WHEN n = 2 THEN '2 rides'
-           WHEN n <= 4 THEN '3-4 rides' WHEN n <= 9 THEN '5-9 rides'
-           ELSE '10+ rides' END AS bucket,
-      MIN(n)   AS sort_key,
-      COUNT(*) AS customers,
+      CASE WHEN n_bookings = 1 THEN '1 booking'
+           WHEN n_bookings = 2 THEN '2 bookings'
+           WHEN n_bookings <= 4 THEN '3-4 bookings'
+           WHEN n_bookings <= 9 THEN '5-9 bookings'
+           ELSE '10+ bookings' END AS bucket,
+      MIN(n_bookings) AS sort_key,
+      COUNT(*)        AS customers,
       ROUND(COUNT(*) / SUM(COUNT(*)) OVER () * 100, 3) AS pct_customers,
-      SUM(n)   AS rides,
-      ROUND(SUM(revenue), 2) AS revenue,
-      ROUND(SUM(revenue) / SUM(SUM(revenue)) OVER () * 100, 2) AS pct_revenue,
-      ROUND(AVG(revenue), 2) AS avg_ltv
+      SUM(n_bookings) AS bookings,
+      SUM(n_trips)    AS trips,
+      ROUND(SUM(gmv), 2) AS gmv,
+      ROUND(SUM(gmv) / SUM(SUM(gmv)) OVER () * 100, 2) AS pct_gmv,
+      ROUND(AVG(gmv), 2) AS avg_ltv
     FROM person GROUP BY bucket
   )
 ),
+
+-- Customer dropdown — populates the All Customers multi-select filter in the UI
 top_accounts AS (
-  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(account_name, revenue, completed)
-           ORDER BY revenue DESC)) AS j
+  SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(account_name, gmv, service_trips)
+           ORDER BY gmv DESC)) AS j
   FROM (
     SELECT
-      account_name,
-      ROUND(SUM(IF(is_completed=1, revenue, 0)), 2) AS revenue,
-      COUNTIF(is_completed=1)                        AS completed
-    FROM rides
-    WHERE account_name IS NOT NULL AND account_name != ''
-    GROUP BY account_name
+      customer_name            AS account_name,
+      ROUND(SUM(gmv), 2)       AS gmv,
+      COUNT(*)                 AS service_trips
+    FROM trips
+    WHERE customer_name IS NOT NULL AND customer_name != ''
+    GROUP BY customer_name
   )
 )
+
 SELECT
-  (SELECT j FROM kpis)           AS kpis,
-  (SELECT j FROM monthly)        AS monthly,
-  (SELECT j FROM account_cohort) AS account_cohort,
-  (SELECT j FROM partner_cohort) AS partner_cohort,
-  (SELECT j FROM flow)           AS flow,
-  (SELECT j FROM tiers)          AS tiers,
-  (SELECT j FROM partners)       AS partners,
-  (SELECT j FROM passengers)     AS passengers,
-  (SELECT j FROM top_accounts)   AS top_accounts
+  (SELECT j FROM kpis)            AS kpis,
+  (SELECT j FROM monthly)         AS monthly,
+  (SELECT j FROM account_cohort)  AS account_cohort,
+  (SELECT j FROM customer_cohort) AS customer_cohort,
+  (SELECT j FROM flow)            AS flow,
+  (SELECT j FROM tiers)           AS tiers,
+  (SELECT j FROM partners)        AS partners,
+  (SELECT j FROM passengers)      AS passengers,
+  (SELECT j FROM top_accounts)    AS top_accounts
 `
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -459,7 +506,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
 
   try {
-    // ── Secrets ─────────────────────────────────────────────────────────────
+    // Secrets
     const serviceAccountJson = Deno.env.get('BIGQUERY_SERVICE_ACCOUNT_JSON')
     if (!serviceAccountJson) {
       return jsonResp({ error: 'BIGQUERY_SERVICE_ACCOUNT_JSON secret not configured' }, 500)
@@ -470,7 +517,7 @@ serve(async (req) => {
     }
     const location = Deno.env.get('BQ_LOCATION') ?? 'US'
 
-    // ── Parse + validate request ─────────────────────────────────────────────
+    // Parse + validate request
     let body: { start_date?: string; end_date?: string; refresh?: boolean; account_names?: string[] } = {}
     try { body = await req.json() } catch { /* use defaults */ }
 
@@ -489,17 +536,17 @@ serve(async (req) => {
       return jsonResp({ error: `start_date cannot be earlier than ${MIN_DATE}` }, 400)
     }
 
-    // Cap end_date at today — never include forward bookings (build brief §7.5)
+    // Cap end_date at today — never include forward bookings
     const today = new Date().toISOString().slice(0, 10)
     const cappedEnd = end_date! > today ? today : end_date!
 
-    // Inject account name filter into SQL
+    // Inject account name filter (v2: filter on s.customer_name from dim join)
     const accountClause = filteredNames.length > 0
-      ? 'AND b.account_name IN UNNEST(@account_names)'
+      ? 'AND s.customer_name IN UNNEST(@account_names)'
       : ''
     const sql = SQL.replace('__ACCOUNT_FILTER__', accountClause)
 
-    // ── Cache check (skip for filtered queries) ──────────────────────────────
+    // Cache check (skip for filtered queries)
     const cacheKey = `${start_date}|${cappedEnd}`
     const hit = cache.get(cacheKey)
     if (hit && !refresh && !filteredNames.length && Date.now() - hit.at < CACHE_TTL_MS) {
@@ -507,7 +554,7 @@ serve(async (req) => {
       return jsonResp({ ...cached, meta: { ...cached.meta, cached: true } })
     }
 
-    // ── Run BigQuery ─────────────────────────────────────────────────────────
+    // Run BigQuery
     const t0 = Date.now()
     const accessToken = await getBQAccessToken(serviceAccountJson)
     const { data, bytesProcessed } = await runQuery(
