@@ -180,7 +180,7 @@ const cache = new Map<string, { at: number; value: unknown }>()
 //   6. Complaint rate uses Valid Trips denominator
 //   7. customer_cohort replaces partner_cohort
 // ─────────────────────────────────────────────────────────────────────────────
-const SQL = `
+function buildSQL(accountFilter: string): string { return `
 WITH
 params AS (
   SELECT
@@ -218,7 +218,7 @@ scope AS (
 trips AS (
   SELECT s.* FROM scope s, params p
   WHERE s.pickup_date BETWEEN p.win_start AND p.win_end
-  __ACCOUNT_FILTER__
+  ${accountFilter}
 ),
 
 -- Cohort anchors from facts, NOT dim.first_trade_date
@@ -484,7 +484,7 @@ SELECT
   (SELECT j FROM partners)        AS partners,
   (SELECT j FROM passengers)      AS passengers,
   (SELECT j FROM top_accounts)    AS top_accounts
-`
+` }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Validation helpers
@@ -544,7 +544,7 @@ serve(async (req) => {
     const accountClause = filteredNames.length > 0
       ? 'AND s.customer_name IN UNNEST(@account_names)'
       : ''
-    const sql = SQL.replace('__ACCOUNT_FILTER__', accountClause)
+    const sql = buildSQL(accountClause)
 
     // Cache check (skip for filtered queries)
     const cacheKey = `${start_date}|${cappedEnd}`
