@@ -14,6 +14,8 @@ export function FiltersProvider({ children }) {
   const [affiliateFilter, setAffiliateFilter] = useState([])
   const [countryFilter, setCountryFilter]     = useState([])
   const [deviceFilter, setDeviceFilter]       = useState([])
+  const [customerFilter, setCustomerFilter]   = useState([])
+  const [customerOptions, setCustomerOptions] = useState([])
   const [groupBy, setGroupBy] = useState('affiliate')
   const [granularity, setGranularity] = useState('day')
   const [anomalies, setAnomalies] = useState({})
@@ -37,6 +39,8 @@ export function FiltersProvider({ children }) {
     affiliateFilter,   // string[] (empty = all)
     countryFilter,     // string[] (empty = all)
     deviceFilter,      // string[] (empty = all)
+    customerFilter,    // string[] (empty = all)
+    customerOptions,   // string[] available options
     groupBy,
     granularity,
     anomalies,
@@ -44,7 +48,7 @@ export function FiltersProvider({ children }) {
     r109Platform,
     r109Channel,
     r109ExchangeRate,
-  }), [dateRanges, preset, comparison, customRange, affiliateFilter, countryFilter, deviceFilter, groupBy, granularity, anomalies, filterOptions, r109Platform, r109Channel, r109ExchangeRate])
+  }), [dateRanges, preset, comparison, customRange, affiliateFilter, countryFilter, deviceFilter, customerFilter, customerOptions, groupBy, granularity, anomalies, filterOptions, r109Platform, r109Channel, r109ExchangeRate])
 
   const actions = {
     setPreset,
@@ -53,6 +57,8 @@ export function FiltersProvider({ children }) {
     setAffiliateFilter,
     setCountryFilter,
     setDeviceFilter,
+    setCustomerFilter,
+    setCustomerOptions,
     setGroupBy,
     setGranularity,
     setAnomalies,

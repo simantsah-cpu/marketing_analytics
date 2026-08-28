@@ -22,10 +22,11 @@ export default function FilterBar() {
   const { filters, actions } = useFilters()
   const { selectedProperty } = useProperty()
   const { pathname } = useLocation()
-  const isLLMPage      = pathname.startsWith('/llm') || pathname.startsWith('/ai-overview') || pathname.startsWith('/blog-banner-funnel')
-  const isAiOverview   = pathname.startsWith('/ai-overview')
-  const isReport109    = pathname.startsWith('/report-109')
-  const isDestAnalysis = pathname.startsWith('/destination-analysis')
+  const isLLMPage          = pathname.startsWith('/llm') || pathname.startsWith('/ai-overview') || pathname.startsWith('/blog-banner-funnel')
+  const isAiOverview        = pathname.startsWith('/ai-overview')
+  const isReport109         = pathname.startsWith('/report-109')
+  const isDestAnalysis      = pathname.startsWith('/destination-analysis')
+  const isCustomerAnalytics = pathname.startsWith('/customer-analytics')
 
   // Country options for the AI Overview country filter
   const [countryOptions, setCountryOptions] = useState([])
@@ -95,7 +96,26 @@ export default function FilterBar() {
       {/* Date Range */}
       <DateRangePicker filters={filters} actions={actions} />
 
-      {/* AI Overview country filter — shown only on /ai-overview */}
+      {/* Customer filter — shown only on /customer-analytics */}
+      {isCustomerAnalytics && filters.customerOptions?.length > 0 && (
+        <>
+          <SEP />
+          <MultiSelectFilter
+            label={
+              filters.customerFilter.length === 0
+                ? 'All Customers'
+                : filters.customerFilter.length === 1
+                  ? filters.customerFilter[0]
+                  : `${filters.customerFilter.length} Customers`
+            }
+            options={filters.customerOptions}
+            selected={filters.customerFilter}
+            onApply={actions.setCustomerFilter}
+            minWidth={160}
+          />
+        </>
+      )}
+
       {isAiOverview && countryOptions.length > 0 && (
         <>
           <SEP />
@@ -191,8 +211,8 @@ export default function FilterBar() {
         </>
       )}
 
-      {/* Comparison pill toggle — hidden on LLM / blog-banner-funnel pages */}
-      {!isLLMPage && (
+      {/* Comparison pill toggle — hidden on LLM, blog-banner-funnel, and Customer Analytics */}
+      {!isLLMPage && !isCustomerAnalytics && (
         <div style={{
           display: 'flex', alignItems: 'center',
           background: 'var(--bg)', border: '1px solid var(--border)',
@@ -219,9 +239,9 @@ export default function FilterBar() {
         </div>
       )}
 
-      {/* Separator + Group By — hidden on /llm, /report-109, /destination-analysis */}
-      {!isLLMPage && !isReport109 && !isDestAnalysis && <SEP />}
-      {!isLLMPage && !isReport109 && !isDestAnalysis && (
+      {/* Separator + Group By — hidden on /llm, /report-109, /destination-analysis, /customer-analytics */}
+      {!isLLMPage && !isReport109 && !isDestAnalysis && !isCustomerAnalytics && <SEP />}
+      {!isLLMPage && !isReport109 && !isDestAnalysis && !isCustomerAnalytics && (
         <>
           <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--subtext)', whiteSpace: 'nowrap' }}>Group by</span>
           <div style={{

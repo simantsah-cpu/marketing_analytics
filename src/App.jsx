@@ -26,6 +26,7 @@ import DestinationAnalysis from './pages/DestinationAnalysis'
 import DestinationAnalysisNew from './pages/DestinationAnalysisNew'
 import LeadershipDashboard from './pages/LeadershipDashboard'
 import LeadershipGate from './components/LeadershipGate'
+import CustomerAnalytics from './pages/CustomerAnalytics'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -79,6 +80,7 @@ function SectionToggle() {
   const isDestAnalysisNew = location.pathname === '/destination-analysis-new'
   const isDestAnalysis = location.pathname.startsWith('/destination-analysis') && !isDestAnalysisNew
   const isLeadership = location.pathname.startsWith('/leadership')
+  const isCustomerAnalytics = location.pathname.startsWith('/customer-analytics')
   const { properties, selectedProperty, switchProperty } = useProperty()
 
   const activeStyle = {
@@ -119,10 +121,10 @@ function SectionToggle() {
       padding: '10px 20px 0',
     }}>
       <button
-        onClick={() => (!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew && !isLeadership) || navigate('/scorecard')}
-        style={!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew && !isLeadership ? activeStyle : inactiveStyle}
-        onMouseEnter={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew || isLeadership) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
-        onMouseLeave={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew || isLeadership) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+        onClick={() => (!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew && !isLeadership && !isCustomerAnalytics) || navigate('/scorecard')}
+        style={!isLLM && !isReport109 && !isDestAnalysis && !isDestAnalysisNew && !isLeadership && !isCustomerAnalytics ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew || isLeadership || isCustomerAnalytics) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (isLLM || isReport109 || isDestAnalysis || isDestAnalysisNew || isLeadership || isCustomerAnalytics) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
       >
         Affiliates
       </button>
@@ -165,6 +167,14 @@ function SectionToggle() {
         onMouseLeave={e => { if (!isDestAnalysisNew) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
       >
         Destination Analysis New
+      </button>
+      <button
+        onClick={() => isCustomerAnalytics || navigate('/customer-analytics')}
+        style={isCustomerAnalytics ? activeStyle : inactiveStyle}
+        onMouseEnter={e => { if (!isCustomerAnalytics) { e.currentTarget.style.background = 'var(--hover, rgba(0,0,0,0.05))'; e.currentTarget.style.color = 'var(--text)' } }}
+        onMouseLeave={e => { if (!isCustomerAnalytics) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--subtext)' } }}
+      >
+        Customer Analytics
       </button>
 
       {/* Property switcher — right corner of same bar */}
@@ -245,6 +255,11 @@ function DashboardShell({ onQueryOpen }) {
             <Route path="/destination-analysis-new" element={
               <div style={{height:'calc(100vh - var(--header-h) - var(--filter-bar-h))',overflowY:'auto',overflowX:'hidden'}}>
                 <DestinationAnalysisNew />
+              </div>
+            } />
+            <Route path="/customer-analytics" element={
+              <div style={{height:'calc(100vh - var(--header-h) - var(--filter-bar-h))',overflowY:'auto',overflowX:'hidden'}}>
+                <CustomerAnalytics />
               </div>
             } />
           </Routes>
