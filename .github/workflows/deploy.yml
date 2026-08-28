@@ -1,4 +1,4 @@
-name: Deploy to Cloudflare Pages
+name: Deploy to Cloudflare Pages + Supabase Functions
 
 on:
   push:
@@ -41,3 +41,23 @@ jobs:
           projectName: orbit-analytics
           directory: dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-edge-functions:
+    # Always deploy edge functions in parallel with the frontend.
+    # Requires two GitHub Secrets:
+    #   SUPABASE_ACCESS_TOKEN — personal access token from app.supabase.com/account/tokens
+    #   SUPABASE_PROJECT_ID   — project ref (e.g. "abcdefghijkl"), shown in Project Settings → General
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy all edge functions
+        run: supabase functions deploy --project-ref ${{ secrets.SUPABASE_PROJECT_ID }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
