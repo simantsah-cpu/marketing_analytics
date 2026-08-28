@@ -249,7 +249,8 @@ kpis AS (
     COUNT(*)                                                   AS service_trips,
     COUNT(DISTINCT ride_id)                                    AS service_rides,
     COUNTIF(ride_stat = 'Cancelled')                           AS cancelled_trips,
-    COUNTIF(dispatch_stat = 'At destination')                  AS delivered_trips,
+    COUNTIF(dispatch_stat = 'At destination'
+            AND IFNULL(ride_stat,'') <> 'Cancelled')         AS delivered_trips,
     ROUND(SUM(gmv), 2)                                         AS complete_gmv,
     ROUND(SUM(cost), 2)                                        AS cost,
     ROUND(SUM(gmv) - SUM(cost), 2)                             AS profit,

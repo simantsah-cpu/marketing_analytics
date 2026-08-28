@@ -47,10 +47,12 @@ const T = {
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const n = (v) => { const x = (v == null || v === '') ? NaN : Number(v); return isFinite(x) ? x : 0 }
-const usdC = (v) => { const x = n(v), a = Math.abs(x), s = x < 0 ? '-$' : '$'; if (a >= 1e6) return s+(a/1e6).toFixed(2)+'M'; if (a >= 1e3) return s+(a/1e3).toFixed(1)+'k'; return s+a.toFixed(0) }
-const usd = (v, d = 0) => { const x = n(v), s = x < 0 ? '-$' : '$'; return s + Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) }
+// A8: null/undefined must never render as "$0". Check BEFORE calling n(), which coerces null→0.
+const isDash = (v) => v === null || v === undefined
+const usdC = (v) => { if (isDash(v)) return '—'; const x = n(v), a = Math.abs(x), s = x < 0 ? '-$' : '$'; if (a >= 1e6) return s+(a/1e6).toFixed(2)+'M'; if (a >= 1e3) return s+(a/1e3).toFixed(1)+'k'; return s+a.toFixed(0) }
+const usd = (v, d = 0) => { if (isDash(v)) return '—'; const x = n(v), s = x < 0 ? '-$' : '$'; return s + Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) }
 const pct = (v, d = 1) => v == null || !isFinite(n(v)) ? '—' : n(v).toFixed(d) + '%'
-const nfmt = (v) => Math.round(n(v)).toLocaleString('en-US')
+const nfmt = (v) => isDash(v) ? '—' : Math.round(n(v)).toLocaleString('en-US')
 
 // ─── Date picker presets ──────────────────────────────────────────────────────
 const todayStr = () => new Date().toISOString().slice(0, 10)
@@ -491,6 +493,18 @@ function DataTable({ cols, rows, keyField, defaultSort, defaultDir = 'desc', pag
     else { setSortKey(key); setSortDir('desc') }
   }
 
+  // A8: Warn if a numeric column is all-zero across all rows — catches silent field-name failures.
+  React.useEffect(() => {
+    if (!rows?.length || rows.length < 2) return
+    cols.forEach(c => {
+      if (!c.key || c.align === 'left') return
+      const allMissing = rows.every(r => r[c.key] === 0 || r[c.key] === '0' || r[c.key] == null)
+      if (allMissing) {
+        console.warn(`[DataTable] ⚠️ Column "${c.label ?? c.key}" is all-zero/null on ${rows.length} rows — field-name mismatch?`, rows[0])
+      }
+    })
+  }, [rows]) // eslint-disable-line
+
   const sorted = React.useMemo(() => {
     if (!sortKey || !rows?.length) return rows ?? []
     return [...rows].sort((a, b) => {
@@ -668,6 +682,17 @@ export default function CustomerAnalytics() {
   const customerFilter = filters.customerFilter
   useEffect(() => { loadData(start, end, customerFilter) }, [start, end, customerFilter]) // eslint-disable-line
 
+  // A8: All-zero guard — if every monetary KPI reads 0 the response shape is almost certainly wrong.
+  // Never let a silent-zero page ship unnoticed again.
+  useEffect(() => {
+    const k = data?.kpis
+    if (!k) return
+    const monetary = ['complete_gmv', 'profit', 'service_trips', 'cancelled_trips']
+    if (monetary.every(f => !n(k[f]))) {
+      console.warn('[CustomerAnalytics] ⚠️ ALL monetary KPIs are zero — field-name or response-shape failure', k)
+    }
+  }, [data])
+
   const meta      = data?.meta
   const kpis      = data?.kpis
   const monthly   = data?.monthly      ?? []
@@ -681,6 +706,11 @@ export default function CustomerAnalytics() {
   const cancelPct = kpis?.cancel_pct ?? 0
   const TIER_COLORS = { 'A. $1M+': T.purple, 'B. $100k-1M': T.blue, 'C. $10k-100k': T.teal, 'D. $1k-10k': T.amber, 'E. <$1k': T.text3 }
   const maxPaxGmv = Math.max(...pax.map(p => n(p.pct_gmv)), 1)
+  // A7: Cohort base = count at mi=0 — only entities with an identifiable first-trip month can be cohorted
+  const acBase      = acCohort.filter(r => r.mi === 0).reduce((s, r) => s + n(r.accounts), 0)
+  const ptBase      = ptCohort.filter(r => r.mi === 0).reduce((s, r) => s + n(r.customers), 0)
+  // A6: Passenger-attributed GMV (only trips where ride_customer.person_id matched)
+  const paxGmvTotal = pax.reduce((s, r) => s + n(r.gmv), 0)
 
   return (
     <>
@@ -746,6 +776,7 @@ export default function CustomerAnalytics() {
                       valueColor={T.text}
                       sub={`${nfmt(kpis.service_rides)} distinct rides`}
                       goal={`Delivered: ${nfmt(kpis.delivered_trips)}`}
+                      tooltip="Excludes ~6,949 'Unpaid' ride_stat rows per data dictionary (Wilson sign-off). These carry $1.28M GMV at near-100% margin and are internal adjustment rows, not customer rides."
                     />
                     <KpiTile1
                       label="Cancelled Trips"
@@ -770,7 +801,7 @@ export default function CustomerAnalytics() {
                       label="Partners"
                       value={nfmt(kpis.partners)}
                       valueColor={T.text}
-                      sub="Active in window"
+                      sub="Distinct partner-org groups (dim_fleet_as_customer)"
                     />
                     <KpiTile2
                       label="Valid Trips"
@@ -800,7 +831,9 @@ export default function CustomerAnalytics() {
                 <Card>
                   <CardHead
                     title="Account Cohort Retention"
-                    sub="% of accounts active at +0 still booking in +N"
+                    sub={acBase > 0
+                      ? `% retained · base: ${nfmt(acBase)} of ${nfmt(n(kpis?.accounts))} accounts have a known first-trip month`
+                      : '% of accounts active at +0 still booking in +N'}
                     right={
                       <div style={{ display: 'flex', border: `1px solid ${T.border}`, borderRadius: 7, overflow: 'hidden', flexShrink: 0 }}>
                         {['retention', 'revenue'].map(m => (
@@ -819,7 +852,12 @@ export default function CustomerAnalytics() {
 
                 {/* Customer cohort */}
                 <Card>
-                  <CardHead title="Customer Cohort Retention" sub="Customer % retained by cohort × months since first trip" />
+                  <CardHead
+                    title="Customer Cohort Retention"
+                    sub={ptBase > 0
+                      ? `% retained · base: ${nfmt(ptBase)} of ${nfmt(n(kpis?.customer_names))} named customers have a known first-trip month`
+                      : 'Customer % retained by cohort × months since first trip'}
+                  />
                   <CohortHeatmap cells={ptCohort} startDate={start} sizeKey="customers" mode="retention" />
                 </Card>
               </div>
@@ -898,7 +936,12 @@ export default function CustomerAnalytics() {
 
               {/* ══ 8. PASSENGERS ════════════════════════════════════════════ */}
               <Card>
-                <CardHead title="Passenger Repeat Purchase" sub="Person-level frequency — bucketed by distinct bookings (ride_id), not trips" />
+                <CardHead
+                  title="Passenger Repeat Purchase"
+                  sub={kpis && n(kpis.complete_gmv) > 0
+                    ? `Passenger-attributed trips only — ${usdC(paxGmvTotal)} of ${usdC(n(kpis.complete_gmv))} total GMV (${Math.round(paxGmvTotal / n(kpis.complete_gmv) * 100)}%) · bucketed by distinct bookings, not trips`
+                    : 'Person-level frequency — bucketed by distinct bookings (ride_id), not trips'}
+                />
                 <DataTable
                   keyField="bucket"
                   cols={[
