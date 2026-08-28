@@ -27,6 +27,7 @@ import DestinationAnalysisNew from './pages/DestinationAnalysisNew'
 import LeadershipDashboard from './pages/LeadershipDashboard'
 import LeadershipGate from './components/LeadershipGate'
 import CustomerAnalytics from './pages/CustomerAnalytics'
+import CustomerAnalyticsGate from './components/CustomerAnalyticsGate'
 
 function ProtectedLayout() {
   const { user, loading } = useAuth()
@@ -259,7 +260,9 @@ function DashboardShell({ onQueryOpen }) {
             } />
             <Route path="/customer-analytics" element={
               <div style={{height:'calc(100vh - var(--header-h) - var(--filter-bar-h))',overflowY:'auto',overflowX:'hidden'}}>
-                <CustomerAnalytics />
+                <CustomerAnalyticsGate>
+                  <CustomerAnalytics />
+                </CustomerAnalyticsGate>
               </div>
             } />
           </Routes>
