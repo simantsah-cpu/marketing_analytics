@@ -776,7 +776,7 @@ export default function CustomerAnalytics() {
                       valueColor={T.text}
                       sub={`${nfmt(kpis.service_rides)} distinct rides`}
                       goal={`Delivered: ${nfmt(kpis.delivered_trips)}`}
-                      tooltip="Excludes ~6,949 'Unpaid' ride_stat rows per data dictionary (Wilson sign-off). These carry $1.28M GMV at near-100% margin and are internal adjustment rows, not customer rides."
+                      tooltip="Excludes ~6,949 trips with ride_stat = 'Unpaid' ($1.28M GMV, near-zero cost). Same exclusion as the eLife B2C view. Pending confirmation."
                     />
                     <KpiTile1
                       label="Cancelled Trips"
@@ -801,7 +801,7 @@ export default function CustomerAnalytics() {
                       label="Partners"
                       value={nfmt(kpis.partners)}
                       valueColor={T.text}
-                      sub="Distinct partner-org groups (dim_fleet_as_customer)"
+                      sub="Distinct partner-org groups — 325 incl. 1 unmapped bucket (dim_fleet_as_customer)"
                     />
                     <KpiTile2
                       label="Valid Trips"
