@@ -398,7 +398,9 @@ tiers AS (
 
 -- 7. Partner profitability (Wilson sign-off)
 -- Grouped by customer_name + partner — do NOT collapse by partner alone
--- (130 partners map to >1 customer_name). All margins positive in v2.
+-- (130 partners map to >1 customer_name).
+-- Note: 12 of 360 customer+partner groups carry negative margin (dispatch cost > fare).
+-- This is real data — small-volume routes where eLife pays out more than it receives.
 partners AS (
   SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(customer_name, partner, customer_type,
            existing_partner, accounts, service_trips, service_rides, cancelled_trips,

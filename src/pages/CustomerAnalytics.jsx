@@ -928,7 +928,10 @@ export default function CustomerAnalytics() {
                     { key: 'profit',           label: 'Profit',     render: r => usd(r.profit), color: () => T.green },
                     { key: 'profit_margin_pct', label: 'Margin %',  bold: () => true,
                       render: r => pct(r.profit_margin_pct, 1),
-                      color: r => n(r.profit_margin_pct) < 5 ? T.amber : T.green },
+                      color: r => r.profit_margin_pct == null ? T.text3
+                                : n(r.profit_margin_pct) < 0   ? T.red
+                                : n(r.profit_margin_pct) < 5   ? T.amber
+                                : T.green },
                   ]}
                   rows={partners}
                 />
