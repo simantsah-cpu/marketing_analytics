@@ -97,8 +97,7 @@ params AS (
 ),
 
 -- Same scan pattern as customer_analysis main function.
--- secondary_species_name is 1:1 with fleet_id (verified: 1,378 distinct / 1,384 fleet_ids).
--- department holds the account owner (e.g. "EAM Renaldo").
+-- account_label = customer_name from dim (fallback: raw fleet_id). owner = NULL (department not in current schema).
 scope AS (
   SELECT
     v.ride_id, v.trip_no, v.pickup_date,
@@ -106,10 +105,8 @@ scope AS (
     v.ride_stat,
     v.has_complaint, v.has_ops_complaint,
     d.customer_name,
-    COALESCE(d.secondary_species_name, d.fleet_name,
-             d.customer_name, v.from_fleet_id_as_customer)  AS account_label,
-    COALESCE(d.department, '(Unknown)')                     AS owner,
-    COALESCE(d.partner, '(unmapped)')                       AS partner,
+    COALESCE(d.customer_name, v.from_fleet_id_as_customer)    AS account_label,
+    COALESCE(d.partner, '(unmapped)')                        AS partner,
     CAST(IFNULL(v.elife_amount_usd, 0) AS FLOAT64)
       + CAST(IFNULL(v.additional_charge_amount_usd, 0) AS FLOAT64) AS gmv,
     CAST(IFNULL(v.dispatch_amount_net_usd, 0) AS FLOAT64)          AS cost
@@ -179,13 +176,12 @@ active_at_n AS (
     AND a.fleet_id IN (SELECT fleet_id FROM cohort_roster)
 ),
 
--- Per-account labels (ANY_VALUE safe because secondary_species_name is 1:1 with fleet_id)
+-- Per-account labels — customer_name is the primary label
 account_labels AS (
   SELECT
     fleet_id,
     ANY_VALUE(customer_name)  AS customer_name,
     ANY_VALUE(account_label)  AS account_label,
-    ANY_VALUE(owner)          AS owner,
     ANY_VALUE(partner)        AS partner
   FROM scope
   WHERE fleet_id IN (SELECT fleet_id FROM cohort_roster)
@@ -212,7 +208,7 @@ roster AS (
     r.fleet_id,
     COALESCE(l.account_label, r.fleet_id) AS account_label,
     l.customer_name,
-    l.owner,
+    NULL                   AS owner,
     l.partner,
     IF(a.fleet_id IS NOT NULL, 'ACTIVE', 'LOST') AS status,
     m.last_booked,
