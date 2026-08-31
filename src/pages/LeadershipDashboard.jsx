@@ -578,7 +578,7 @@ export default function LeadershipDashboard() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = parseInt(searchParams.get('tab') || '0', 10)
   const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(8, tabParam))
-  const [period,     setPeriodState] = useState('2026-08') // always default to Aug 2026
+  const [period,     setPeriodState] = useState(curMonth()) // will be overwritten by snapshot month on load
   // Read `snapshot` (or `asAt`) param on mount — stored raw; validated against snapDates after first fetch
   const pendingSnapRef = React.useRef(
     searchParams.get('snapshot') || searchParams.get('asAt') || null
@@ -591,26 +591,28 @@ export default function LeadershipDashboard() {
   const [cachedAt,   setCachedAt]    = useState(null)
   const [refreshKey, setRefreshKey]  = useState(0)
 
-  const CUR_MONTH = curMonth()
+  // CUR_MONTH derives from the selected snapshot date (first 7 chars of YYYY-MM-DD).
+  // Falls back to system clock only before first fetch. This ensures Achievement,
+  // Gap to target, forecast and all target lookups always match the snapshot.
+  const snapMonth = (D.asAt ?? D.snapDates[0] ?? '').slice(0, 7)
+  const CUR_MONTH = snapMonth || curMonth()
   const PC        = PM(period)           // §4 — always use PM(), never branch on period directly
 
   // §2.1 — correct guard: month keys are valid even though they're not in PERIOD_META
-  // Issue 7: when a historical asAt is selected, reset period to 'mtd' if it
-  // was a month key — Q_MONTHS reads live ads_ride_summary, mixing it with a
-  // frozen snapshot creates a vintage mismatch.
   const setPeriod = k => {
     if (!PERIOD_META[k] && !isMonthKey(k)) return
     setPeriodState(k)
-    localStorage.setItem('eam.period', k)
   }
 
   // Derived: is the selected asAt the latest available snapshot?
   const isLatestSnap = !asAt || asAt === D.snapDates[0]
 
-  // When user switches to a historical snapshot and period is a month key, reset
+  // Auto-set period to the snapshot month whenever snapDates / D.asAt changes.
+  // This replaces the old "Aug 2026" dropdown — period always tracks the snapshot.
   useEffect(() => {
-    if (!isLatestSnap && isMonthKey(period)) setPeriod('mtd')
-  }, [asAt, isLatestSnap]) // eslint-disable-line react-hooks/exhaustive-deps
+    const sm = (D.asAt ?? D.snapDates[0] ?? '').slice(0, 7)
+    if (sm && isMonthKey(sm)) setPeriodState(sm)
+  }, [D.asAt, D.snapDates]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Data fetch (§9.2) ──────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
@@ -1021,52 +1023,6 @@ export default function LeadershipDashboard() {
             </div>
           )}
 
-          {/* Period selector — §7 two optgroups */}
-          <div style={{ position: 'relative' }}>
-            <select
-              id="ld-period-select"
-              value={period}
-              onChange={e => setPeriod(e.target.value)}
-              style={{
-                fontSize: 13, fontWeight: 600,
-                border: `1px solid ${T.border2}`, borderRadius: 6,
-                padding: '5px 30px 5px 10px', background: T.bg,
-                color: T.text, cursor: 'pointer', outline: 'none',
-                fontFamily: 'inherit', appearance: 'none',
-                minWidth: 140,
-              }}
-            >
-              <optgroup label="Cumulative — exact">
-                <option value="mtd">Month to date</option>
-                <option value="qtd">Quarter to date</option>
-                <option value="ytd">Year to date</option>
-              </optgroup>
-
-              {isLatestSnap ? (
-                monthList.length > 0 ? (
-                  <optgroup label="Single month — reconstructed">
-                    {monthList.map(m => (
-                      <option key={m} value={m}>{monthLabel(m)}</option>
-                    ))}
-                  </optgroup>
-                ) : (
-                  <optgroup label="Single month — not loaded">
-                    <option value="mtd" disabled>Monthly history failed to load — press Refresh</option>
-                  </optgroup>
-                )
-              ) : (
-                <optgroup label="Single month — unavailable on historical snapshot">
-                  <option value="mtd" disabled>Switch to Latest snapshot to use monthly view</option>
-                </optgroup>
-              )}
-            </select>
-            <svg
-              style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: T.text3 }}
-              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-            >
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </div>
 
           {/* Refresh */}
           <button
