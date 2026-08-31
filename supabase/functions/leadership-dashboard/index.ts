@@ -620,10 +620,41 @@ FROM base
 
 // §1.7 Q_PROD — product line from v2 (same table as Q_CUST, different GROUP BY)
 // FROM clause swapped to snap when USE_SNAP=true — same DAX formula verbatim.
-function makeQProd(snapFilter: string | null): string {
+// period='week': uses last_week_* columns with simple margin (no complete/dispatched split
+//   exists at weekly grain). Revenue and cost are aggregated separately then subtracted
+//   in the outer SELECT to prevent NULL-cost rows from silently dropping their revenue.
+function makeQProd(snapFilter: string | null, period = 'mtd'): string {
   const fromClause = (USE_SNAP && snapFilter !== null)
     ? v2SnapSubquery(snapFilter)
     : '`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v2`'
+
+  if (period === 'week') {
+    return `
+WITH agg AS (
+  SELECT
+    product_line,
+    SUM(last_week_sales)   AS sales,
+    SUM(last_week_revenue) AS revenue,
+    SUM(last_week_cost)    AS cost,
+    SUM(prev_week_revenue) AS prev_revenue,
+    SUM(prev_week_sales)   AS prev_sales,
+    SUM(prev_week_cost)    AS prev_cost
+  FROM ${fromClause}
+  GROUP BY 1
+)
+SELECT
+  IFNULL(product_line,"(Unassigned)")        AS pl,
+  CAST(ROUND(sales,2)                  AS FLOAT64) AS sales,
+  CAST(ROUND(revenue,2)                AS FLOAT64) AS revenue,
+  CAST(ROUND(revenue - cost, 2)        AS FLOAT64) AS profit,
+  CAST(ROUND(prev_revenue,2)           AS FLOAT64) AS prev_revenue,
+  CAST(ROUND(prev_sales,2)             AS FLOAT64) AS prev_sales,
+  CAST(ROUND(prev_revenue - prev_cost, 2) AS FLOAT64) AS prev_profit
+FROM agg
+`
+  }
+
+  // MTD / QTD / YTD — verbatim DAX formula, must not be changed.
   return `
 WITH agg AS (
   SELECT
@@ -676,7 +707,8 @@ WHERE snapshot_date = ${snapFilter}
 // GEO attainment is now enabled — v3 revival confirmed correct.
 // The lm_profit column (lmmtd_revenue - lmmtd_cost) is valid in the snap and must remain.
 // When USE_SNAP=false, falls back to live v3 table (IFNULL(geo,...) handled in SQL).
-function makeQGeo(snapFilter: string | null): string {
+// period='week': mirrors makeQProd week branch — separate SUM then outer subtract.
+function makeQGeo(snapFilter: string | null, period = 'mtd'): string {
   const fromClause = (USE_SNAP && snapFilter !== null)
     ? v3SnapSubquery(snapFilter)
     // Live fallback: v3 table with explicit IFNULL on geo
@@ -684,9 +716,39 @@ function makeQGeo(snapFilter: string | null): string {
   SELECT
     IFNULL(geo,"(Unassigned)") AS geo,
     mtd_sales, current_mtd_revenue, current_mtd_cost,
-    lmmtd_revenue, lmmtd_cost, complete, dispatched
+    lmmtd_revenue, lmmtd_cost, complete, dispatched,
+    last_week_sales, last_week_revenue, last_week_cost,
+    prev_week_sales, prev_week_revenue, prev_week_cost
   FROM \`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v3\`
 )`
+
+  if (period === 'week') {
+    return `
+WITH agg AS (
+  SELECT
+    geo,
+    SUM(last_week_sales)   AS sales,
+    SUM(last_week_revenue) AS revenue,
+    SUM(last_week_cost)    AS cost,
+    SUM(prev_week_revenue) AS prev_revenue,
+    SUM(prev_week_sales)   AS prev_sales,
+    SUM(prev_week_cost)    AS prev_cost
+  FROM ${fromClause}
+  GROUP BY 1
+)
+SELECT
+  geo,
+  CAST(ROUND(sales,2)                  AS FLOAT64) AS sales,
+  CAST(ROUND(revenue,2)                AS FLOAT64) AS revenue,
+  CAST(ROUND(revenue - cost, 2)        AS FLOAT64) AS profit,
+  CAST(ROUND(prev_revenue,2)           AS FLOAT64) AS prev_revenue,
+  CAST(ROUND(prev_sales,2)             AS FLOAT64) AS prev_sales,
+  CAST(ROUND(prev_revenue - prev_cost, 2) AS FLOAT64) AS prev_profit
+FROM agg
+`
+  }
+
+  // MTD / QTD / YTD — verbatim DAX formula, must not be changed.
   return `
 WITH agg AS (
   SELECT
@@ -1161,10 +1223,20 @@ serve(async (req) => {
 
     const accessToken = await getBQAccessToken(serviceAccountJson)
 
-    // Parse and validate asAt from request body
+    // Parse and validate asAt + period from request body
     let bodyJson: any = {}
     try { bodyJson = await req.json() } catch { /* empty body is fine */ }
     const rawAsAt: string | null = typeof bodyJson?.asAt === 'string' ? bodyJson.asAt : null
+
+    // Validate period against allowlist — reject unknown values with 400.
+    const VALID_PERIODS = new Set(['mtd', 'qtd', 'ytd', 'week'])
+    const rawPeriod: string = typeof bodyJson?.period === 'string' ? bodyJson.period : 'mtd'
+    if (!VALID_PERIODS.has(rawPeriod)) {
+      return new Response(JSON.stringify({ error: `Unknown period: ${rawPeriod}` }), {
+        status: 400, headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    const period: string = rawPeriod
 
     // Build the snap filter expression (scalar subquery or DATE literal)
     // buildSnapFilter throws if the date string is malformed.
@@ -1192,8 +1264,8 @@ serve(async (req) => {
     const Q_CUST    = makeQCust(snapFilter)
     const Q_TARGETS = makeQTargets(snapFilter)
     const Q_FC      = makeQFC(snapFilter)
-    const Q_PROD    = makeQProd(snapFilter)
-    const Q_GEO     = makeQGeo(snapFilter)
+    const Q_PROD    = makeQProd(snapFilter, period)
+    const Q_GEO     = makeQGeo(snapFilter, period)
     const Q_FCC     = makeQFCC(snapFilter)
 
     // Wave 2 — run all remaining queries in parallel, including custPrev.
@@ -1246,6 +1318,9 @@ serve(async (req) => {
         fcc:          fccRows,
         prod:         prodRows,
         geo:          geoRows,
+        // week-period data-quality flags (independent per source table)
+        prod_week_empty: period === 'week' && prodRows.every((r: any) => !r.revenue || r.revenue === 0),
+        geo_week_empty:  period === 'week' && geoRows.every((r: any)  => !r.revenue || r.revenue === 0),
         b2c:          b2cRows,
         b2cM:         b2cMRows,
         rh:           rhRows,

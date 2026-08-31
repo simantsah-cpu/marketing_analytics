@@ -45,7 +45,9 @@ ChartJS.register(
 
 const DEPT_TARGET_KEYS = ['EAM Chris', 'EAM Renaldo', 'EAM Gloria', 'B2C Matt']
 const DEPT_ROLLUP      = { 'Sales Mo': 'EAM Chris', 'Sales Jojo': 'EAM Gloria' }
-const CACHE_KEY        = 'ld_cache_all'
+// Cache key is a function — keyed on both asAt and period to prevent
+// cross-period or cross-snapshot collisions in localStorage.
+const cacheKey = (asAt, period) => `ld_cache_${asAt ?? 'latest'}_${period ?? 'mtd'}`
 const EDGE_FN          = 'leadership-dashboard'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -248,19 +250,21 @@ function buildTargets(targetsRows, CUR_MONTH) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Cache helpers (§9.2)
+// Keyed on (asAt, period) so week and MTD requests for the same snapshot don't collide,
+// and different snapshot selections don't overwrite each other.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function cacheRead() {
+function cacheRead(asAt, period) {
   try {
-    const raw = localStorage.getItem(CACHE_KEY)
+    const raw = localStorage.getItem(cacheKey(asAt, period))
     if (!raw) return null
     return JSON.parse(raw) // { data, ts }
   } catch { return null }
 }
 
-function cacheWrite(data) {
+function cacheWrite(asAt, period, data) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: new Date().toISOString() }))
+    localStorage.setItem(cacheKey(asAt, period), JSON.stringify({ data, ts: new Date().toISOString() }))
   } catch {}
 }
 
@@ -302,7 +306,18 @@ const PERIOD_META = {
   ytd: { label:'Year to date',    short:'YTD', base:'Last year YTD',    baseShort:'LY',
          sales:'y_sales',  profit:'y_profit',  rev:'y_rev',
          bSales:'lyy_sales', bProfit:'lyy_profit', bRev:'lyy_rev' },
+  // week: simple margin (revenue-cost). No complete/dispatched split exists at weekly grain.
+  // Uses distinct prev_* fields — NOT lm_* — to avoid collision with month-semantics fields.
+  // Only surfaced in the Geo & Product tab period selector.
+  week: { label:'Last complete week', short:'Week', base:'Previous week', baseShort:'PW',
+          sales:'sales', profit:'profit', rev:'revenue',
+          bSales:'prev_sales', bProfit:'prev_profit', bRev:'prev_revenue' },
 }
+
+// Tab-specific period allowlists.
+// Only Geo & Product (tab 4) supports the week period — other tabs use D.months client-side.
+const GEO_PRODUCT_PERIODS = ['mtd', 'qtd', 'ytd', 'week']
+const STANDARD_PERIODS    = ['mtd', 'qtd', 'ytd']
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §4 — Period metadata resolver
@@ -584,7 +599,7 @@ export default function LeadershipDashboard() {
     searchParams.get('snapshot') || searchParams.get('asAt') || null
   )
   const [asAt,       setAsAt]        = useState(null)       // null = latest snapshot
-  const [D,          setD]           = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], mq: [], ai: [], wilson: [], snapDates: [], asAt: null, queried_at: null, staleness: null, fcVintage: null, fccVintage: null, custPrev: [], prevSnapDate: null })
+  const [D,          setD]           = useState({ cust: [], targets: [], fc: [], months: [], fcc: [], prod: [], geo: [], b2c: [], b2cM: [], rh: [], mq: [], ai: [], wilson: [], snapDates: [], asAt: null, queried_at: null, staleness: null, fcVintage: null, fccVintage: null, custPrev: [], prevSnapDate: null, prodWeekEmpty: false, geoWeekEmpty: false })
   const [loading,    setLoading]     = useState(false)
   const [error,      setError]       = useState(null)
   const [usingCache, setUsingCache]  = useState(false)
@@ -621,9 +636,10 @@ export default function LeadershipDashboard() {
     setUsingCache(false)
 
     try {
-      // Pass asAt so the edge function can bind the snapshot filter.
-      // null means 'use MAX(snapshot_date)' — the edge function handles that.
-      const { data, error: fnErr } = await supabase.functions.invoke(EDGE_FN, { body: { asAt } })
+      // Pass asAt and period so the edge function selects the right query branch.
+      // Month-key periods ('2026-08') use D.months client-side; map to 'mtd' for edge call.
+      const edgePeriod = PERIOD_META[period] ? period : 'mtd'
+      const { data, error: fnErr } = await supabase.functions.invoke(EDGE_FN, { body: { asAt, period: edgePeriod } })
       if (fnErr || data?.error) {
         throw new Error(fnErr?.message || data?.error || 'Edge function returned an error')
       }
@@ -649,13 +665,15 @@ export default function LeadershipDashboard() {
         fccVintage:   data.fccVintage  ?? null,
         custPrev:     Array.isArray(data.custPrev) ? data.custPrev : [],
         prevSnapDate: data.prevSnapDate ?? null,
+        prodWeekEmpty: data.prod_week_empty ?? false,
+        geoWeekEmpty:  data.geo_week_empty  ?? false,
       }
       setD(result)
-      cacheWrite(result)
+      cacheWrite(asAt, edgePeriod, result)
       setCachedAt(null)
     } catch (err) {
       // Fall back to last good cache (§9.2)
-      const cached = cacheRead()
+      const cached = cacheRead(asAt, edgePeriod)
       if (cached?.data) {
         setD(cached.data)
         setUsingCache(true)
@@ -666,7 +684,7 @@ export default function LeadershipDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [asAt]) // re-fetch whenever asAt changes
+  }, [asAt, period]) // re-fetch whenever asAt or period changes
 
   // After the first successful fetch, apply pendingSnapRef if it's a valid date
   useEffect(() => {
@@ -982,6 +1000,33 @@ export default function LeadershipDashboard() {
         }}>
           <div style={{ flex: 1 }} />
 
+          {/* Period selector — hidden in month-picker mode (when a specific YYYY-MM is active).
+              'Last complete week' only shown on Geo & Product (tab 4). */}
+          {!isMonthKey(period) && (
+            <div style={{ position: 'relative' }}>
+              <select
+                id="ld-period-select"
+                value={period}
+                onChange={e => setPeriod(e.target.value)}
+                style={{
+                  fontSize: 13, fontWeight: 600,
+                  border: `1px solid ${T.border2}`, borderRadius: 6,
+                  padding: '5px 30px 5px 10px', background: T.bg,
+                  color: T.text, cursor: 'pointer', outline: 'none',
+                  fontFamily: 'inherit', appearance: 'none',
+                  minWidth: 150,
+                }}
+              >
+                {(activeTab === 4 ? GEO_PRODUCT_PERIODS : STANDARD_PERIODS).map(k => (
+                  <option key={k} value={k}>{PERIOD_META[k].label}</option>
+                ))}
+              </select>
+              <svg style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: T.text3 }}
+                width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </div>
+          )}
 
           {/* 'As at' snapshot selector — only shown when snap metadata is loaded */}
           {D.snapDates.length > 0 && (

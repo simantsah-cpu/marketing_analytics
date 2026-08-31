@@ -402,7 +402,11 @@ function AttBar({rows, companyAch, labelKey}) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
   const isMonthKey = k => /^\d{4}-\d{2}$/.test(k ?? '')
-  const recon = isMonthKey(period)
+  const recon    = isMonthKey(period)
+  const weekView = period === 'week'
+  // Dynamic comparison-baseline field name — reads from PERIOD_META via PC prop.
+  // For week: 'prev_profit'; for MTD: 'lm_profit'; for QTD/YTD: their respective fields.
+  const bPF = PC?.bProfit ?? 'lm_profit'
 
   // ── v2 revenue (from D.cust) — used for the §1 geo validity gate ─────────────────
   // v3 revenue must equal v2 revenue within $1 for geo to be valid.
@@ -464,62 +468,63 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
 
   // ── §6 — geoSrc: monthly branch vs v3 branch ──────────────────────────────
   const geoSrc = useMemo(()=>{
-    if (!recon) return D.geo || []
+    // Week view reads D.geo directly (already period-correct from the edge function).
+    if (weekView || !recon) return D.geo || []
     // Rebuild from Q_MONTHS for a single selected month
     const prev = (()=>{let y=+period.slice(0,4),m=+period.slice(5,7)-1;if(m===0){m=12;y-=1};return `${y}-${String(m).padStart(2,'0')}`})()
     const agg = {}
     ;(D.months||[]).forEach(r=>{
       if(r.ym!==period && r.ym!==prev) return
       const g=r.geo||'(Unassigned)'
-      if(!agg[g]) agg[g]={geo:g,profit:0,revenue:0,sales:0,lm_profit:0}
+      if(!agg[g]) agg[g]={geo:g,profit:0,revenue:0,sales:0,base_profit:0}
       if(r.ym===period){
         agg[g].profit  +=num(r.profit)
         agg[g].revenue +=num(r.revenue)
         agg[g].sales   +=num(r.sales)
       } else {
-        agg[g].lm_profit+=num(r.profit)
+        agg[g].base_profit+=num(r.profit)
       }
     })
     return Object.values(agg)
-  },[recon, period, D.geo, D.months])
+  },[recon, weekView, period, D.geo, D.months])
 
   // ── §4.1 — Product line aggregation ───────────────────────────────────────
   const { prod, pT } = useMemo(()=>{
     const plMap = {}
     ;(D.prod||[]).forEach(r=>{
       const k=rollupPL(r.pl)
-      if(!plMap[k]) plMap[k]={pl:k,profit:0,revenue:0,sales:0,lm_profit:0,parts:[]}
-      plMap[k].profit    +=num(r.profit)
-      plMap[k].revenue   +=num(r.revenue)
-      plMap[k].sales     +=num(r.sales)
-      plMap[k].lm_profit +=num(r.lm_profit)
+      if(!plMap[k]) plMap[k]={pl:k,profit:0,revenue:0,sales:0,base_profit:0,parts:[]}
+      plMap[k].profit      +=num(r.profit)
+      plMap[k].revenue     +=num(r.revenue)
+      plMap[k].sales       +=num(r.sales)
+      plMap[k].base_profit +=num(r[bPF])
       if(k!==r.pl) plMap[k].parts.push(r.pl)
     })
     // Hide Rail when zero (spec §7.2d: render only if non-zero)
     const prod=Object.values(plMap)
       .filter(r => r.pl !== 'Rail' || num(r.profit) !== 0 || num(r.revenue) !== 0)
       .sort((a,b)=>num(b.profit)-num(a.profit))
-    const pT=prod.reduce((a,r)=>({profit:a.profit+num(r.profit),revenue:a.revenue+num(r.revenue),sales:a.sales+num(r.sales),lm:a.lm+num(r.lm_profit)}),{profit:0,revenue:0,sales:0,lm:0})
+    const pT=prod.reduce((a,r)=>({profit:a.profit+num(r.profit),revenue:a.revenue+num(r.revenue),sales:a.sales+num(r.sales),lm:a.lm+num(r.base_profit)}),{profit:0,revenue:0,sales:0,lm:0})
     return {prod,pT}
-  },[D.prod, rollupPL])
+  },[D.prod, rollupPL, bPF])
 
   // ── §5.1 — GEO aggregation ─────────────────────────────────────────────────
   const { geoRows, geoTot, geoRev } = useMemo(()=>{
     const geoMap={}
     geoSrc.forEach(r=>{
       const k=rollupGeo(r.geo)
-      if(!geoMap[k]) geoMap[k]={geo:k,profit:0,revenue:0,sales:0,lm_profit:0,parts:[]}
-      geoMap[k].profit    +=num(r.profit)
-      geoMap[k].revenue   +=num(r.revenue)
-      geoMap[k].sales     +=num(r.sales)
-      geoMap[k].lm_profit +=num(r.lm_profit)
+      if(!geoMap[k]) geoMap[k]={geo:k,profit:0,revenue:0,sales:0,base_profit:0,parts:[]}
+      geoMap[k].profit      +=num(r.profit)
+      geoMap[k].revenue     +=num(r.revenue)
+      geoMap[k].sales       +=num(r.sales)
+      geoMap[k].base_profit +=num(r[bPF] ?? r.base_profit ?? r.lm_profit)
       if(k!==r.geo) geoMap[k].parts.push(r.geo)
     })
     const geoRows=Object.values(geoMap).sort((a,b)=>num(b.profit)-num(a.profit))
     const geoTot=geoRows.reduce((a,r)=>a+num(r.profit),0)
     const geoRev=geoRows.reduce((a,r)=>a+num(r.revenue),0)
     return {geoRows,geoTot,geoRev}
-  },[geoSrc, rollupGeo])
+  },[geoSrc, rollupGeo, bPF])
 
   // ── §1 gate — self-validating geo validity check ───────────────────────────────
   // v3 revenue must equal v2 revenue within $1. On 2026-08-21, v3 held Feb data:
@@ -554,13 +559,19 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
       {/* ── §4 Product Line section ─────────────────────────────────────────── */}
       <SecLabel label="Product Line"/>
 
-      {recon ? (
-        // §6.2 — product line unavailable for single month
+      {recon && !weekView ? (
+        // §6.2 — product line unavailable for single month (not for week)
         <div style={{background:T.bg2,border:`1px solid ${T.border}`,borderRadius:8,padding:'16px 20px',marginBottom:24,color:T.text3,fontSize:13}}>
           Not available for a single month — the monthly source carries no product line column. Switch to Month, Quarter or Year to date.
         </div>
       ) : (
         <>
+          {/* Week empty warning */}
+          {weekView && D.prodWeekEmpty && (
+            <div style={{background:'rgba(234,179,8,.1)',border:'1px solid rgba(234,179,8,.4)',borderRadius:8,padding:'12px 16px',marginBottom:16,color:'#92600A',fontSize:13}}>
+              ⚠️ No last-week product line data for this snapshot. The pipeline may not have run for this period.
+            </div>
+          )}
           {/* Product line table */}
           {D.prod.length === 0 ? (
             <div style={{textAlign:'center',padding:'32px 0',color:T.text3,fontSize:13}}>No product line data — click Refresh.</div>
@@ -571,7 +582,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
                   <thead>
                     <tr>
                       <th style={{...TH,textAlign:'left',paddingLeft:14,width:'22%'}}>Product Line</th>
-                      <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Total Profit</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>vs target</span></div></th>
+                      <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>{SHORT} Total Profit{weekView && <span title="Week view uses revenue minus cost. Confidence-weighted profit is not available at weekly grain." style={{fontSize:9,fontWeight:700,padding:'1px 6px',borderRadius:4,background:'rgba(234,179,8,.15)',color:'#9A6B0C',marginLeft:6}}>Simple margin</span>}</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>vs target</span></div></th>
                       <th style={TH}>Attainment</th>
                       <th style={TH}>vs {BASE}</th>
                       <th style={TH}><div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:1}}><span>Complete GMV</span><span style={{fontWeight:400,opacity:.8,fontSize:9}}>margin</span></div></th>
@@ -582,8 +593,8 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
                     {prod.map(r=>{
                       const tg = TARGETS.product[r.pl]
                       const ach = (tg&&tg>0) ? num(r.profit)/tg : null
-                      const delta = num(r.profit)-num(r.lm_profit)
-                      const dPct = num(r.lm_profit)!==0 ? delta/Math.abs(num(r.lm_profit)) : null
+                      const delta = num(r.profit)-num(r.base_profit)
+                      const dPct = num(r.base_profit)!==0 ? delta/Math.abs(num(r.base_profit)) : null
                       const margin = num(r.revenue)>0 ? num(r.profit)/num(r.revenue) : null
                       return (
                         <tr key={r.pl} style={{...ROW,background:T.bg}} onMouseEnter={e=>{e.currentTarget.style.background='#EFF6FF'}} onMouseLeave={e=>{e.currentTarget.style.background=T.bg}}>
@@ -648,7 +659,15 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
       {/* ── §5 Geography section ────────────────────────────────────────────── */}
       <SecLabel label="Geography"/>
 
+      {/* Geo week empty warning — independent from prod since v3 can go stale independently */}
+      {weekView && D.geoWeekEmpty && (
+        <div style={{background:'rgba(234,179,8,.1)',border:'1px solid rgba(234,179,8,.4)',borderRadius:8,padding:'12px 16px',marginBottom:16,color:'#92600A',fontSize:13}}>
+          ⚠️ No last-week geography data for this snapshot. The v3 pipeline may not have run for this period.
+        </div>
+      )}
+
       {geoRows.length===0 ? (
+
         <div style={{textAlign:'center',padding:'32px 0',color:T.text3,fontSize:13}}>No geography data — click Refresh.</div>
       ) : !geoValid ? (
         /* §1 gate — v3 revenue ≠ v2 revenue: this snapshot holds stale/dead v3 data */
@@ -688,8 +707,8 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
                     const tg = TARGETS.geo[r.geo]
                     const isUnassigned = r.geo === '(Unassigned)'
                     const ach = (!isUnassigned && tg && tg>0) ? num(r.profit)/tg : null
-                    const delta=num(r.profit)-num(r.lm_profit)
-                    const dPct=num(r.lm_profit)!==0?delta/Math.abs(num(r.lm_profit)):null
+                    const delta=num(r.profit)-num(r.base_profit)
+                    const dPct=num(r.base_profit)!==0?delta/Math.abs(num(r.base_profit)):null
                     const margin=num(r.revenue)>0?num(r.profit)/num(r.revenue):null
                     const owner=TARGET_GEO_OWNER[r.geo]
                     return (
