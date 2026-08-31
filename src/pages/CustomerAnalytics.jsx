@@ -410,9 +410,25 @@ function toGrid(cells) {
   return { order, map, maxMi }
 }
 
-function cLabel(k, sd) { return k === '__PRE__' ? `Pre-${sd?.slice(0, 4) ?? 'window'} base` : k }
+// Part 3: Renamed "Pre-YYYY base" → "Existing at {Mon YYYY}" (anchor-month-accurate).
+function cLabel(k, sd) {
+  if (k !== '__PRE__') return k
+  if (!sd) return 'Existing customers'
+  const d = new Date(sd + 'T00:00:00')
+  return `Existing at ${d.toLocaleString('en-US', { month: 'short', year: 'numeric' })}`
+}
 
-function CohortHeatmap({ cells, startDate, sizeKey = 'accounts', mode = 'retention' }) {
+// Cohorts with < 3 months between cohort-start and window-end show 0% lost by
+// construction: no member has had 90 days of inactivity within the window.
+function isTooEarly(cohort, endDateStr) {
+  if (!cohort || cohort === '__PRE__') return false
+  const [cy, cm] = cohort.split('-').map(Number)
+  const e = new Date((endDateStr ?? new Date().toISOString().slice(0, 10)) + 'T00:00:00')
+  const monthDiff = (e.getFullYear() - cy) * 12 + (e.getMonth() + 1 - cm)
+  return monthDiff < 3
+}
+
+function CohortHeatmap({ cells, startDate, endDate, sizeKey = 'accounts', mode = 'retention', onCellClick }) {
   if (!cells?.length) return <div style={{ padding: '32px 20px', textAlign: 'center', color: T.text3, fontSize: 13 }}>No cohort data in this date range</div>
   const { order, map, maxMi } = toGrid(cells)
   const sizes = {}
@@ -425,7 +441,7 @@ function CohortHeatmap({ cells, startDate, sizeKey = 'accounts', mode = 'retenti
     <div style={{ padding: '0 20px 20px', overflowX: 'auto' }}>
       <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'separate', borderSpacing: '2px 2px', fontSize: 11 }}>
         <colgroup>
-          <col style={{ width: '120px' }} />
+          <col style={{ width: '130px' }} />
           <col style={{ width: '38px' }} />
           {Array.from({ length: cols }, (_, i) => <col key={i} />)}
         </colgroup>
@@ -441,10 +457,12 @@ function CohortHeatmap({ cells, startDate, sizeKey = 'accounts', mode = 'retenti
         <tbody>
           {order.map(cohort => {
             const row = map.get(cohort), sz = sizes[cohort]
+            const early = isTooEarly(cohort, endDate)
             return (
               <tr key={cohort}>
-                <td style={{ padding: '3px 6px', color: T.text, fontWeight: cohort === '__PRE__' ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>
-                  {cLabel(cohort, startDate)}
+                <td style={{ padding: '3px 6px', color: T.text, fontWeight: cohort === '__PRE__' ? 700 : 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}
+                    title={early ? 'Too early to tell — cohort joined < 3 months before window end; 90-day churn cannot yet be observed' : undefined}>
+                  {cLabel(cohort, startDate)}{early ? ' ·' : ''}
                 </td>
                 <td style={{ padding: '3px 4px', textAlign: 'right', color: T.text3, fontSize: 11 }}>{nfmt(sz)}</td>
                 {Array.from({ length: cols }, (_, mi) => {
@@ -465,10 +483,24 @@ function CohortHeatmap({ cells, startDate, sizeKey = 'accounts', mode = 'retenti
                     }
                   }
 
+                  const clickable = !!c && !!onCellClick
                   return (
                     <td key={mi}
-                      title={c ? `${cLabel(cohort, startDate)} +${mi}: ${nfmt(c[sizeKey])} ${sizeKey}, ${usd(c.gmv)}` : ''}
-                      style={{ height: 28, textAlign: 'center', background: bg, borderRadius: 3, color: textColor, fontSize: 10, fontWeight, verticalAlign: 'middle', cursor: c ? 'help' : 'default' }}>
+                      title={c
+                        ? (early
+                          ? `Too early to tell: joined < 3 months before window end\n${cLabel(cohort, startDate)} +${mi}: ${nfmt(c[sizeKey])} ${sizeKey}, ${usd(c.gmv)}`
+                          : `${cLabel(cohort, startDate)} +${mi}: ${nfmt(c[sizeKey])} ${sizeKey}, ${usd(c.gmv)}\nClick to drill into accounts`)
+                        : ''}
+                      onClick={clickable ? () => onCellClick(cohort, mi, cLabel(cohort, startDate)) : undefined}
+                      style={{
+                        height: 28, textAlign: 'center', background: bg, borderRadius: 3,
+                        color: textColor, fontSize: 10, fontWeight, verticalAlign: 'middle',
+                        cursor: clickable ? 'pointer' : 'default',
+                        transition: 'opacity .1s',
+                      }}
+                      onMouseEnter={clickable ? e => { e.currentTarget.style.opacity = '.75' } : undefined}
+                      onMouseLeave={clickable ? e => { e.currentTarget.style.opacity = '1'   } : undefined}
+                    >
                       {label}
                     </td>
                   )
@@ -612,6 +644,199 @@ function BarPill({ value, max, color }) {
 const DEF = 'last12m'
 const getDefRange = () => { const p = PRESETS.find(x => x.value === DEF); const r = p.get(); return r }
 
+// ─── Cohort Drill Panel ───────────────────────────────────────────────────────
+// Slide-in right panel that lists the account roster for a clicked cohort cell.
+// Uses secondary_species_name as primary label (1:1 with fleet_id, distinct business names).
+// Default tab: LOST. CSV export always exports the currently visible (filtered) tab.
+function CohortDrillPanel({ cell, data, loading, tab, onTabChange, onClose, onApplyFilter }) {
+  if (!cell) return null
+
+  const roster  = data?.roster  ?? []
+  const summary = data?.summary ?? {}
+  const filtered = tab === 'ALL' ? roster : roster.filter(r => r.status === tab)
+
+  const doExport = () => {
+    const cols = ['Account', 'Customer', 'Owner', 'Partner', 'Status', 'Last Booked', 'Days Quiet', 'Trips', 'GMV', 'Profit']
+    const rows = filtered.map(r => [
+      r.account_label, r.customer_name, r.owner, r.partner, r.status,
+      r.last_booked ?? '', r.days_quiet ?? '', r.trips, r.gmv, r.profit,
+    ])
+    const csv = [cols, ...rows]
+      .map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url
+    a.download = `cohort_${cell.cohort}_+${cell.mi}_${tab.toLowerCase()}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const TABS = [
+    { key: 'LOST',   label: `Lost (${n(summary.lost_accounts)})` },
+    { key: 'ACTIVE', label: `Active (${n(summary.active_accounts)})` },
+    { key: 'ALL',    label: `All (${n(summary.total_accounts)})` },
+  ]
+
+  return (
+    <>
+      {/* Dimmed backdrop — click to close */}
+      <div onClick={onClose}
+        style={{ position: 'fixed', inset: 0, zIndex: 900, background: 'rgba(0,0,0,.18)' }} />
+
+      {/* Panel */}
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 560, zIndex: 901,
+        background: '#fff', boxShadow: '-4px 0 32px rgba(0,0,0,.14)',
+        display: 'flex', flexDirection: 'column',
+        fontFamily: '"DM Sans",-apple-system,BlinkMacSystemFont,sans-serif',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '18px 20px 14px', borderBottom: `1px solid ${T.border}`, background: T.bg2 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.navy }}>
+                {cell.cohortLabel} · +{cell.mi}
+              </div>
+              <div style={{ fontSize: 11.5, color: T.text3, marginTop: 3 }}>
+                {loading
+                  ? 'Loading…'
+                  : `${nfmt(summary.total_accounts)} accounts · ${usdC(n(summary.total_gmv))} GMV · ${usdC(n(summary.lost_gmv))} lost`}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+              {!loading && data && !data.error && (
+                <button onClick={doExport} style={{
+                  padding: '5px 12px', border: `1px solid ${T.border}`, borderRadius: 7,
+                  background: '#fff', color: T.text3, fontSize: 12, fontWeight: 600,
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>↓ CSV</button>
+              )}
+              <button onClick={onClose} style={{
+                width: 28, height: 28, border: `1px solid ${T.border}`, borderRadius: 7,
+                background: '#fff', color: T.text3, fontSize: 18, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                fontFamily: 'inherit',
+              }}>×</button>
+            </div>
+          </div>
+
+          {/* Cross-filter button — sends cohort_partners to the Partner Profitability table */}
+          {!loading && data && !data.error && (
+            <button
+              onClick={() => onApplyFilter(data.cohort_partners, { cohort: cell.cohort, mi: cell.mi, label: cell.cohortLabel, count: n(summary.total_accounts) })}
+              style={{
+                marginTop: 10, padding: '5px 14px', border: `1px solid ${T.blue}`,
+                borderRadius: 7, background: T.blueBg, color: T.blue, fontSize: 12,
+                fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', width: '100%',
+                textAlign: 'left',
+              }}
+            >
+              ⟶ Filter Partner Profitability to this cohort ({nfmt(summary.total_accounts)} accounts)
+            </button>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`, padding: '0 20px', flexShrink: 0 }}>
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => onTabChange(t.key)} style={{
+              padding: '10px 16px', border: 'none',
+              borderBottom: `2.5px solid ${tab === t.key ? T.blue : 'transparent'}`,
+              background: 'none', color: tab === t.key ? T.blue : T.text3,
+              fontSize: 12.5, fontWeight: tab === t.key ? 700 : 500,
+              cursor: 'pointer', fontFamily: 'inherit', transition: 'color .12s',
+            }}>{t.label}</button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          {loading && (
+            <div style={{ padding: '60px 20px', textAlign: 'center', color: T.text3, fontSize: 13 }}>
+              <div style={{ width: 24, height: 24, border: `2px solid ${T.border}`, borderTopColor: T.blue, borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+              Fetching account roster from BigQuery…
+            </div>
+          )}
+          {!loading && data?.error && (
+            <div style={{ padding: '20px', color: T.red, fontSize: 13 }}>⚠ {data.error}</div>
+          )}
+          {!loading && !data?.error && filtered.length === 0 && (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: T.text3, fontSize: 13 }}>
+              No accounts in this view
+            </div>
+          )}
+          {!loading && !data?.error && filtered.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11.5 }}>
+              <thead style={{ position: 'sticky', top: 0, background: T.bg2, zIndex: 1 }}>
+                <tr>
+                  {[
+                    { h: 'Account',     align: 'left' },
+                    { h: 'Owner',       align: 'left' },
+                    { h: 'Status',      align: 'right' },
+                    { h: 'Last booked', align: 'right' },
+                    { h: 'Quiet',       align: 'right' },
+                    { h: 'GMV',         align: 'right' },
+                    { h: 'Profit',      align: 'right' },
+                  ].map(({ h, align }) => (
+                    <th key={h} style={{
+                      padding: '8px 10px', textAlign: align,
+                      color: T.text3, fontWeight: 600, fontSize: 10,
+                      textTransform: 'uppercase', letterSpacing: '0.05em',
+                      borderBottom: `1px solid ${T.border}`, whiteSpace: 'nowrap',
+                    }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((row, i) => (
+                  <tr key={row.fleet_id || i}
+                    style={{ background: i % 2 === 0 ? '#fff' : T.bg2 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = T.blueBg }}
+                    onMouseLeave={e => { e.currentTarget.style.background = i % 2 === 0 ? '#fff' : T.bg2 }}>
+                    <td style={{
+                      padding: '9px 10px', fontWeight: 600, color: T.navy,
+                      maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }} title={`${row.account_label}\n${row.customer_name ?? ''} · ${row.partner ?? ''}`}>
+                      {row.account_label}
+                    </td>
+                    <td style={{
+                      padding: '9px 10px', color: T.text3, fontSize: 11,
+                      maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {row.owner ?? '—'}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right' }}>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 5, fontSize: 10, fontWeight: 700,
+                        background: row.status === 'ACTIVE' ? T.greenBg : T.redBg,
+                        color:      row.status === 'ACTIVE' ? T.green   : T.red,
+                      }}>{row.status}</span>
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', color: T.text3, whiteSpace: 'nowrap', fontSize: 11 }}>
+                      {row.last_booked ?? '—'}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', fontSize: 11, color: n(row.days_quiet) > 90 ? T.red : T.text3 }}>
+                      {row.days_quiet != null ? nfmt(row.days_quiet) + 'd' : '—'}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 600, color: T.navy, whiteSpace: 'nowrap' }}>
+                      {usd(row.gmv)}
+                    </td>
+                    <td style={{ padding: '9px 10px', textAlign: 'right', color: n(row.profit) >= 0 ? T.green : T.red, whiteSpace: 'nowrap' }}>
+                      {usd(row.profit)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────────────────────────────────
@@ -628,6 +853,15 @@ export default function CustomerAnalytics() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
   const [cohortMode, setCM]   = useState('retention')
+
+  // Cohort drill-down state
+  const [drillCell,       setDrillCell]       = useState(null)   // {cohort, mi, cohortLabel}
+  const [drillData,       setDrillData]       = useState(null)
+  const [drillLoading,    setDrillLoading]    = useState(false)
+  const [drillTab,        setDrillTab]        = useState('LOST')
+  // Cross-filter state — when set, Partner Profitability uses filtered re-aggregation
+  const [cohortPartners,     setCohortPartners]     = useState(null)
+  const [cohortPartnersMeta, setCohortPartnersMeta] = useState(null)
 
   // Auto-select Last 12 months when landing on this tab.
   // Restore the previous default (last30d) on unmount only if the user
@@ -650,6 +884,14 @@ export default function CustomerAnalytics() {
       actionsRef.current.setCustomerFilter([])
     }
   }, []) // eslint-disable-line
+
+  // Clear drill panel and cross-filter whenever date range changes
+  useEffect(() => {
+    setDrillCell(null)
+    setDrillData(null)
+    setCohortPartners(null)
+    setCohortPartnersMeta(null)
+  }, [start, end]) // eslint-disable-line
 
   const loadIdRef = useRef(0)
 
@@ -677,6 +919,27 @@ export default function CustomerAnalytics() {
       if (myId === loadIdRef.current) setLoading(false)
     }
   }, []) // eslint-disable-line
+
+  // Cohort drill: invoked when the user clicks a cohort cell.
+  // The cohort_partners from the response is used as the cross-filter source.
+  const fetchDrill = useCallback(async (cohort, mi, cohortLabel) => {
+    setDrillCell({ cohort, mi, cohortLabel })
+    setDrillTab('LOST')
+    setDrillLoading(true)
+    setDrillData(null)
+    try {
+      const { data: d, error: fe } = await supabase.functions.invoke(
+        'customer_analysis_cohort',
+        { body: { start_date: start, end_date: end, cohort, mi } },
+      )
+      if (fe || d?.error) throw new Error(fe?.message || d?.error || 'Cohort fetch failed')
+      setDrillData(d)
+    } catch (ex) {
+      setDrillData({ error: ex?.message ?? 'Failed to load cohort data' })
+    } finally {
+      setDrillLoading(false)
+    }
+  }, [start, end])
 
   // Reload whenever global date range or customer filter changes
   const customerFilter = filters.customerFilter
@@ -831,9 +1094,13 @@ export default function CustomerAnalytics() {
                 <Card>
                   <CardHead
                     title="Account Cohort Retention"
-                    sub={acBase > 0
-                      ? `% retained · base: ${nfmt(acBase)} of ${nfmt(n(kpis?.accounts))} accounts have a known first-trip month`
-                      : '% of accounts active at +0 still booking in +N'}
+                    sub={(() => {
+                      if (!acBase) return '% of accounts active at +0 still booking in +N -- click any cell to drill in'
+                      const d = new Date((start ?? '2025-08-01') + 'T00:00:00')
+                      const anchorMonth = d.toLocaleString('en-US', { month: 'short', year: 'numeric' })
+                      const missing = Math.max(0, n(kpis?.accounts) - acBase)
+                      return `Base cohort anchored on accounts active in ${anchorMonth}. ${nfmt(missing)} account${missing !== 1 ? 's' : ''} that traded earlier but were inactive that month appear later as reactivations and have no +0 row.`
+                    })()}
                     right={
                       <div style={{ display: 'flex', border: `1px solid ${T.border}`, borderRadius: 7, overflow: 'hidden', flexShrink: 0 }}>
                         {['retention', 'revenue'].map(m => (
@@ -847,7 +1114,7 @@ export default function CustomerAnalytics() {
                       </div>
                     }
                   />
-                  <CohortHeatmap cells={acCohort} startDate={start} sizeKey="accounts" mode={cohortMode} />
+                  <CohortHeatmap cells={acCohort} startDate={start} endDate={end} sizeKey="accounts" mode={cohortMode} onCellClick={fetchDrill} />
                 </Card>
 
                 {/* Customer cohort */}
@@ -858,7 +1125,7 @@ export default function CustomerAnalytics() {
                       ? `% retained · base: ${nfmt(ptBase)} of ${nfmt(n(kpis?.customer_names))} named customers have a known first-trip month`
                       : 'Customer % retained by cohort × months since first trip'}
                   />
-                  <CohortHeatmap cells={ptCohort} startDate={start} sizeKey="customers" mode="retention" />
+                  <CohortHeatmap cells={ptCohort} startDate={start} endDate={end} sizeKey="customers" mode="retention" />
                 </Card>
               </div>
 
@@ -909,7 +1176,21 @@ export default function CustomerAnalytics() {
 
               {/* ══ 7. PARTNER PROFITABILITY (full-width, all columns) ══════════ */}
               <Card>
-                <CardHead title="Partner Profitability" sub="All partners active in the selected date range — click any column header to sort" />
+                <CardHead
+                   title="Partner Profitability"
+                   sub={cohortPartnersMeta
+                     ? `Filtered to cohort: ${cohortPartnersMeta.label} +${cohortPartnersMeta.mi} (${nfmt(cohortPartnersMeta.count)} accounts)`
+                     : 'All partners active in the selected date range — click any column header to sort'}
+                   right={cohortPartnersMeta && (
+                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                       <button
+                         onClick={() => { setCohortPartners(null); setCohortPartnersMeta(null) }}
+                         style={{ border: `1px solid ${T.border}`, background: T.bg, borderRadius: 7, padding: '4px 10px', cursor: 'pointer', color: T.text3, fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}
+                         title="Clear cohort filter"
+                       >x Clear filter</button>
+                     </div>
+                   )}
+                />
                 <DataTable
                   keyField="customer_name"
                   defaultSort="complete_gmv"
@@ -933,7 +1214,7 @@ export default function CustomerAnalytics() {
                                 : n(r.profit_margin_pct) < 5   ? T.amber
                                 : T.green },
                   ]}
-                  rows={partners}
+                  rows={cohortPartners ?? partners}
                 />
               </Card>
 
@@ -962,6 +1243,7 @@ export default function CustomerAnalytics() {
               </Card>
 
 
+
               {/* Footer */}
               {meta && (
                 <div style={{ textAlign: 'center', fontSize: 11, color: T.text3, paddingBottom: 4 }}>
@@ -975,7 +1257,21 @@ export default function CustomerAnalytics() {
         </div>
       </div>
 
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      {/* Cohort drill-down panel */}
+      <CohortDrillPanel
+        cell={drillCell}
+        data={drillData}
+        loading={drillLoading}
+        tab={drillTab}
+        onTabChange={setDrillTab}
+        onClose={() => setDrillCell(null)}
+        onApplyFilter={(pts, meta) => {
+          setCohortPartners(pts)
+          setCohortPartnersMeta(meta)
+        }}
+      />
+
+      <style>{'@keyframes spin{to{transform:rotate(360deg)}}'}</style>
     </>
   )
 }

@@ -243,6 +243,17 @@ acct_activity AS (
   SELECT a.* FROM act_ext a, params p WHERE a.am >= p.win_start_month
 ),
 
+-- Part 0 fix: pre-window base roster = pre-existing accounts active at the anchor month.
+-- Before this fix the pre-window cohort used numerator/denominator on different populations:
+--   numerator = all 1,061 pre-window accounts active at month +N
+--   denominator = only the 745 that were also active at anchor month (+0)
+-- This overstated retention by 9-19 percentage points. Fix: restrict BOTH to the roster.
+pre_base_roster AS (
+  SELECT DISTINCT a.fleet_id
+  FROM acct_activity a JOIN fleet_first f USING (fleet_id), params p
+  WHERE a.am = p.win_start_month AND f.first_month < p.win_start_month
+),
+
 -- 1. KPI header
 kpis AS (
   SELECT TO_JSON_STRING(STRUCT(
@@ -294,6 +305,8 @@ monthly AS (
 ),
 
 -- 3. Account cohort grid (fleet_id)
+-- Pre-window cohort uses LEFT JOIN to pre_base_roster so only the 745 roster members
+-- are counted at every mi (not the full 1,061 pre-window accounts). Monthly cohorts unchanged.
 account_cohort AS (
   SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(cohort, mi, accounts, trips, gmv)
            ORDER BY cohort, mi)) AS j
@@ -307,7 +320,15 @@ account_cohort AS (
       COUNT(DISTINCT a.fleet_id) AS accounts,
       SUM(a.n_trips)             AS trips,
       ROUND(SUM(a.gmv), 2)       AS gmv
-    FROM acct_activity a JOIN fleet_first f USING (fleet_id), params p
+    FROM acct_activity a
+    JOIN fleet_first f USING (fleet_id)
+    LEFT JOIN pre_base_roster pbr ON a.fleet_id = pbr.fleet_id
+    , params p
+    WHERE
+      -- Pre-window: restrict to roster (active at anchor month) — fixes denominator
+      (f.first_month < p.win_start_month AND pbr.fleet_id IS NOT NULL)
+      -- In-window cohorts: unchanged
+      OR f.first_month >= p.win_start_month
     GROUP BY cohort, mi HAVING mi >= 0
   )
 ),
@@ -317,6 +338,12 @@ cust_activity AS (
   SELECT customer_name, DATE_TRUNC(pickup_date, MONTH) AS am,
          COUNT(*) AS n_trips, SUM(gmv) AS gmv
   FROM trips WHERE customer_name IS NOT NULL GROUP BY 1, 2
+),
+-- Same roster fix for customer cohort: denominator = 86 (active at anchor), not 93
+pre_cust_base_roster AS (
+  SELECT DISTINCT a.customer_name
+  FROM cust_activity a JOIN cust_first f USING (customer_name), params p
+  WHERE a.am = p.win_start_month AND f.first_month < p.win_start_month
 ),
 customer_cohort AS (
   SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(cohort, mi, customers, trips, gmv)
@@ -331,7 +358,13 @@ customer_cohort AS (
       COUNT(DISTINCT a.customer_name) AS customers,
       SUM(a.n_trips)                  AS trips,
       ROUND(SUM(a.gmv), 2)            AS gmv
-    FROM cust_activity a JOIN cust_first f USING (customer_name), params p
+    FROM cust_activity a
+    JOIN cust_first f USING (customer_name)
+    LEFT JOIN pre_cust_base_roster pcbr ON a.customer_name = pcbr.customer_name
+    , params p
+    WHERE
+      (f.first_month < p.win_start_month AND pcbr.customer_name IS NOT NULL)
+      OR f.first_month >= p.win_start_month
     GROUP BY cohort, mi HAVING mi >= 0
   )
 ),
