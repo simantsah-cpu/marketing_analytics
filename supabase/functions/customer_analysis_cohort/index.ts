@@ -206,7 +206,7 @@ account_metrics AS (
 roster AS (
   SELECT
     r.fleet_id,
-    COALESCE(l.account_label, r.fleet_id) AS account_label,
+    COALESCE(l.account_label, CAST(r.fleet_id AS STRING)) AS account_label,
     l.customer_name,
     NULL                   AS owner,
     l.partner,
