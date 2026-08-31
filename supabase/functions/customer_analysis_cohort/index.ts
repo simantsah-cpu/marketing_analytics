@@ -105,7 +105,7 @@ scope AS (
     v.ride_stat,
     v.has_complaint, v.has_ops_complaint,
     d.customer_name,
-    COALESCE(d.customer_name, v.from_fleet_id_as_customer)    AS account_label,
+    COALESCE(d.customer_name, CAST(v.from_fleet_id_as_customer AS STRING)) AS account_label,
     COALESCE(d.partner, '(unmapped)')                        AS partner,
     CAST(IFNULL(v.elife_amount_usd, 0) AS FLOAT64)
       + CAST(IFNULL(v.additional_charge_amount_usd, 0) AS FLOAT64) AS gmv,
