@@ -593,7 +593,7 @@ export default function LeadershipDashboard() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = parseInt(searchParams.get('tab') || '0', 10)
   const activeTab = isNaN(tabParam) ? 0 : Math.max(0, Math.min(8, tabParam))
-  const [period,     setPeriodState] = useState(curMonth()) // will be overwritten by snapshot month on load
+  const [period,     setPeriodState] = useState('mtd') // MTD by default; month-picker mode only when user explicitly selects a YYYY-MM key
   // Read `snapshot` (or `asAt`) param on mount — stored raw; validated against snapDates after first fetch
   const pendingSnapRef = React.useRef(
     searchParams.get('snapshot') || searchParams.get('asAt') || null
@@ -622,9 +622,15 @@ export default function LeadershipDashboard() {
   // Derived: is the selected asAt the latest available snapshot?
   const isLatestSnap = !asAt || asAt === D.snapDates[0]
 
-  // Auto-set period to the snapshot month whenever snapDates / D.asAt changes.
-  // This replaces the old "Aug 2026" dropdown — period always tracks the snapshot.
+  // periodRef: lets the snapshot auto-set useEffect read the current period value
+  // without adding it to the dependency array (which would cause an infinite loop).
+  const periodRef = React.useRef(period)
+  useEffect(() => { periodRef.current = period }, [period])
+
+  // Auto-set period to the snapshot month ONLY when already in month-picker mode.
+  // If the user is on MTD / QTD / YTD / Week, do NOT clobber their selection.
   useEffect(() => {
+    if (!isMonthKey(periodRef.current)) return  // preserve MTD/QTD/YTD/Week
     const sm = (D.asAt ?? D.snapDates[0] ?? '').slice(0, 7)
     if (sm && isMonthKey(sm)) setPeriodState(sm)
   }, [D.asAt, D.snapDates]) // eslint-disable-line react-hooks/exhaustive-deps
