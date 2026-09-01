@@ -34,12 +34,9 @@ const DEPT_COLORS = {
   'Sales Jojo':  '#EAB308',
 }
 
-// Sub-team targets (§1.2): used when the row's own dept is a sub-team.
-// These must match the values in the mapping table.
-const SUBTEAM_TARGET = {
-  'Sales Mo':   15873,
-  'Sales Jojo': 3000,
-}
+// §1.2: Sub-team targets are read from the snapshot-pinned targets prop (targets.dept),
+// which is populated from Q_TARGETS → mapping table. No hardcoded values here.
+// Fall-back chain: targets.dept[subTeamName] → targets.dept[parentDept] → null
 
 const rollupDept = d => DEPT_ROLLUP[d] || d || '(Unassigned)'
 
@@ -156,7 +153,7 @@ function exportCsv(rows, basis, asAt, prevSnapDate, prevMap, targets) {
     const key        = `${r.dept}||${r.cust}`
     const delta      = prevMap[key] ?? null
     const parentDept = rollupDept(r.dept)
-    const tgt        = SUBTEAM_TARGET[r.dept] ?? targets?.dept?.[parentDept] ?? null
+    const tgt        = targets?.dept?.[r.dept] ?? targets?.dept?.[parentDept] ?? null
     const growthProfit = delta !== undefined && delta !== null
       ? (_num(r.profit) - delta)
       : delta === null ? '' : ''
@@ -470,7 +467,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
     const dp         = curProfit !== null ? curProfit - prevProfit : null
     // §1.2: sub-team uses its own target; parent uses parent dept's target
     const parentDept = rollupDept(r.dept)
-    const tgt        = SUBTEAM_TARGET[r.dept] ?? targets?.dept?.[parentDept] ?? null
+    const tgt        = targets?.dept?.[r.dept] ?? targets?.dept?.[parentDept] ?? null
     const dPts       = (dp !== null && tgt && tgt > 0) ? (dp / tgt) * 100 : null
     const isUnknown  = r.cust === '(Unknown)'
     return (
