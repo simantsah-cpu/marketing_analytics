@@ -479,7 +479,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
         <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'16px 20px 14px'}}>
           <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Forecast total profit by geography</div>
           <div style={{fontSize:11.5,color:T.text3,marginBottom:14}}>
-            Four months ahead · totals above each column, {usdC(geoAll)} in aggregate
+            {mAgg.length} month{mAgg.length !== 1 ? 's' : ''} ahead · totals above each column, {usdC(geoAll)} in aggregate
             {/* §3 — geo taxonomy note */}
             {geoIsMerged&&<span style={{marginLeft:8,fontSize:10,background:'rgba(234,179,8,.15)',color:'#78590A',padding:'1px 6px',borderRadius:9,border:'1px solid rgba(234,179,8,.4)'}}>Americas &amp; Asia/Africa/Oceania merged from Aug 17</span>}
           </div>
