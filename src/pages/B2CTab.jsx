@@ -86,9 +86,17 @@ function fmtQueryTime(iso){
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §5 — Channel classification (on channel-grain aggregate)
+// Two distinct attribution-gap buckets from the source view:
+//   Untracked  = booking with NO matching GA4 session at all (marketing_channel IS NULL in view)
+//                sessions = NULL, bookings > 0
+//   Unassigned = GA4 session DID join, but source/medium didn't match any classification rule
+//                sessions > 0, bookings > 0, no spend — NOT organic, not investable
+// Both belong in 'Attribution gap'. Previously 'Unassigned' fell through to 'Unpaid' — fixed.
 // ─────────────────────────────────────────────────────────────────────────────
 function splitOf(r){
-  // sessions is NULL (not 0) for untracked — check bookings > 0 AND sessions null/0
+  // Unassigned: GA4 joined but unclassifiable — attribution gap, not organic
+  if(r.channel === 'Unassigned') return 'Attribution gap'
+  // Untracked: no GA4 session at all — sessions is NULL, bookings > 0
   const hasSessions = r.sessions !== null && num(r.sessions) > 0
   if(!hasSessions && num(r.bookings) > 0) return 'Attribution gap'
   if(num(r.spend_usd) > 0) return 'Paid'
@@ -96,7 +104,11 @@ function splitOf(r){
 }
 
 const SPLIT_COLOR  = { Paid:T.blue, Unpaid:T.green, 'Attribution gap':T.amber }
-const SPLIT_NOTE   = { Paid:'bought traffic', Unpaid:'organic, direct, email', 'Attribution gap':'no session data — not investable' }
+const SPLIT_NOTE   = {
+  Paid:              'bought traffic',
+  Unpaid:            'organic, direct, email',
+  'Attribution gap': 'Untracked = no GA4 session · Unassigned = GA4 joined, source unclassifiable',
+}
 const SPLIT_ORDER  = ['Paid','Unpaid','Attribution gap']
 
 // ROI floor — spec §7: below $50 spend, ROI is arithmetic noise not insight

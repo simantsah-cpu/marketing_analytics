@@ -864,6 +864,10 @@ ORDER BY period DESC, grain, parent NULLS FIRST, bookings DESC NULLS LAST
 
 
 // §2.2 Q_B2C_M — calendar months from 2025-01-01
+// Channel canonicalisation matches the weekly query:
+//   AI Assistants → AI / LLM, Organic Social → Social (same CASE as makeQB2C)
+//   Unassigned (GA4 joined, unclassifiable) and Untracked (NULL → coalesced) are
+//   preserved as distinct labels — do NOT merge them.
 const Q_B2C_M = `
 WITH exch AS (
   SELECT rate AS gbp_usd
@@ -882,7 +886,11 @@ raw AS (
 SELECT
   FORMAT_DATE("%Y-%m", g.booking_date) AS ym,
   g.brand,
-  COALESCE(g.marketing_channel,"Untracked") AS channel,
+  CASE COALESCE(g.marketing_channel, "Untracked")
+    WHEN "AI Assistants"  THEN "AI / LLM"
+    WHEN "Organic Social" THEN "Social"
+    ELSE COALESCE(g.marketing_channel, "Untracked")
+  END AS channel,
   g.platform,
   CAST(ROUND(SUM(g.overall_sessions),0) AS FLOAT64) AS sessions,
   CAST(ROUND(SUM(g.keyEvents),2)        AS FLOAT64) AS bookings,
@@ -894,6 +902,7 @@ WHERE g.platform IN ("APP","WEB")
   AND g.booking_date BETWEEN DATE "2025-01-01" AND CURRENT_DATE()
 GROUP BY 1,2,3,4
 `
+
 
 // makeQRH — Ride Hailing weekly, live sources, parameterised by @as_at
 // §0:  rh_sales_trips excluded — broken since 2026-07-11
