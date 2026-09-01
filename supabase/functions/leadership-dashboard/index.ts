@@ -606,7 +606,7 @@ base AS (
   JOIN \`elife-data-warehouse-prod.dim.dim_fleet_as_customer\` d
     ON d.fleet_id = r.from_fleet_id_as_customer
   LEFT JOIN sa ON sa.service_area_id = r.service_area_id
-  WHERE r.date_calculate BETWEEN DATE "2025-12-01" AND DATE "2026-12-31"
+  WHERE r.date_calculate BETWEEN DATE "2025-12-01" AND CURRENT_DATE()  -- upper bound is live: always includes current month
   GROUP BY 1,2,3,4
   HAVING SUM(r.complete_revenue) <> 0 OR SUM(r.sales_amount) <> 0
 )
