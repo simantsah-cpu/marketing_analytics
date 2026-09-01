@@ -143,13 +143,27 @@ const achColor = p =>
     : T.red
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Pace (§5.3) — straight-line, not seasonality-adjusted
+// §5.3 — Pace: straight-line, not seasonality-adjusted.
+// MUST use the snapshot month, not wall-clock today.
+// Receives CUR_MONTH (YYYY-MM) so viewing a past snapshot shows that month's pace.
+// e.g. snapshot 2026-08-25 → CUR_MONTH='2026-08' → elapsed=25, days=31, frac=25/31=80.6%
+// NOT wall-clock today (Sept 1) → that would give frac=3.3% and make ach comparisons nonsense.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function monthPace() {
-  const now = new Date()
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-  return { elapsed: now.getDate(), days: daysInMonth, frac: now.getDate() / daysInMonth }
+function monthPace(curMonth, snapDate) {
+  // curMonth is YYYY-MM from the snapshot, e.g. '2026-08'
+  // The snap date is at most the last day of that month.
+  // We know the snapshot date exactly from D.asAt — use its day as elapsed.
+  // But monthPace is a pure helper that only needs the month string;
+  // caller passes snapDate so we can extract the exact day.
+  // Signature: monthPace(snapMonth, snapDateFull)
+  // snapDateFull = YYYY-MM-DD or null; falls back to last day of month if null.
+  // This function is intentionally kept pure (no external state).
+  const [year, month] = curMonth.split('-').map(Number)
+  const daysInMonth = new Date(year, month, 0).getDate()
+  // elapsed: use the snapshot day if available, otherwise end-of-month (conservative)
+  const elapsed = snapDate ? parseInt(snapDate.slice(8, 10), 10) : daysInMonth
+  return { elapsed, days: daysInMonth, frac: elapsed / daysInMonth }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,7 +180,14 @@ function curMonth() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const MONTH_FLOOR = '2026-01'   // Jan 2026 — Dec 2025 is fetched as prev-month base only
+// MONTH_FLOOR is derived from the snapshot year at render time (see monthFloor() below).
+// It is NOT hardcoded to 2026 so that viewing older snapshots shows the full year of that snapshot.
+// Dec of the prior year is included as that month's prev-month comparison base.
+
+const monthFloor = snapYm => {
+  if (!snapYm || snapYm.length < 4) return '2026-01'
+  return `${snapYm.slice(0, 4)}-01`
+}
 
 const monthLabel = ym =>
   `${MONTH_NAMES[+ym.slice(5,7) - 1]} ${ym.slice(0,4)}`
@@ -177,8 +198,8 @@ function prevYm(ym) {
   return `${y}-${String(m).padStart(2,'0')}`
 }
 
-const availableMonths = rows =>
-  [...new Set(rows.filter(r => r.ym >= MONTH_FLOOR).map(r => r.ym))].sort()
+const availableMonths = (rows, snapYm) =>
+  [...new Set(rows.filter(r => r.ym >= monthFloor(snapYm)).map(r => r.ym))].sort()
 
 // ─────────────────────────────────────────────────────────────────────────────
 // buildDepts for Exec Summary — rollup onto neutral field names
@@ -716,7 +737,7 @@ export default function LeadershipDashboard() {
   const depts  = buildDepts(cust)                       // Map<dept, neutralAgg>
   const t      = totals(depts)
   const targets = buildTargets(D.targets, CUR_MONTH)    // dept targets for Exec Summary compat
-  const pace   = monthPace()
+  const pace   = monthPace(CUR_MONTH, D.asAt ?? D.snapDates[0] ?? null)
 
   // All reads use neutral names — no more PC.profitF etc.
   const profit   = t.profit
@@ -777,7 +798,7 @@ export default function LeadershipDashboard() {
   const totalCustFile = custNames.size         // 118 (117 named + (Unknown))
 
   // §7.1 — guard: if months failed and user had a month selected, fall back to mtd
-  const monthList = availableMonths(D.months)
+  const monthList = availableMonths(D.months, CUR_MONTH)
   if (monthList.length === 0 && isMonthKey(period)) setPeriod('mtd')
 
   // ── QA log (§9.3) — permanent audit trail ─────────────────────────────────
@@ -1287,7 +1308,7 @@ export default function LeadershipDashboard() {
               }}
             >Retry now</button>
             <button
-              onClick={() => { localStorage.removeItem(CACHE_KEY); setRefreshKey(k => k + 1) }}
+              onClick={() => { cacheWrite(asAt, PERIOD_META[period] ? period : 'mtd', null); localStorage.removeItem(cacheKey(asAt, PERIOD_META[period] ? period : 'mtd')); setRefreshKey(k => k + 1) }}
               style={{
                 marginLeft: 6, fontSize: 12, fontWeight: 600, padding: '2px 10px',
                 borderRadius: 5, border: `1px solid ${T.red}`, background: 'transparent',
