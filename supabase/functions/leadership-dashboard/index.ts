@@ -538,6 +538,7 @@ WITH mx AS (
 )
 SELECT
   CAST(f.forecast_date AS STRING) AS fdate,
+  f.model_version AS model_version,
   f.pickup_month  AS ym,
   f.geo           AS geo,
   CAST(ROUND(f.committed_rev,0)  AS FLOAT64) AS committed,
@@ -573,6 +574,7 @@ WITH mx AS (
 )
 SELECT
   CAST(f.forecast_date AS STRING) AS fdate,
+  f.model_version                       AS model_version,
   f.pickup_month                        AS ym,
   IFNULL(f.customer,  "(Unknown)")      AS cust,
   IFNULL(f.cust_type, "\u2014")         AS ctype,
