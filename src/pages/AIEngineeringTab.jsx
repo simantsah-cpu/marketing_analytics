@@ -5,15 +5,15 @@
  * Data is manually entered into snap.manual_kpi_input — no live ads.* source.
  *
  * Rules enforced from spec:
- * §0:   no volatility banner, no queried_at stamp — values are frozen by snapshot
- * §1.1: values are on 0-100 scale — display as-is with % suffix, NEVER ×100
- * §1.2: no MTD / QTD / YTD — no denominator stored, cannot be computed correctly
- * §2:   label by week_key + week dates, never by recorded_on
- * §3.1: zero rows for current week → "No data recorded" — never render 0%
- * §3.2: QUALIFY in SQL collapses duplicates; frontend picks first (already deduplicated)
- * §4.0: hold metric list in frontend; don't drive UI purely from returned rows
- * §4.1: WoW delta in pts not % — write "−7.9 pts"
- * §5.14/§5.19: WoW = — when either side is NULL — never NaN, never 0
+ * 0:   no volatility banner, no queried_at stamp — values are frozen by snapshot
+ * 1.1: values are on 0-100 scale — display as-is with % suffix, NEVER ×100
+ * 1.2: no MTD / QTD / YTD — no denominator stored, cannot be computed correctly
+ * 2:   label by week_key + week dates, never by recorded_on
+ * 3.1: zero rows for current week → "No data recorded" — never render 0%
+ * 3.2: QUALIFY in SQL collapses duplicates; frontend picks first (already deduplicated)
+ * 4.0: hold metric list in frontend; don't drive UI purely from returned rows
+ * 4.1: WoW delta in pts not % — write "−7.9 pts"
+ * 5.14/5.19: WoW = — when either side is NULL — never NaN, never 0
  */
 
 import { useMemo } from 'react'
@@ -29,7 +29,7 @@ const T = {
   lift:'0 1px 2px rgba(26,26,24,.05), 0 6px 16px -6px rgba(26,26,24,.10)',
 }
 
-// §4.0: canonical metric list — drives UI independently of row count
+// 4.0: canonical metric list — drives UI independently of row count
 const METRICS = [
   {
     key: 'ai_lines_added_pct',
@@ -48,14 +48,14 @@ const METRICS = [
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function num(v){ const x = Number(v); return isFinite(x) ? x : null }
 
-// §1.1: values are already on 0-100 scale — display as-is, never ×100
+// 1.1: values are already on 0-100 scale — display as-is, never ×100
 function fmtPct(v){
   const x = num(v)
   if (x === null) return null
   return x.toFixed(1) + '%'
 }
 
-// §4.1: WoW delta in percentage POINTS, not %
+// 4.1: WoW delta in percentage POINTS, not %
 function fmtPts(delta){
   if (delta === null || !isFinite(delta)) return null
   const sign = delta >= 0 ? '+' : ''
@@ -71,16 +71,16 @@ function fmtWeekRange(start, end){
 
 // ─── Parse rows from makeQAI ──────────────────────────────────────────────────
 // Returns { cur, prev } each with { meta, metrics: { [key]: value|null } }
-// §3.1: if cur rows all have NULL metric → no data recorded for that week
-// §4.0: both metrics marked missing when the LEFT JOIN returns a NULL-metric row
+// 3.1: if cur rows all have NULL metric → no data recorded for that week
+// 4.0: both metrics marked missing when the LEFT JOIN returns a NULL-metric row
 function parseAI(rows){
   function periodRows(period){ return rows.filter(r => r.period === period) }
 
   function parsePeriod(period){
     const pr = periodRows(period)
-    if (pr.length === 0) return null  // no prior snapshot at all (§5.14)
+    if (pr.length === 0) return null  // no prior snapshot at all (5.14)
 
-    // Check for empty-week case (§3.1 / §4.0): all rows have NULL metric
+    // Check for empty-week case (3.1 / 4.0): all rows have NULL metric
     const hasData = pr.some(r => r.metric !== null && r.metric !== undefined && r.metric !== '')
     const meta = {
       week_key:   pr[0]?.week_key   ?? null,
@@ -118,7 +118,7 @@ function SL({ children }){
   )
 }
 
-// No-data card — §3.1: shown for both metrics when week has zero manual rows
+// No-data card — 3.1: shown for both metrics when week has zero manual rows
 function NoDataCard({ meta, spec }){
   const weekRange = fmtWeekRange(meta?.week_start, meta?.week_end)
   return (
@@ -142,12 +142,12 @@ function NoDataCard({ meta, spec }){
 
 // Main metric card
 function MetricCard({ spec, curVal, prevVal, curMeta, prevMeta }){
-  // §5.11/5.12: sanity guard — value must be in 0-100 range
+  // 5.11/5.12: sanity guard — value must be in 0-100 range
   const safe = v => (v !== null && v >= 0 && v <= 100) ? v : null
   const cv = safe(curVal)
   const pv = safe(prevVal)
 
-  // §4.1: delta in pts — §5.14/5.19: null if either side missing
+  // 4.1: delta in pts — 5.14/5.19: null if either side missing
   const delta = (cv !== null && pv !== null) ? cv - pv : null
   const deltaColor = delta === null ? T.text3
     : (spec.higherIsBetter ? (delta >= 0 ? T.green : T.red) : (delta <= 0 ? T.green : T.red))
@@ -166,13 +166,13 @@ function MetricCard({ spec, curVal, prevVal, curMeta, prevMeta }){
       <div style={{ fontSize: 10.5, fontWeight: 600, color: T.text3, marginBottom: 6,
         textTransform: 'uppercase', letterSpacing: '0.06em' }}>{spec.label}</div>
 
-      {/* Current value — §1.1: display as-is, never ×100 */}
+      {/* Current value — 1.1: display as-is, never ×100 */}
       <div style={{ fontSize: 40, fontWeight: 700, color: T.text, lineHeight: 1, marginBottom: 4 }}>
         {cv !== null ? fmtPct(cv)
           : <span style={{ color: T.text3, fontSize: 18, fontStyle: 'italic' }}>n/a</span>}
       </div>
 
-      {/* Week label — §2: show week dates, not recorded_on */}
+      {/* Week label — 2: show week dates, not recorded_on */}
       {curLabel && (
         <div style={{ fontSize: 11, color: T.text3, marginBottom: 12 }}>{curLabel}</div>
       )}
@@ -191,7 +191,7 @@ function MetricCard({ spec, curVal, prevVal, curMeta, prevMeta }){
         {spec.description}
       </div>
 
-      {/* WoW — §4.1: pts not %, §5.14/5.19: — when null */}
+      {/* WoW — 4.1: pts not %, 5.14/5.19: — when null */}
       <div style={{ borderTop: `1px solid ${T.border}`, paddingTop: 10 }}>
         <div style={{ fontSize: 10, fontWeight: 600, color: T.text3, textTransform: 'uppercase',
           letterSpacing: '0.05em', marginBottom: 4 }}>Week-on-Week</div>
@@ -336,15 +336,15 @@ export default function AIEngineeringTab({ D }){
         </div>
       </div>
 
-      {/* §1.1: scale enforced in code — no banner needed */}
+      {/* 1.1: scale enforced in code — no banner needed */}
 
-      {/* §1.2 note: no MTD/QTD/YTD shown — this is by design */}
+      {/* 1.2 note: no MTD/QTD/YTD shown — this is by design */}
 
       {/* Metric cards */}
       <SL>Current Week — {cur?.meta?.week_key ?? asAt}</SL>
       <div style={{ display:'flex', gap:16, flexWrap:'wrap', marginBottom:24 }}>
         {METRICS.map(spec => {
-          // §3.1: if cur is null or cur has no data, show no-data card for both
+          // 3.1: if cur is null or cur has no data, show no-data card for both
           if (!cur || !cur.meta) return (
             <NoDataCard key={spec.key} meta={null} spec={spec} />
           )

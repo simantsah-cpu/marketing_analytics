@@ -4,12 +4,12 @@
  * Data source: Q_MQ → dwb.dwb_complaint + ads.ads_ride_dispatch_v
  * Replaces Q_INC / ads_qa_complaint_kpi_view entirely.
  *
- * §0 Non-negotiables enforced here:
- *  - §0.6 Provisional periods MUST show ceiling; bare rate without chip is non-shippable
- *  - §0.7 Prebooked and Ride Hailing NEVER share a combined headline tile
- *  - §7.2 Delta is '—' when either side is provisional
- *  - §8   Footnote is mandatory
- *  - §10.7 Geo rows with valid < 100 → 'n/a (N trips)' not a rate
+ * 0 Non-negotiables enforced here:
+ *  - 0.6 Provisional periods MUST show ceiling; bare rate without chip is non-shippable
+ *  - 0.7 Prebooked and Ride Hailing NEVER share a combined headline tile
+ *  - 7.2 Delta is '—' when either side is provisional
+ *  - 8   Footnote is mandatory
+ *  - 10.7 Geo rows with valid < 100 → 'n/a (N trips)' not a rate
  */
 
 import { useState, useMemo, useEffect } from 'react'
@@ -75,7 +75,7 @@ function mqSets(period, CUR_MONTH){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §5 — Client-side MQ data structures
+// 5 — Client-side MQ data structures
 // ─────────────────────────────────────────────────────────────────────────────
 function buildMQ(rows){
   const MQ={biz:{},product:{},geo:{},customer:{}}
@@ -91,7 +91,7 @@ function buildMQ(rows){
   return MQ
 }
 
-// Sum a dim across months — components first, then divide (§5)
+// Sum a dim across months — components first, then divide (5)
 function mqFor(MQ, grain, dim, months){
   const src=MQ[grain]?.[dim]; if(!src) return null
   const t={valid:0,pin:0,pex:0,plost:0}
@@ -107,7 +107,7 @@ function mqFor(MQ, grain, dim, months){
   t.rateLost = t.plost / t.valid
   t.open     = t.pex - t.plost
   t.openShare= t.pex>0 ? t.open/t.pex : 0
-  // §7: provisional when >5% of Ex cases are still open
+  // 7: provisional when >5% of Ex cases are still open
   t.provisional = t.openShare > 0.05
   return t
 }
@@ -129,7 +129,7 @@ const CHIP_OK={
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §7.1 — Rate cell with provisional chip
+// 7.1 — Rate cell with provisional chip
 // ─────────────────────────────────────────────────────────────────────────────
 function RateCell({t, dp=3}){
   if(!t) return <span style={{color:T.text3}}>—</span>
@@ -153,7 +153,7 @@ function RateCell({t, dp=3}){
   )
 }
 
-// §7.2 — Delta: blank when either side is provisional
+// 7.2 — Delta: blank when either side is provisional
 function DeltaCell({cur, base}){
   if(!cur||!base) return <span style={{color:T.text3}}>—</span>
   if(cur.provisional||base.provisional) return (
@@ -191,7 +191,7 @@ function SectionLabel({children}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §8 — Headline KPI tile (Prebooked OR Ride Hailing — never combined §0.7)
+// 8 — Headline KPI tile (Prebooked OR Ride Hailing — never combined 0.7)
 // Pattern: matches KpiTile in RideHailingTab exactly
 // ─────────────────────────────────────────────────────────────────────────────
 function BizTile({label, t, base, accentColor}){
@@ -355,7 +355,7 @@ function ProductTable({MQ, months, forceOpen}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §8 Trend chart — dual-axis SVG (Prebooked left, Ride Hailing right)
+// 8 Trend chart — dual-axis SVG (Prebooked left, Ride Hailing right)
 // ─────────────────────────────────────────────────────────────────────────────
 function TrendChart({MQ, allMonths, CUR_MONTH}){
   // Exclude the current (partial) month — it has incomplete data and misleads the trend
@@ -433,7 +433,7 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Geo expandable — §10.7: valid < 100 → suppress rate
+// Geo expandable — 10.7: valid < 100 → suppress rate
 // ─────────────────────────────────────────────────────────────────────────────
 const MIN_GEO=100
 
@@ -689,13 +689,13 @@ function CustomerSection({MQ, months, baseMonths, forceOpen}){
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wilson's Partner Incident Rate (Lost) — 28-day window table
-// Build spec: Quality tab spec §4
-// §3   Option A: both columns recomputed live; prior column labelled accordingly
-// §3.1 Ex% shown as muted secondary text under each Lost% cell
-// §4.1 Total is the ROLLUP row — weighted rate, never an average of two rates
-// §4.2 Round to 2dp (not truncate)
-// §5   Target column: 1% for Prebooked only; blank for Total and Ride Hailing
-// §7.8 RAG colouring only on Prebooked (has a target); Total + RH uncoloured
+// Build spec: Quality tab spec 4
+// 3   Option A: both columns recomputed live; prior column labelled accordingly
+// 3.1 Ex% shown as muted secondary text under each Lost% cell
+// 4.1 Total is the ROLLUP row — weighted rate, never an average of two rates
+// 4.2 Round to 2dp (not truncate)
+// 5   Target column: 1% for Prebooked only; blank for Total and Ride Hailing
+// 7.8 RAG colouring only on Prebooked (has a target); Total + RH uncoloured
 // ─────────────────────────────────────────────────────────────────────────────
 function WilsonTable({ wilsonRows, queriedAt }) {
   if (!wilsonRows || wilsonRows.length === 0) return null
@@ -740,7 +740,7 @@ function WilsonTable({ wilsonRows, queriedAt }) {
 
   const vintageLabel = fmtDate(queriedAt)
 
-  // Rate cell renderer: §4.2 round to 2dp; §3.1 Ex% secondary; §5 RAG only if hasTarget
+  // Rate cell renderer: 4.2 round to 2dp; 3.1 Ex% secondary; 5 RAG only if hasTarget
   function RCell({ col, pl }) {
     const r = idx[col]?.[pl]
     if (!r) return <span style={{ color: T.text3, fontStyle: 'italic', fontSize: 11 }}>—</span>
@@ -778,7 +778,7 @@ function WilsonTable({ wilsonRows, queriedAt }) {
         }}>1%</span>
       )
     }
-    return null  // blank for Total + Ride Hailing (§5)
+    return null  // blank for Total + Ride Hailing (5)
   }
 
   const ROWS = [
@@ -815,7 +815,7 @@ function WilsonTable({ wilsonRows, queriedAt }) {
               <tr>
                 <th style={{ ...thStyle, textAlign: 'left', paddingLeft: 16 }}>Product Line</th>
                 <th style={thStyle}>Target</th>
-                {/* Prior 28d — Option A: recomputed live (§3) */}
+                {/* Prior 28d — Option A: recomputed live (3) */}
                 <th style={thStyle}>
                   <div>Prior 28d</div>
                   {prevMeta.range && <div style={{ fontWeight: 400, opacity: 0.8 }}>{prevMeta.range}</div>}
@@ -833,7 +833,7 @@ function WilsonTable({ wilsonRows, queriedAt }) {
                   <div>YTD</div>
                   {ytdMeta.start && ytdMeta.end && (
                     <div style={{ fontWeight: 400, opacity: 0.8 }}>
-                      Jan 1 – {fmtRange(ytdMeta.end, ytdMeta.end)?.split('–')[0]?.trim()}
+                      {fmtRange(ytdMeta.start, ytdMeta.end)}
                     </div>
                   )}
                 </th>
@@ -920,7 +920,7 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
       {/* ── Wilson's Partner Incident Rate table ── */}
           <WilsonTable wilsonRows={D.wilson || []} queriedAt={D.queried_at} />
 
-          {/* ── §8 KPI Tiles — two tiles, NEVER combined (§0.7) ── */}
+          {/* ── 8 KPI Tiles — two tiles, NEVER combined (0.7) ── */}
           <SectionLabel>Headline Metrics</SectionLabel>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24,flexWrap:'wrap'}}>
             <BizTile label="Prebooked"    t={pbCur} base={pbBase} accentColor={T.blue}/>

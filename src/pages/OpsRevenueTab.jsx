@@ -24,7 +24,7 @@ const T = {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// Axis months: Apr 2025 – Jun 2026 (brief §5)
+// Axis months: Apr 2025 – Jun 2026 (brief 5)
 const AXIS_MONTHS = ['2504','2505','2506','2507','2508','2509','2510','2511','2512','2601','2602','2603','2604','2605','2606']
 const MONTH_LABEL = {
   '2504':'Apr\'25','2505':'May\'25','2506':'Jun\'25','2507':'Jul\'25','2508':'Aug\'25',
@@ -32,7 +32,7 @@ const MONTH_LABEL = {
   '2601':'Jan\'26','2602':'Feb\'26','2603':'Mar\'26','2604':'Apr\'26','2605':'May\'26','2606':'Jun\'26',
 }
 
-// KPI anchors from brief §5 (dispatch tolerance D3)
+// KPI anchors from brief 5 (dispatch tolerance D3)
 const KPI = {
   jun26Net: 15830, jun26TTV: 1193695, jun26Gross: 16782, jun26Canc: 952,
   jun25Net: 16559, jun25TTV: 1199742, jun25Canc: 2308, jun25Gross: 18867,

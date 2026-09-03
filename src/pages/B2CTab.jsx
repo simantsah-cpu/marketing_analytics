@@ -3,9 +3,9 @@
  * UI note: volatility banner removed per user request 2026-08-26.
  * Spec: ORBIT_B2C_SPEC.md + snapshot-week-window migration (Aug 2026)
  *
- * §0 Non-negotiables:
+ * 0 Non-negotiables:
  *  - Sources: ads.ads_b2c_dashboard_v (Hoppa) + ads.ads_b2c_dashboard_elife (eLife)
- *    NOT b2cdata.ads_ads_b2c_dashboard_v — see spec §1/§11
+ *    NOT b2cdata.ads_ads_b2c_dashboard_v — see spec 1/11
  *  - Week window from snap.kpi_weekly, not recomputed.
  *  - FX scalar subquery in SQL; CROSS JOIN forbidden.
  *  - period is a row dimension ('cur'/'prev'), NOT pivoted — NULLs survive.
@@ -13,7 +13,7 @@
  *  - Profit = actual_profit + estimate_profit (SQL field: 'profit').
  *  - Channel canonicalisation in SQL: AI Assistants→AI/LLM, Organic Social→Social.
  *  - Untracked sessions are NULL → render —, never 0%.
- *  - ROI suppressed below $50 spend floor (spec §7).
+ *  - ROI suppressed below $50 spend floor (spec 7).
  *  - WoW gap must be verified as exactly 7 days; if not, label says so.
  */
 
@@ -85,7 +85,7 @@ function fmtQueryTime(iso){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §5 — Channel classification (on channel-grain aggregate)
+// 5 — Channel classification (on channel-grain aggregate)
 // Two distinct attribution-gap buckets from the source view:
 //   Untracked  = booking with NO matching GA4 session at all (marketing_channel IS NULL in view)
 //                sessions = NULL, bookings > 0
@@ -111,14 +111,14 @@ const SPLIT_NOTE   = {
 }
 const SPLIT_ORDER  = ['Paid','Unpaid','Attribution gap']
 
-// ROI floor — spec §7: below $50 spend, ROI is arithmetic noise not insight
+// ROI floor — spec 7: below $50 spend, ROI is arithmetic noise not insight
 function roiOrNull(net, spend){
   if(spend === null || num(spend) < 50) return null
   return net / num(spend)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §3 — Monthly period resolution (for Q_B2C_M path — unchanged)
+// 3 — Monthly period resolution (for Q_B2C_M path — unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 const ymStr = (y,m) => `${y}-${String(m).padStart(2,'0')}`
 
@@ -154,7 +154,7 @@ function b2cMonthSets(period, CUR_MONTH){
   return null // 'mtd' → use weekly Q_B2C path
 }
 
-// §4 — Raw row selection for monthly path (D.b2cM)
+// 4 — Raw row selection for monthly path (D.b2cM)
 function b2cRawRows(D, brand, periodKey, platform, sets){
   if(sets){
     const want = periodKey==='MTD' ? sets.cur : sets.base
@@ -172,7 +172,7 @@ function b2cRawRows(D, brand, periodKey, platform, sets){
   )
 }
 
-// §4 — Aggregate a set of raw rows (monthly path)
+// 4 — Aggregate a set of raw rows (monthly path)
 function b2cAgg(rows){
   const o={sessions:0,bookings:0,ttv:0,profit:0,spend_usd:0}
   rows.forEach(r=>{
@@ -259,7 +259,7 @@ function buildChanObj(r, prvRow, brand, prvRows){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §5.0 — Build channel rows from weekly cur/prv data
+// 5.0 — Build channel rows from weekly cur/prv data
 // ─────────────────────────────────────────────────────────────────────────────
 function buildWeeklyChannelRows(curRows, prvRows, brand, allCurRows){
   const chanRaw = weeklyChannelRows(curRows, brand)
@@ -704,14 +704,14 @@ function BrandSectionWeekly({ brand, curRows, prvRows, allCurRows, wowLabel, has
     [curRows, prvRows, brand, allCurRows]
   )
 
-  // Structural gates (console only — §10.10, §10.14, invariant)
+  // Structural gates (console only — 10.10, 10.14, invariant)
   useMemo(()=>{
     const rawDims = curRows.map(r=>r.dim)
     if(rawDims.includes('AI Assistants') || rawDims.includes('Organic Social'))
-      console.warn('B2C §10.10 GATE: un-canonicalised channel in data', rawDims.filter(d=>d==='AI Assistants'||d==='Organic Social'))
+      console.warn('B2C 10.10 GATE: un-canonicalised channel in data', rawDims.filter(d=>d==='AI Assistants'||d==='Organic Social'))
     const unassigned = channelRows.find(r=>r.channel==='Unassigned')
     if(unassigned && num(unassigned.bookings) > 10)
-      console.warn('B2C §10.14 GATE: Unassigned bookings =', unassigned.bookings, '(expect ~4.66 for W34 — may be legitimately higher in future weeks)')
+      console.warn('B2C 10.14 GATE: Unassigned bookings =', unassigned.bookings, '(expect ~4.66 for W34 — may be legitimately higher in future weeks)')
     const chanSum = channelRows.reduce((s,r)=>s+num(r.bookings),0)
     if(brandRow && Math.abs(chanSum - num(brandRow.bookings)) > 0.02)
       console.warn('B2C INVARIANT: channel bookings ≠ brand', chanSum.toFixed(2), 'vs', brandRow?.bookings)
@@ -972,8 +972,8 @@ export default function B2CTab({ D, period, CUR_MONTH, PC, PM }){
     if(gapDays === 7){
       return `vs ${prvBrand.week_key} (${fmtDateRange(prvBrand.week_start, prvBrand.week_end)})`
     }
-    // Gap isn't 7 days — label it explicitly so it's never silently wrong (spec §2.1)
-    console.warn(`B2C §2.1: week gap is ${gapDays} days, not 7. cur=${curBrand.week_start}, prev=${prvBrand.week_start}`)
+    // Gap isn't 7 days — label it explicitly so it's never silently wrong (spec 2.1)
+    console.warn(`B2C 2.1: week gap is ${gapDays} days, not 7. cur=${curBrand.week_start}, prev=${prvBrand.week_start}`)
     return `vs ${prvBrand.week_key} (${gapDays}-day gap ⚠)`
   },[isWeekly, curRows, prvRows])
 

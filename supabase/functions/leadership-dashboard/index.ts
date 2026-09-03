@@ -115,7 +115,7 @@ async function runQuery(
     throw new Error(`BigQuery errors: ${JSON.stringify(result.errors)}`)
   }
 
-  // Poll until jobComplete (§9.1)
+  // Poll until jobComplete (9.1)
   if (!result.jobComplete) {
     const jobId   = result.jobReference?.jobId
     const location = result.jobReference?.location ?? 'US'
@@ -135,7 +135,7 @@ async function runQuery(
   const schemaFields: any[] = result.schema?.fields ?? []
   let rows = extractRows(result, schemaFields)
 
-  // Follow pageToken pagination (§9.1 — silently under-reports otherwise)
+  // Follow pageToken pagination (9.1 — silently under-reports otherwise)
   let pageToken: string | null = result.pageToken ?? null
   while (pageToken) {
     const jobId = result.jobReference?.jobId
@@ -346,13 +346,13 @@ function v3SnapSubquery(snapFilter: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SQL — verbatim from build spec §1
+// SQL — verbatim from build spec 1
 // ─────────────────────────────────────────────────────────────────────────────
 
-// §1.1 Q_CUST — month/quarter/year to date, per (department, customer_name)
-// Profit measure evaluated at customer grain (§2.3). SAFE_DIVIDE is deliberate (§1.1).
+// 1.1 Q_CUST — month/quarter/year to date, per (department, customer_name)
+// Profit measure evaluated at customer grain (2.3). SAFE_DIVIDE is deliberate (1.1).
 // FROM clause is swapped to snap.class_c_raw_weekly when USE_SNAP=true.
-// All DAX formulas and SELECT columns are verbatim — §0 non-negotiable.
+// All DAX formulas and SELECT columns are verbatim — 0 non-negotiable.
 function makeQCust(snapFilter: string | null): string {
   const fromClause = (USE_SNAP && snapFilter !== null)
     ? v2SnapSubquery(snapFilter)
@@ -390,7 +390,7 @@ WITH agg AS (
     SUM(IF(complete=1, current_ytd_revenue, 0))                                  AS y_cr,
     SUM(IF(complete=0 AND dispatched=1, current_ytd_revenue-current_ytd_cost,0)) AS y_dp,
     SUM(IF(complete=0 AND dispatched=0, current_ytd_revenue-current_ytd_cost,0)) AS y_ep,
-    -- comparison periods: plain revenue - cost, no split, no 0.9 factor (§2.1)
+    -- comparison periods: plain revenue - cost, no split, no 0.9 factor (2.1)
     SUM(lmmtd_revenue        - lmmtd_cost)         AS lm_profit,
     SUM(lymtd_revenue        - lymtd_cost)         AS ly_profit,
     SUM(prev_qtd_revenue     - prev_qtd_cost)      AS pq_profit,
@@ -425,7 +425,7 @@ FROM agg
 `
 }
 
-// §1.2 Q_TARGETS — profit targets from three mapping tables
+// 1.2 Q_TARGETS — profit targets from three mapping tables
 // Executive Summary uses kind='dept' only; others fetched for GEO and product-line tabs.
 // When USE_SNAP=true:
 //   - dept  targets: snap.mapping_weekly, mapping_name='profit_target_by_department'
@@ -511,10 +511,10 @@ FROM u
 `
 }
 
-// §1.3 Q_FC — geo-level forward-booking forecast
-// model_version MUST be "fwd_v2" (§1.3).
+// 1.3 Q_FC — geo-level forward-booking forecast
+// model_version MUST be "fwd_v2" (1.3).
 //
-// §2 LATENT BUG FIX — resolve the vintage on the version you are using.
+// 2 LATENT BUG FIX — resolve the vintage on the version you are using.
 // The old code: SELECT MAX(forecast_date) WHERE forecast_date <= as_at
 // resolves across ALL versions. On Monday between 02:00–07:18, fwd_v1 exists
 // for that Monday but fwd_v2 does not — so MAX returns today, and the
@@ -554,11 +554,11 @@ WHERE f.model_version = "fwd_v2" AND f.forecast_date = mx.fd
 `
 }
 
-// §1.4 Q_FC end
+// 1.4 Q_FC end
 
-// §1.5 Q_FCC — customer-level forward-booking forecast
+// 1.5 Q_FCC — customer-level forward-booking forecast
 // model_version MUST be "fwd_cust_v1" (NOT fwd_v2). Two different models, two different tables.
-// Same §2 vintage-pinning fix as Q_FC: resolve MAX within fwd_cust_v1 only.
+// Same 2 vintage-pinning fix as Q_FC: resolve MAX within fwd_cust_v1 only.
 // Customer cadence changed 2026-08-03: was weekly Wednesday, now weekly Monday.
 // Do not assume fcc and fc share a vintage date — resolve each independently.
 function makeQFCC(snapFilter: string | null): string {
@@ -585,7 +585,7 @@ FROM \`elife-data-warehouse-prod.ads.ads_forward_booking_forecast_customer\` f, 
 WHERE f.model_version = "fwd_cust_v1" AND f.forecast_date = mx.fd
 `
 }
-// §1.6 Q_MONTHS — single-month reconstruction (completed rides only)
+// 1.6 Q_MONTHS — single-month reconstruction (completed rides only)
 // NOTE: not equivalent to the DAX measure. 2–4% high vs notebook. Label accordingly.
 // Date floor 2025-12-01 because Dec 2025 is Jan 2026's comparison base.
 const Q_MONTHS = `
@@ -620,54 +620,71 @@ SELECT
 FROM base
 `
 
-// §1.7 Q_PROD — product line from v2 (same table as Q_CUST, different GROUP BY)
+// PERIOD_COLS — maps period key to the BigQuery column names makeQProd / makeQGeo
+// should read for revenue, cost, sales and their period-appropriate baselines.
+// week uses simple revenue−cost margin: no complete/dispatched split exists at weekly grain.
+// QTD/YTD columns confirmed present in both v2SnapSubquery and v3SnapSubquery.
+const PERIOD_COLS = {
+  mtd:  { rev: 'current_mtd_revenue', cost: 'current_mtd_cost', sales: 'mtd_sales',
+          prevRev: 'lmmtd_revenue',        prevCost: 'lmmtd_cost' },
+  qtd:  { rev: 'current_qtd_revenue', cost: 'current_qtd_cost', sales: 'current_qtd_sales',
+          prevRev: 'prev_qtd_revenue',      prevCost: 'prev_qtd_cost' },
+  ytd:  { rev: 'current_ytd_revenue', cost: 'current_ytd_cost', sales: 'current_ytd_sales',
+          prevRev: 'last_year_ytd_revenue', prevCost: 'last_year_ytd_cost' },
+  week: { rev: 'last_week_revenue',   cost: 'last_week_cost',   sales: 'last_week_sales',
+          prevRev: 'prev_week_revenue',     prevCost: 'prev_week_cost' },
+} as const
+
+// 1.7 Q_PROD — product line from v2 (same table as Q_CUST, different GROUP BY)
 // FROM clause swapped to snap when USE_SNAP=true — same DAX formula verbatim.
 // period='week': uses last_week_* columns with simple margin (no complete/dispatched split
 //   exists at weekly grain). Revenue and cost are aggregated separately then subtracted
 //   in the outer SELECT to prevent NULL-cost rows from silently dropping their revenue.
+// period='qtd'/'ytd': PERIOD_COLS selects the correct QTD/YTD columns from the snap.
+// All output shapes are identical across periods — prev_profit is always the
+// period-appropriate baseline (lm for MTD, pq for QTD, ly for YTD, prev_week for week).
 function makeQProd(snapFilter: string | null, period = 'mtd'): string {
   const fromClause = (USE_SNAP && snapFilter !== null)
     ? v2SnapSubquery(snapFilter)
     : '`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v2`'
+
+  const c = PERIOD_COLS[period as keyof typeof PERIOD_COLS] ?? PERIOD_COLS.mtd
 
   if (period === 'week') {
     return `
 WITH agg AS (
   SELECT
     product_line,
-    SUM(last_week_sales)   AS sales,
-    SUM(last_week_revenue) AS revenue,
-    SUM(last_week_cost)    AS cost,
-    SUM(prev_week_revenue) AS prev_revenue,
-    SUM(prev_week_sales)   AS prev_sales,
-    SUM(prev_week_cost)    AS prev_cost
+    SUM(${c.sales})    AS sales,
+    SUM(${c.rev})      AS revenue,
+    SUM(${c.cost})     AS cost,
+    SUM(${c.prevRev} - ${c.prevCost}) AS prev_profit
   FROM ${fromClause}
   GROUP BY 1
 )
 SELECT
-  IFNULL(product_line,"(Unassigned)")        AS pl,
-  CAST(ROUND(sales,2)                  AS FLOAT64) AS sales,
-  CAST(ROUND(revenue,2)                AS FLOAT64) AS revenue,
-  CAST(ROUND(revenue - cost, 2)        AS FLOAT64) AS profit,
-  CAST(ROUND(prev_revenue,2)           AS FLOAT64) AS prev_revenue,
-  CAST(ROUND(prev_sales,2)             AS FLOAT64) AS prev_sales,
-  CAST(ROUND(prev_revenue - prev_cost, 2) AS FLOAT64) AS prev_profit
+  IFNULL(product_line,"(Unassigned)")           AS pl,
+  CAST(ROUND(sales,2)                 AS FLOAT64) AS sales,
+  CAST(ROUND(revenue,2)               AS FLOAT64) AS revenue,
+  CAST(ROUND(revenue - cost, 2)       AS FLOAT64) AS profit,
+  CAST(ROUND(prev_profit, 2)          AS FLOAT64) AS prev_profit
 FROM agg
 `
   }
 
   // MTD / QTD / YTD — verbatim DAX formula, must not be changed.
+  // prev_profit is the period-appropriate baseline (lm / pq / ly depending on period).
   return `
 WITH agg AS (
   SELECT
     product_line,
-    SUM(mtd_sales)           AS sales,
-    SUM(current_mtd_revenue) AS revenue,
-    SUM(IF(complete=1, current_mtd_revenue-current_mtd_cost, 0))                 AS cp,
-    SUM(IF(complete=1, current_mtd_revenue, 0))                                  AS cr,
-    SUM(IF(complete=0 AND dispatched=1, current_mtd_revenue-current_mtd_cost,0)) AS dp,
-    SUM(IF(complete=0 AND dispatched=0, current_mtd_revenue-current_mtd_cost,0)) AS ep,
-    SUM(lmmtd_revenue - lmmtd_cost)                                              AS lm_profit
+    SUM(${c.sales})                                                   AS sales,
+    SUM(${c.rev})                                                     AS revenue,
+    SUM(IF(complete=1, ${c.rev} - ${c.cost}, 0))                      AS cp,
+    SUM(IF(complete=1, ${c.rev}, 0))                                  AS cr,
+    SUM(IF(complete=0 AND dispatched=1, ${c.rev} - ${c.cost}, 0))     AS dp,
+    SUM(IF(complete=0 AND dispatched=0, ${c.rev} - ${c.cost}, 0))     AS ep,
+    SUM(${c.prevRev} - ${c.prevCost})                                 AS prev_profit
   FROM ${fromClause}
   GROUP BY 1
 )
@@ -676,12 +693,12 @@ SELECT
   CAST(ROUND(sales,2)   AS FLOAT64) AS sales,
   CAST(ROUND(revenue,2) AS FLOAT64) AS revenue,
   CAST(ROUND(IFNULL(cp + dp*0.9 + ep*SAFE_DIVIDE(cp,cr)*0.9, 0),2) AS FLOAT64) AS profit,
-  CAST(ROUND(lm_profit,2) AS FLOAT64) AS lm_profit
+  CAST(ROUND(prev_profit,2) AS FLOAT64) AS prev_profit
 FROM agg
 `
 }
 
-// §1.8 snap metadata queries (used only when USE_SNAP=true)
+// 1.8 snap metadata queries (used only when USE_SNAP=true)
 // Q_SNAP_DATES — populates the 'as at' selector. Reads class_c_raw_weekly
 // (not kpi_weekly) so every offered date is guaranteed to have v2 data.
 const Q_SNAP_DATES = `
@@ -704,64 +721,68 @@ WHERE snapshot_date = ${snapFilter}
 `
 }
 
-// §1.8 makeQGeo — geography from v3, snapped when USE_SNAP=true.
+// 1.8 makeQGeo — geography from v3, snapped when USE_SNAP=true.
 // v3 == v2 on the 2026-08-24 snapshot (verified: revenue 6,842,682 identical).
 // GEO attainment is now enabled — v3 revival confirmed correct.
-// The lm_profit column (lmmtd_revenue - lmmtd_cost) is valid in the snap and must remain.
-// When USE_SNAP=false, falls back to live v3 table (IFNULL(geo,...) handled in SQL).
 // period='week': mirrors makeQProd week branch — separate SUM then outer subtract.
+// period='qtd'/'ytd': PERIOD_COLS selects the correct QTD/YTD columns.
+// Live fallback SELECT includes all period columns so non-snap path is also correct.
 function makeQGeo(snapFilter: string | null, period = 'mtd'): string {
   const fromClause = (USE_SNAP && snapFilter !== null)
     ? v3SnapSubquery(snapFilter)
-    // Live fallback: v3 table with explicit IFNULL on geo
+    // Live fallback: v3 table with all period columns + explicit IFNULL on geo.
     : `(
   SELECT
-    IFNULL(geo,"(Unassigned)") AS geo,
-    mtd_sales, current_mtd_revenue, current_mtd_cost,
-    lmmtd_revenue, lmmtd_cost, complete, dispatched,
-    last_week_sales, last_week_revenue, last_week_cost,
-    prev_week_sales, prev_week_revenue, prev_week_cost
+    IFNULL(geo,'(Unassigned)')    AS geo,
+    complete, dispatched,
+    mtd_sales,              current_mtd_revenue,     current_mtd_cost,
+    lmmtd_revenue,          lmmtd_cost,
+    current_qtd_sales,      current_qtd_revenue,     current_qtd_cost,
+    prev_qtd_revenue,       prev_qtd_cost,
+    current_ytd_sales,      current_ytd_revenue,     current_ytd_cost,
+    last_year_ytd_revenue,  last_year_ytd_cost,
+    last_week_sales,        last_week_revenue,        last_week_cost,
+    prev_week_revenue,      prev_week_cost
   FROM \`elife-data-warehouse-prod.ads.ads_weekly_meeting_revenue_and_profit_v3\`
 )`
+
+  const c = PERIOD_COLS[period as keyof typeof PERIOD_COLS] ?? PERIOD_COLS.mtd
 
   if (period === 'week') {
     return `
 WITH agg AS (
   SELECT
     geo,
-    SUM(last_week_sales)   AS sales,
-    SUM(last_week_revenue) AS revenue,
-    SUM(last_week_cost)    AS cost,
-    SUM(prev_week_revenue) AS prev_revenue,
-    SUM(prev_week_sales)   AS prev_sales,
-    SUM(prev_week_cost)    AS prev_cost
+    SUM(${c.sales})    AS sales,
+    SUM(${c.rev})      AS revenue,
+    SUM(${c.cost})     AS cost,
+    SUM(${c.prevRev} - ${c.prevCost}) AS prev_profit
   FROM ${fromClause}
   GROUP BY 1
 )
 SELECT
   geo,
-  CAST(ROUND(sales,2)                  AS FLOAT64) AS sales,
-  CAST(ROUND(revenue,2)                AS FLOAT64) AS revenue,
-  CAST(ROUND(revenue - cost, 2)        AS FLOAT64) AS profit,
-  CAST(ROUND(prev_revenue,2)           AS FLOAT64) AS prev_revenue,
-  CAST(ROUND(prev_sales,2)             AS FLOAT64) AS prev_sales,
-  CAST(ROUND(prev_revenue - prev_cost, 2) AS FLOAT64) AS prev_profit
+  CAST(ROUND(sales,2)               AS FLOAT64) AS sales,
+  CAST(ROUND(revenue,2)             AS FLOAT64) AS revenue,
+  CAST(ROUND(revenue - cost, 2)     AS FLOAT64) AS profit,
+  CAST(ROUND(prev_profit, 2)        AS FLOAT64) AS prev_profit
 FROM agg
 `
   }
 
   // MTD / QTD / YTD — verbatim DAX formula, must not be changed.
+  // prev_profit is the period-appropriate baseline (lm / pq / ly depending on period).
   return `
 WITH agg AS (
   SELECT
     geo,
-    SUM(mtd_sales)           AS sales,
-    SUM(current_mtd_revenue) AS revenue,
-    SUM(IF(complete=1, current_mtd_revenue-current_mtd_cost, 0))                 AS cp,
-    SUM(IF(complete=1, current_mtd_revenue, 0))                                  AS cr,
-    SUM(IF(complete=0 AND dispatched=1, current_mtd_revenue-current_mtd_cost,0)) AS dp,
-    SUM(IF(complete=0 AND dispatched=0, current_mtd_revenue-current_mtd_cost,0)) AS ep,
-    SUM(lmmtd_revenue - lmmtd_cost)                                              AS lm_profit
+    SUM(${c.sales})                                                   AS sales,
+    SUM(${c.rev})                                                     AS revenue,
+    SUM(IF(complete=1, ${c.rev} - ${c.cost}, 0))                      AS cp,
+    SUM(IF(complete=1, ${c.rev}, 0))                                  AS cr,
+    SUM(IF(complete=0 AND dispatched=1, ${c.rev} - ${c.cost}, 0))     AS dp,
+    SUM(IF(complete=0 AND dispatched=0, ${c.rev} - ${c.cost}, 0))     AS ep,
+    SUM(${c.prevRev} - ${c.prevCost})                                 AS prev_profit
   FROM ${fromClause}
   GROUP BY 1
 )
@@ -770,14 +791,14 @@ SELECT
   CAST(ROUND(sales,2)   AS FLOAT64) AS sales,
   CAST(ROUND(revenue,2) AS FLOAT64) AS revenue,
   CAST(ROUND(IFNULL(cp + dp*0.9 + ep*SAFE_DIVIDE(cp,cr)*0.9, 0),2) AS FLOAT64) AS profit,
-  CAST(ROUND(lm_profit,2) AS FLOAT64) AS lm_profit
+  CAST(ROUND(prev_profit,2) AS FLOAT64) AS prev_profit
 FROM agg
 `
 }
 
-// §2.1 makeQB2C — weekly window from snap.kpi_weekly, live sources, three grains
+// 2.1 makeQB2C — weekly window from snap.kpi_weekly, live sources, three grains
 // Sources: ads.ads_b2c_dashboard_v (Hoppa) + ads.ads_b2c_dashboard_elife (eLife)
-// NOT b2cdata.ads_ads_b2c_dashboard_v — see spec §1 / §11
+// NOT b2cdata.ads_ads_b2c_dashboard_v — see spec 1 / 11
 // FX via scalar subquery (not CROSS JOIN — avoids double-counting if a 2nd row appears)
 // period is a ROW dimension ('cur' / 'prev'), never pivoted — preserves NULLs to frontend
 function makeQB2C(asAt: string | null): object {
@@ -865,7 +886,7 @@ ORDER BY period DESC, grain, parent NULLS FIRST, bookings DESC NULLS LAST
 }
 
 
-// §2.2 Q_B2C_M — calendar months from 2025-01-01
+// 2.2 Q_B2C_M — calendar months from 2025-01-01
 // Channel canonicalisation matches the weekly query:
 //   AI Assistants → AI / LLM, Organic Social → Social (same CASE as makeQB2C)
 //   Unassigned (GA4 joined, unclassifiable) and Untracked (NULL → coalesced) are
@@ -907,15 +928,15 @@ GROUP BY 1,2,3,4
 
 
 // makeQRH — Ride Hailing weekly, live sources, parameterised by @as_at
-// §0:  rh_sales_trips excluded — broken since 2026-07-11
-// §2:  partner_name LIKE '%Ride Hailing%' (case-sensitive, §4.3)
-// §2.1: completed excludes ride_stat='Cancelled' even at dispatch_stat='At destination'
-// §2.2: per-row rounding before SUM (matches Power BI)
-// §2.3: failed_quotes added (by_pickup_date basis)
-// §3:  dim.dim_service_area for Japan/Global — cannot fan out (1,558 rows, all distinct)
-// §4.1: by_pickup_date — NOT by_search_date (10.9× wrong)
-// §4.2: BETWEEN window excludes 2099-12-31 sentinel automatically
-// §4.3: case-sensitive LIKE — 13 Tujing rows excluded, matches snapshot/Power BI basis
+// 0:  rh_sales_trips excluded — broken since 2026-07-11
+// 2:  partner_name LIKE '%Ride Hailing%' (case-sensitive, 4.3)
+// 2.1: completed excludes ride_stat='Cancelled' even at dispatch_stat='At destination'
+// 2.2: per-row rounding before SUM (matches Power BI)
+// 2.3: failed_quotes added (by_pickup_date basis)
+// 3:  dim.dim_service_area for Japan/Global — cannot fan out (1,558 rows, all distinct)
+// 4.1: by_pickup_date — NOT by_search_date (10.9× wrong)
+// 4.2: BETWEEN window excludes 2099-12-31 sentinel automatically
+// 4.3: case-sensitive LIKE — 13 Tujing rows excluded, matches snapshot/Power BI basis
 // Long format: 26 rows for 2 periods × (2 scopes × 5 metrics + 1 company × 3 metrics)
 function makeQRH(asAt: string | null): { query: string; queryParameters: any[]; useLegacySql: boolean } {
   const query = `
@@ -991,12 +1012,12 @@ ORDER BY period DESC, grain, dim, metric
 }
 
 // makeQAI — AI Code & Test, snapshot-only via snap.kpi_weekly
-// §0:  source is snap.manual_kpi_input — no live ads.* table exists
-// §1.1: values stored on 0-100 scale — display as-is, do NOT multiply by 100
-// §1.2: values are % ratios — never summed across periods
-// §3.1: LEFT JOIN (not inner) — missing week returns NULL-metric row, distinguishable from zero
-// §3.2: QUALIFY ROW_NUMBER() — collapses duplicates to latest etl_time
-// §4:   @as_at via queryParameters
+// 0:  source is snap.manual_kpi_input — no live ads.* table exists
+// 1.1: values stored on 0-100 scale — display as-is, do NOT multiply by 100
+// 1.2: values are % ratios — never summed across periods
+// 3.1: LEFT JOIN (not inner) — missing week returns NULL-metric row, distinguishable from zero
+// 3.2: QUALIFY ROW_NUMBER() — collapses duplicates to latest etl_time
+// 4:   @as_at via queryParameters
 // Returns: 4 rows normal, 2 rows if no prior snapshot, ~1 row if current week has no manual data
 function makeQAI(asAt: string | null): { query: string; queryParameters: any[]; useLegacySql: boolean } {
   const query = `
@@ -1045,13 +1066,13 @@ ORDER BY win.period DESC, k.metric
 }
 
 // makeQWilson — Wilson's Partner Incident Rate (Lost) table
-// Build spec: Quality tab §4
+// Build spec: Quality tab 4
 // Three windows derived from snap.kpi_weekly week_end for @as_at:
 //   cur_28d  = [week_end-27d .. week_end]
 //   prev_28d = [week_end-34d .. week_end-7d]
 //   ytd      = [Jan 1 .. week_end]
 // Returns 9 rows: 3 windows × (Total + Prebooked + Ride Hailing) via ROLLUP
-// §1.1 guardrails enforced here (exact string, has_complaint, dispatch_stat, dedup, partner_name only)
+// 1.1 guardrails enforced here (exact string, has_complaint, dispatch_stat, dedup, partner_name only)
 function makeQWilson(asAt: string | null): { query: string; queryParameters: any[]; useLegacySql: boolean } {
   const query = `
 WITH
@@ -1062,7 +1083,7 @@ sel AS (
   WHERE snapshot_date = @as_at
   LIMIT 1
 ),
--- Three windows derived from week_end (§2)
+-- Three windows derived from week_end (2)
 win AS (
   SELECT 'cur_28d'  AS col, DATE_SUB(week_end, INTERVAL 27 DAY) AS s, week_end               AS e FROM sel
   UNION ALL
@@ -1070,7 +1091,7 @@ win AS (
   UNION ALL
   SELECT 'ytd',             DATE_TRUNC(week_end, YEAR),               week_end                           FROM sel
 ),
--- Incident flags deduplicated to trip grain (§1.1 — exact string, §1.1.4 dedup)
+-- Incident flags deduplicated to trip grain (1.1 — exact string, 1.1.4 dedup)
 inc AS (
   SELECT
     dd.ride_id,
@@ -1085,7 +1106,7 @@ inc AS (
     ON dd.dispatch_id = dc.dispatch_id
   GROUP BY 1, 2
 ),
--- Valid trips per window, with product line from partner_name only (§1.1.5)
+-- Valid trips per window, with product line from partner_name only (1.1.5)
 wt AS (
   SELECT
     win.col,
@@ -1099,12 +1120,12 @@ wt AS (
   FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\` v
   JOIN win ON v.pickup_date BETWEEN win.s AND win.e
   LEFT JOIN inc i ON i.ride_id = v.ride_id AND i.trip_no = v.trip_no
-  -- §1.1.2: has_complaint trips included in denominator even if ride_stat not Accepted/Pending
+  -- 1.1.2: has_complaint trips included in denominator even if ride_stat not Accepted/Pending
   WHERE (v.ride_stat IN ('Accepted','Pending') OR v.has_complaint = 1)
-  -- §1.1.3: exclude dispatch_stat = '' (empty string — Hoppa self-supply)
+  -- 1.1.3: exclude dispatch_stat = '' (empty string — Hoppa self-supply)
     AND IFNULL(v.dispatch_stat, 'x') <> ''
 )
--- ROLLUP produces the weighted Total row (§4.1 — not an average of two rates)
+-- ROLLUP produces the weighted Total row (4.1 — not an average of two rates)
 SELECT
   col,
   MIN(s)             AS window_start,
@@ -1134,13 +1155,13 @@ ORDER BY col,
 // Reconciled to Power BI RP0036 to the row. Replaces Q_INC entirely.
 // Sources: dwb.dwb_complaint (numerator), ads.ads_ride_dispatch_v (denominator)
 //          dwb.dwb_dispatch_detail (maps dispatch_id → ride_id+trip_no)
-// §4.2 IMPORTANT: inc CTE has NO date filter. Late-filed complaints must count
+// 4.2 IMPORTANT: inc CTE has NO date filter. Late-filed complaints must count
 //      against the trip's pickup month. dwb_complaint covers back to 2022-01-01.
-// §0.2 'Customer No show' exact string — capital N. Must be excluded from incident count.
-// §0.3 Denominator includes has_complaint=1 regardless of ride_stat.
-// §0.4 Product line from partner_name STRPOS only — no fleet-ID allow-list.
-// §0.5 Deduplicate to trip grain: MAX(...) GROUP BY ride_id, trip_no.
-// §4 dispatch_stat <> '' exclusion removes hoppa-fulfilled trips (no dispatch record).
+// 0.2 'Customer No show' exact string — capital N. Must be excluded from incident count.
+// 0.3 Denominator includes has_complaint=1 regardless of ride_stat.
+// 0.4 Product line from partner_name STRPOS only — no fleet-ID allow-list.
+// 0.5 Deduplicate to trip grain: MAX(...) GROUP BY ride_id, trip_no.
+// 4 dispatch_stat <> '' exclusion removes hoppa-fulfilled trips (no dispatch record).
 const Q_MQ = `
 WITH inc AS (
   SELECT
@@ -1261,14 +1282,14 @@ serve(async (req) => {
 
     // snapDates is sorted DESC (most recent first).
     // Index 0 = current (asAt), index 1 = previous snapshot.
-    // §4.1 of Departments spec: month boundary guard is done client-side.
+    // 4.1 of Departments spec: month boundary guard is done client-side.
     const allSnapDates: string[] = snapDatesRows.map((r: any) => r.snapshot_date).filter(Boolean)
     const resolvedCurrent = allSnapDates[0] ?? null
     const prevDateStr:    string | null = allSnapDates[1] ?? null
     const prevSnapFilter: string | null = prevDateStr ? `DATE '${prevDateStr}'` : null
 
     // Build Q_CUST_PREV — same subquery as Q_CUST but pinned to the previous snapshot date.
-    // §1 of Departments spec: reuse the existing v2 subquery, do not write a second parser.
+    // 1 of Departments spec: reuse the existing v2 subquery, do not write a second parser.
     const Q_CUST_PREV = (USE_SNAP && prevSnapFilter !== null) ? makeQCust(prevSnapFilter) : null
 
     // Build queries — snap variants replace the FROM clause when USE_SNAP=true
@@ -1321,7 +1342,7 @@ serve(async (req) => {
       JSON.stringify({
         queried_at:   new Date().toISOString(),
         cust:         custRows,
-        custPrev:     custPrevRows,   // previous snapshot rows — Departments weekly delta (§3)
+        custPrev:     custPrevRows,   // previous snapshot rows — Departments weekly delta (3)
         prevSnapDate: prevDateStr,    // ISO date string of the previous snapshot
         targets:      targetsRows,
         fc:           fcRows,
@@ -1342,7 +1363,7 @@ serve(async (req) => {
         snapDates:    allSnapDates,
         asAt:         resolvedAsAt,
         staleness:    staleness ? { is_stale: staleness.is_stale === 'true', staleness_days: Number(staleness.staleness_days) } : null,
-        // forecast vintage metadata (§2.2 of forecast spec)
+        // forecast vintage metadata (2.2 of forecast spec)
         fcVintage:    fcVintage,
         fccVintage:   fccVintage,
       }),

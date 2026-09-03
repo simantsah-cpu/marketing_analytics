@@ -5,18 +5,18 @@
  * Reuses Q_CUST + Q_TARGETS already fetched by the leadership-dashboard edge function.
  * No new queries. Spec: ORBIT_DEPT_SPEC.md
  *
- * Key invariants (§0):
+ * Key invariants (0):
  *  - Sales Mo folds into EAM Chris, Sales Jojo into EAM Gloria (actuals + targets)
  *  - Sub-teams are NEVER added to the Total — they are already inside their parent
  *  - Company target = exactly 4 depts, not the sum of the target column
  *  - Profit is summed from Q_CUST rows, never recomputed
  *
- * §3 — snap-based weekly growth:
+ * 3 — snap-based weekly growth:
  *  - custPrev holds Q_CUST run against the previous snapshot date (same subquery)
  *  - deltaProfit = mtdProfit(asAt) − mtdProfit(prevSnapshot), per department
  *  - deltaPts    = deltaProfit / target × 100 (exact, because target is constant)
- *  - §4.1 gap labelling: N-day, not "weekly", until a genuine 7-day pair exists
- *  - §4.2 month boundary: only compare when both snapshots share the same MTD month
+ *  - 4.1 gap labelling: N-day, not "weekly", until a genuine 7-day pair exists
+ *  - 4.2 month boundary: only compare when both snapshots share the same MTD month
  */
 
 import { useState, useMemo } from 'react'
@@ -33,7 +33,7 @@ import { Doughnut, Bar } from 'react-chartjs-2'
 ChartJS.register(ArcElement, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §5 — Custom Chart.js plugins, registered once at module level.
+// 5 — Custom Chart.js plugins, registered once at module level.
 // Guard prevents double-registration on hot reload.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -44,7 +44,7 @@ function safeRegister(plugin) {
   try { ChartJS.register(plugin) } catch {}
 }
 
-// §5.1 barLabels — draws value labels above/beside bars
+// 5.1 barLabels — draws value labels above/beside bars
 safeRegister({
   id: 'barLabels',
   // defaults.enabled:false means charts that don't pass barLabels opts stay clean
@@ -90,7 +90,7 @@ safeRegister({
   },
 })
 
-// §5.2 centerTotal — writes label + value + sub into a doughnut hole
+// 5.2 centerTotal — writes label + value + sub into a doughnut hole
 safeRegister({
   id: 'centerTotal',
   defaults: { enabled: false },
@@ -112,7 +112,7 @@ safeRegister({
   },
 })
 
-// §5.3 refLine — dashed benchmark line with pill label
+// 5.3 refLine — dashed benchmark line with pill label
 safeRegister({
   id: 'refLine',
   defaults: { enabled: false },
@@ -147,13 +147,13 @@ safeRegister({
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constants (§1)
+// Constants (1)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEPT_TARGET_KEYS = ['EAM Chris', 'EAM Renaldo', 'EAM Gloria', 'B2C Matt']
 const DEPT_ROLLUP      = { 'Sales Mo': 'EAM Chris', 'Sales Jojo': 'EAM Gloria' }
 
-// §6 — colours
+// 6 — colours
 const DEPT_COLOR = {
   'EAM Chris':   '#185FA5',
   'B2C Matt':    '#D85A30',
@@ -165,7 +165,7 @@ const DEPT_COLOR = {
 const deptHex = d => DEPT_COLOR[d] || '#8b8a83'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Design tokens — keep in sync with LeadershipDashboard.jsx §8
+// Design tokens — keep in sync with LeadershipDashboard.jsx 8
 // ─────────────────────────────────────────────────────────────────────────────
 
 const T = {
@@ -222,7 +222,7 @@ const _achColor = p =>
   : T.red
 
 // ─────────────────────────────────────────────────────────────────────────────
-// buildDepts (§1.1)
+// buildDepts (1.1)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildDepts(custRows, targets) {
@@ -270,7 +270,7 @@ function buildDepts(custRows, targets) {
 
     // Attach targets + derived fields to parent rows
   // FIX 2: keep (Unassigned) in depts — do NOT filter it out.
-  // The row reconciles the Departments Total to the Exec Summary (§2a of fix guide).
+  // The row reconciles the Departments Total to the Exec Summary (2a of fix guide).
   // Only suppress rows that are completely empty AND have no target at all.
   const depts = Object.values(m)
     .map(o => {
@@ -294,7 +294,7 @@ function buildDepts(custRows, targets) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §1.2 — totals
+// 1.2 — totals
 // Iterates depts only. deptKids must not be reachable from here.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -326,19 +326,19 @@ const BTN = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AttainmentBar — §3.2. display:block on the fill is load-bearing.
+// AttainmentBar — 3.2. display:block on the fill is load-bearing.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AttainmentBar({ ach }) {
   if (ach === null || !isFinite(ach)) {
     return <span style={{ color: T.text3, fontSize: 13 }}>—</span>
   }
-  const w = Math.min(100, ach * 100).toFixed(1) // §3.2: toFixed(1) prevents absurd style attrs
+  const w = Math.min(100, ach * 100).toFixed(1) // 3.2: toFixed(1) prevents absurd style attrs
   const color = _achColor(ach)
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
       <div style={{ flex: 1, height: 5, background: 'rgba(0,0,0,.08)', borderRadius: 3, overflow: 'hidden', minWidth: 60 }}>
-        {/* display:block is load-bearing — inline <span> ignores width §3.2 */}
+        {/* display:block is load-bearing — inline <span> ignores width 3.2 */}
         <div style={{ display: 'block', height: '100%', width: `${w}%`, background: color, borderRadius: 3, transition: 'width 0.4s ease' }} />
       </div>
       <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 36 }}>
@@ -353,7 +353,7 @@ function AttainmentBar({ ach }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, period, CUR_MONTH, targets, tgtSpan, PC }) {
-  // §2 — collapse state, persisted in localStorage
+  // 2 — collapse state, persisted in localStorage
   const [expandedDepts, setExpandedDepts] = useState(() => {
     return {} // always start collapsed
   })
@@ -362,7 +362,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
   const { depts, deptKids } = useMemo(() => buildDepts(cust, targets), [cust, targets])
   const t = useMemo(() => deptTotals(depts), [depts])
 
-  // ── §3 — snap-based weekly growth ──────────────────────────────────────────
+  // ── 3 — snap-based weekly growth ──────────────────────────────────────────
   // prevDepts: buildDepts on the previous snapshot rows (same function, same parser)
   const prevDepts = useMemo(
     () => custPrev?.length ? buildDepts(custPrev, targets).depts : [],
@@ -371,7 +371,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
 
   // MTD month of a snapshot_date: snapshot_date − 1 day, then YYYY-MM.
   // Example: '2026-08-24' → '2026-08-23' → '2026-08'
-  // §4.2: v2's MTD belongs to the month containing (snapshot_date − 1 day).
+  // 4.2: v2's MTD belongs to the month containing (snapshot_date − 1 day).
   function snapMtdMonth(dateStr) {
     if (!dateStr) return null
     const d = new Date(dateStr + 'T00:00:00Z')
@@ -387,7 +387,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
 
   const asAtMtdMonth  = snapMtdMonth(asAt)
   const prevMtdMonth  = snapMtdMonth(prevSnapDate)
-  // §4.2: only show delta when both snapshots' MTD belongs to the same month
+  // 4.2: only show delta when both snapshots' MTD belongs to the same month
   const sameMonth     = asAtMtdMonth && prevMtdMonth && asAtMtdMonth === prevMtdMonth
   const deltaGapDays  = gapDays(asAt, prevSnapDate)
   const hasDelta      = Boolean(sameMonth && prevDepts.length > 0 && deltaGapDays !== null)
@@ -408,7 +408,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
       if (prev === null) { out[d.dept] = null; return }
       const dp = d.profit - prev
       const tgt = d.target
-      // §3.1: deltaPts = deltaProfit / target × 100 — exact because target is constant.
+      // 3.1: deltaPts = deltaProfit / target × 100 — exact because target is constant.
       // (Unassigned) has no target → always null (spec: show +$268 over —).
       const dPts = (!isUnassigned && tgt && tgt > 0) ? (dp / tgt) * 100 : null
       out[d.dept] = { deltaProfit: dp, deltaPts: dPts }
@@ -416,22 +416,22 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
     return out
   }, [hasDelta, depts, prevDepts])
 
-  // §4.1: label the gap correctly — "3-day" for the 21→24 Aug pair, "7-day" for weekly pairs.
+  // 4.1: label the gap correctly — "3-day" for the 21→24 Aug pair, "7-day" for weekly pairs.
   // Do NOT label as "weekly" until deltaGapDays === 7.
   const deltaLabel = deltaGapDays === 7 ? 'Weekly growth'
     : deltaGapDays !== null ? `${deltaGapDays}-day growth`
     : null
 
-  // Company target from parent's tgtSpan (already spans full period, §6)
+  // Company target from parent's tgtSpan (already spans full period, 6)
   const company    = tgtSpan?.total ?? targets.company ?? 0
   const totalAch   = company > 0 ? t.profit / company : null
   const hasDeptKids = Object.keys(deptKids).length > 0
 
-  // §3.7 — unexpected department banner
+  // 3.7 — unexpected department banner
   const tgtSum = depts.reduce((a, d) => a + _num(d.target), 0)
   const showUnexpBanner = company > 0 && Math.abs(tgtSum - company) > 1
 
-  // ── Expand / collapse (§2) ──────────────────────────────────────────────────
+  // ── Expand / collapse (2) ──────────────────────────────────────────────────
   const toggleDept = dept => {
     const next = { ...expandedDepts, [dept]: !expandedDepts[dept] }
     setExpandedDepts(next)
@@ -472,7 +472,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
     const sp       = _salesPct(d.sales, d.lm_sales)
     const dColor   = delta > 0 ? T.green : delta < 0 ? T.red : T.text3
 
-    // §3 — snap-based delta; for named depts and (Unassigned) on parent rows.
+    // 3 — snap-based delta; for named depts and (Unassigned) on parent rows.
     // Sub-teams are always excluded. (Unassigned) gets a delta but no pts sub-line.
     const snapDelta = (!isKid && hasDelta) ? (deptDelta[d.dept] ?? null) : null
     const sdColor   = snapDelta ? (snapDelta.deltaProfit > 0 ? T.green : T.red) : T.text3
@@ -493,7 +493,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
         {/* Col 1 — Department */}
         <td style={{ ...TD, paddingLeft: isKid ? 36 : 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {/* §2 — only named departments with sub-teams get a chevron */}
+            {/* 2 — only named departments with sub-teams get a chevron */}
             {hasKids && (
               <span style={{
                 fontSize: 9, color: T.text3, flexShrink: 0,
@@ -503,11 +503,11 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
                 lineHeight: 1,
               }}>▶</span>
             )}
-            {/* §3.4 — └ prefix for sub-team rows */}
+            {/* 3.4 — └ prefix for sub-team rows */}
             {isKid && (
               <span style={{ display: 'inline-block', width: 14, fontSize: 11, color: T.text3, flexShrink: 0 }}>└</span>
             )}
-            {/* §6 — colour dot — grey for Unassigned */}
+            {/* 6 — colour dot — grey for Unassigned */}
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: isUnassigned ? T.text3 : deptHex(d.dept), flexShrink: 0 }} />
             <span style={{ fontWeight: isKid ? 500 : 600, color: isUnassigned ? T.text3 : T.text, fontStyle: isUnassigned ? 'italic' : 'normal' }}>{d.dept}</span>
             {/* Child count badge */}
@@ -516,7 +516,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
                 {deptKids[d.dept].length}
               </span>
             )}
-            {/* §3.4 — containment chip */}
+            {/* 3.4 — containment chip */}
             {isKid && parentName && (
               <span
                 title={`Already counted inside ${parentName} — not added to the Total`}
@@ -549,7 +549,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
         {/* Col 4 — vs LM (absolute + %) */}
         <td style={{ ...TD, textAlign: 'right' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
-            {/* §3.3 — both lines coloured by the absolute delta */}
+            {/* 3.3 — both lines coloured by the absolute delta */}
             <span style={{ fontWeight: 600, color: dColor, fontVariantNumeric: 'tabular-nums' }}>{_signed(delta)}</span>
             <span style={{ fontSize: 11, color: dColor, fontVariantNumeric: 'tabular-nums' }}>{_pctFmt(pp, 1)}</span>
           </div>
@@ -578,7 +578,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
           {d.active} / {d.customers}
         </td>
 
-        {/* Col 9 — Snap-based growth (§3) — parent rows only, not sub-teams */}
+        {/* Col 9 — Snap-based growth (3) — parent rows only, not sub-teams */}
         {hasDelta && (
           <td style={{ ...TD, textAlign: 'right' }}>
             {isKid ? (
@@ -627,7 +627,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
         </div>
       </div>
 
-      {/* §3.7 — unexpected department banner */}
+      {/* 3.7 — unexpected department banner */}
       {showUnexpBanner && (
         <div style={{
           background: 'rgba(234,179,8,.16)', border: '1px solid #EAB308',
@@ -640,7 +640,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
         </div>
       )}
 
-      {/* §4.2 — month boundary notice: cross-month pair suppressed */}
+      {/* 4.2 — month boundary notice: cross-month pair suppressed */}
       {prevSnapDate && !sameMonth && prevDepts.length > 0 && (
         <div style={{
           background: 'rgba(234,179,8,.12)', border: '1px solid #EAB308',
@@ -651,7 +651,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
         </div>
       )}
 
-      {/* §2 — Expand / collapse controls */}
+      {/* 2 — Expand / collapse controls */}
       {hasDeptKids && (
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -704,20 +704,20 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
             <tbody>
               {depts.flatMap(d => {
                 const rows = [renderDeptRow(d)]
-                // §2 — sub-team rows appear only when parent is open
+                // 2 — sub-team rows appear only when parent is open
                 if (deptKids[d.dept] && expandedDepts[d.dept]) {
                   deptKids[d.dept].forEach(kid => rows.push(renderDeptRow(kid, true, d.dept)))
                 }
                 return rows
               })}
 
-              {/* §3.5 — Total row */}
+              {/* 3.5 — Total row */}
               <tr style={{ background: T.bg, borderTop: `2px solid ${T.border}` }}>
                 <td style={{ ...TD, fontWeight: 700, color: T.text }}>Total</td>
                 <td style={{ ...TD, textAlign: 'right' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1, alignItems: 'flex-end' }}>
                     <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{_usd(t.profit)}</span>
-                    {/* §3.5 — uses company target, not the sum of the target column */}
+                    {/* 3.5 — uses company target, not the sum of the target column */}
                     <span style={{ fontSize: 11, color: T.text3, fontVariantNumeric: 'tabular-nums' }}>
                       {company > 0 ? _usd(company) : 'no target'}
                     </span>
@@ -753,7 +753,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
                   {/* FIX 3: unique non-Unknown customer count, matches Exec Summary tile */}
                   {new Set(cust.filter(r => r.cust && r.cust !== '(Unknown)').map(r => r.cust)).size}
                 </td>
-                {/* Total row delta — company-level (§3.1) */}
+                {/* Total row delta — company-level (3.1) */}
                 {hasDelta && (() => {
                   const prevTotalProfit = prevDepts.reduce((a, d) => a + d.profit, 0)
                   const dp = t.profit - prevTotalProfit
@@ -781,10 +781,10 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
 
       </div>
 
-      {/* ── Charts row (§4) ─────────────────────────────────────────────────── */}
+      {/* ── Charts row (4) ─────────────────────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
-        {/* §4.1 — Total profit contribution (doughnut + value legend) */}
+        {/* 4.1 — Total profit contribution (doughnut + value legend) */}
         <div style={{
           background: T.bg, borderRadius: 12, padding: '18px 20px',
           boxShadow: T.lift, border: `1px solid ${T.border}`,
@@ -835,7 +835,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
               )}
             </div>
 
-            {/* §4.1 — Value legend (sorted by profit desc) */}
+            {/* 4.1 — Value legend (sorted by profit desc) */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0 }}>
               {donutDepts.map(d => (
                 <div key={d.dept} style={{
@@ -844,7 +844,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
                   alignItems: 'center', gap: 8, padding: '4px 0',
                   fontSize: 12, borderBottom: `1px solid ${T.border}`,
                 }}>
-                  {/* §6 colour swatch */}
+                  {/* 6 colour swatch */}
                   <div style={{ width: 9, height: 9, borderRadius: 2, background: deptHex(d.dept) }} />
                   <span style={{ color: T.text2 }}>{d.dept}</span>
                   <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -859,7 +859,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
           </div>
         </div>
 
-        {/* §4.2 — Profit margin by department (bar + refLine) */}
+        {/* 4.2 — Profit margin by department (bar + refLine) */}
         <div style={{
           background: T.bg, borderRadius: 12, padding: '18px 20px',
           boxShadow: T.lift, border: `1px solid ${T.border}`,
@@ -885,7 +885,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
                 options={{
                   responsive: true,
                   maintainAspectRatio: false,
-                  layout: { padding: { top: 20 } },  // §4.2 — room for labels above tallest bar
+                  layout: { padding: { top: 20 } },  // 4.2 — room for labels above tallest bar
                   plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -902,7 +902,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
                     },
                     barLabels:  { enabled: true, fmt: 'pct', color: T.text2 },
                     centerTotal:{ enabled: false },
-                    // §4.2 — refLine, dashed benchmark
+                    // 4.2 — refLine, dashed benchmark
                     refLine:    { value: blend, label: `Blend ${blend.toFixed(1)}%`, color: 'rgba(26,26,24,.55)' },
                     datalabels: { display: false },
                   },
@@ -913,7 +913,7 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
                       ticks: { font: { size: 11 }, color: T.text3 },
                     },
                     y: {
-                      // §4.2 — beginAtZero is deliberate (truncated axis exaggerated gaps)
+                      // 4.2 — beginAtZero is deliberate (truncated axis exaggerated gaps)
                       beginAtZero: true,
                       grace: '12%',
                       grid: { color: 'rgba(0,0,0,.05)' },

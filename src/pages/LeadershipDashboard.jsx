@@ -5,12 +5,12 @@
  * Data source: BigQuery only via `leadership-dashboard` Supabase edge function.
  * No GA4 calls anywhere in this file.
  *
- * Key invariants enforced here (build spec §0):
+ * Key invariants enforced here (build spec 0):
  *  - Profit evaluated at (dept, customer) grain in Q_CUST; this layer only sums pre-computed columns.
- *  - Company target = sum of exactly four departments (§4.1). Sales Mo / Sales Jojo are rolled up.
- *  - salesPct / profitPct edge cases reproduced verbatim (§5.1).
+ *  - Company target = sum of exactly four departments (4.1). Sales Mo / Sales Jojo are rolled up.
+ *  - salesPct / profitPct edge cases reproduced verbatim (5.1).
  *  - Null renders as '—', never '$0' or 'NaN'.
- *  - QA log on every render (§9.3).
+ *  - QA log on every render (9.3).
  */
 
 import React, { useState, useEffect, useCallback } from 'react'
@@ -40,7 +40,7 @@ ChartJS.register(
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constants (§4.1)
+// Constants (4.1)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DEPT_TARGET_KEYS = ['EAM Chris', 'EAM Renaldo', 'EAM Gloria', 'B2C Matt']
@@ -51,7 +51,7 @@ const cacheKey = (asAt, period) => `ld_cache_${asAt ?? 'latest'}_${period ?? 'mt
 const EDGE_FN          = 'leadership-dashboard'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Design tokens (§8)
+// Design tokens (8)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const T = {
@@ -81,7 +81,7 @@ const T = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// num() — coerce BigQuery string values to finite numbers (§5.2)
+// num() — coerce BigQuery string values to finite numbers (5.2)
 // The BigQuery REST API returns every value as a string. This is load-bearing.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ function num(v) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Formatters (§6)
+// Formatters (6)
 // ─────────────────────────────────────────────────────────────────────────────
 
 const usd = (v, d = 0) =>
@@ -116,7 +116,7 @@ const numFmt = (v, d = 0) =>
   num(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Percentage formulas (§5.1) — reproduce verbatim, edge cases are intentional
+// Percentage formulas (5.1) — reproduce verbatim, edge cases are intentional
 // ─────────────────────────────────────────────────────────────────────────────
 
 function salesPct(sales, lm) {
@@ -133,7 +133,7 @@ function profitPct(profit, lm) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Attainment colour (§6) — thresholds 95% and 80% are load-bearing
+// Attainment colour (6) — thresholds 95% and 80% are load-bearing
 // ─────────────────────────────────────────────────────────────────────────────
 
 const achColor = p =>
@@ -143,7 +143,7 @@ const achColor = p =>
     : T.red
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §5.3 — Pace: straight-line, not seasonality-adjusted.
+// 5.3 — Pace: straight-line, not seasonality-adjusted.
 // MUST use the snapshot month, not wall-clock today.
 // Receives CUR_MONTH (YYYY-MM) so viewing a past snapshot shows that month's pace.
 // e.g. snapshot 2026-08-25 → CUR_MONTH='2026-08' → elapsed=25, days=31, frac=25/31=80.6%
@@ -176,7 +176,7 @@ function curMonth() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §3 — Month helpers
+// 3 — Month helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -242,7 +242,7 @@ function totals(depts) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// buildTargets (§4.2)
+// buildTargets (4.2)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildTargets(targetsRows, CUR_MONTH) {
@@ -262,7 +262,7 @@ function buildTargets(targetsRows, CUR_MONTH) {
     .filter(r => r.ym === month && r.kind === 'dept')
     .forEach(r => { dept[r.dim] = num(r.tgt) })
 
-  // Company target = exactly the four departments (§4.1).
+  // Company target = exactly the four departments (4.1).
   // Sales Mo is already inside EAM Chris; Sales Jojo inside EAM Gloria.
   const company = DEPT_TARGET_KEYS.reduce((a, k) => a + (dept[k] || 0), 0)
 
@@ -270,7 +270,7 @@ function buildTargets(targetsRows, CUR_MONTH) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Cache helpers (§9.2)
+// Cache helpers (9.2)
 // Keyed on (asAt, period) so week and MTD requests for the same snapshot don't collide,
 // and different snapshot selections don't overwrite each other.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -314,7 +314,7 @@ function DeptBadge({ dept }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §2 — Period metadata
+// 2 — Period metadata
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PERIOD_META = {
@@ -341,7 +341,7 @@ const GEO_PRODUCT_PERIODS = ['mtd', 'qtd', 'ytd', 'week']
 const STANDARD_PERIODS    = ['mtd', 'qtd', 'ytd']
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §4 — Period metadata resolver
+// 4 — Period metadata resolver
 // Call PM(period) instead of branching on period everywhere.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -361,7 +361,7 @@ function PM(period) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §5 — normCust — the key mechanism
+// 5 — normCust — the key mechanism
 // Maps the active period onto neutral field names so every downstream renderer
 // stays period-agnostic. custRaw must never be mutated.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -404,16 +404,16 @@ function normCust(period, custRaw, months) {
     sales:      num(r[m.sales]),   lm_sales:   num(r[m.bSales]),
     profit:     num(r[m.profit]),  lm_profit:  num(r[m.bProfit]),
     revenue:    num(r[m.rev]),     lm_revenue: num(r[m.bRev]),
-    // §5.2 — only MTD carries a distinct last-year column
+    // 5.2 — only MTD carries a distinct last-year column
     ly_sales:   period === 'mtd' ? num(r.ly_sales)  : num(r[m.bSales]),
     ly_profit:  period === 'mtd' ? num(r.ly_profit) : num(r[m.bProfit]),
   }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §6 — periodMonths + targetAcross
+// 6 — periodMonths + targetAcross
 // Targets are stored per-month; cumulative periods must sum across covered months.
-// Returning null when any month is missing is deliberate — §6.1.
+// Returning null when any month is missing is deliberate — 6.1.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function periodMonths(period, CUR_MONTH) {
@@ -632,9 +632,9 @@ export default function LeadershipDashboard() {
   // Gap to target, forecast and all target lookups always match the snapshot.
   const snapMonth = (D.asAt ?? D.snapDates[0] ?? '').slice(0, 7)
   const CUR_MONTH = snapMonth || curMonth()
-  const PC        = PM(period)           // §4 — always use PM(), never branch on period directly
+  const PC        = PM(period)           // 4 — always use PM(), never branch on period directly
 
-  // §2.1 — correct guard: month keys are valid even though they're not in PERIOD_META
+  // 2.1 — correct guard: month keys are valid even though they're not in PERIOD_META
   const setPeriod = k => {
     if (!PERIOD_META[k] && !isMonthKey(k)) return
     setPeriodState(k)
@@ -656,7 +656,7 @@ export default function LeadershipDashboard() {
     if (sm && isMonthKey(sm)) setPeriodState(sm)
   }, [D.asAt, D.snapDates]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Data fetch (§9.2) ──────────────────────────────────────────────────────
+  // ── Data fetch (9.2) ──────────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -699,7 +699,7 @@ export default function LeadershipDashboard() {
       cacheWrite(asAt, edgePeriod, result)
       setCachedAt(null)
     } catch (err) {
-      // Fall back to last good cache (§9.2)
+      // Fall back to last good cache (9.2)
       const cached = cacheRead(asAt, edgePeriod)
       if (cached?.data) {
         setD(cached.data)
@@ -729,7 +729,7 @@ export default function LeadershipDashboard() {
 
   // ── Derived data ───────────────────────────────────────────────────────────
   // cust is normalized once here — never pass D.cust directly to renderers
-  const cust       = normCust(period, D.cust,     D.months)  // §5 — neutral field names
+  const cust       = normCust(period, D.cust,     D.months)  // 5 — neutral field names
   // custPrev must go through the same normCust() so DepartmentsTab.buildDepts
   // receives field names {profit, sales, revenue, lm_profit, ...} not {m_profit, m_sales, ...}
   // Fix 1a+1b (Departments fix guide): raw rows have m_profit, not profit.
@@ -748,7 +748,7 @@ export default function LeadershipDashboard() {
   const lmRev    = t.lm_revenue
   const lyProfit = t.ly_profit
 
-  // §6 — company target spans the full period (null if any month missing)
+  // 6 — company target spans the full period (null if any month missing)
   const tgtSpan  = targetAcross(period, CUR_MONTH, D.targets)
   const company  = tgtSpan.total ?? 0
   const targetOk = company > 0
@@ -757,7 +757,7 @@ export default function LeadershipDashboard() {
   const gap    = targetOk ? company - profit : null
   const behind = ach !== null && ach < pace.frac
 
-  // Forecast (§5.4)
+  // Forecast (5.4)
   const fcByMonth = {}
   for (const r of D.fc) {
     if (!fcByMonth[r.ym]) fcByMonth[r.ym] = { pro: 0, pro_lo: 0, pro_hi: 0, committed: 0 }
@@ -780,7 +780,7 @@ export default function LeadershipDashboard() {
   const marginDelta = (margin !== null && lmMargin !== null) ? margin - lmMargin : null
 
   // Active customers — unique customer names.
-  // FIX 4 (Customers tab fix guide §4): align to Customers tab — use 118 on both.
+  // FIX 4 (Customers tab fix guide 4): align to Customers tab — use 118 on both.
   //  - 117 distinct named customers + 1 '(Unknown)' = 118 total.
   //  - (Unknown) has $268 profit and IS shown on the Customers tab.
   //  - Showing it as 'on file' is consistent with showing its row rather than silently dropping $268.
@@ -797,11 +797,11 @@ export default function LeadershipDashboard() {
   const activeCust    = activeCustNames.size   // 77 (76 named + (Unknown))
   const totalCustFile = custNames.size         // 118 (117 named + (Unknown))
 
-  // §7.1 — guard: if months failed and user had a month selected, fall back to mtd
+  // 7.1 — guard: if months failed and user had a month selected, fall back to mtd
   const monthList = availableMonths(D.months, CUR_MONTH)
   if (monthList.length === 0 && isMonthKey(period)) setPeriod('mtd')
 
-  // ── QA log (§9.3) — permanent audit trail ─────────────────────────────────
+  // ── QA log (9.3) — permanent audit trail ─────────────────────────────────
   if (D.cust.length > 0) {
     const deptSum = [...depts.values()].reduce((a, d) => a + d.profit, 0)
     console.log(
@@ -846,7 +846,7 @@ export default function LeadershipDashboard() {
   const gainsSum    = topGains.reduce((a, r) => a + r.delta, 0)
   const declinesSum = topDeclines.reduce((a, r) => a + r.delta, 0)
 
-  // ── Department bar chart (left, §7.5) ─────────────────────────────────────
+  // ── Department bar chart (left, 7.5) ─────────────────────────────────────
   const deptRows = DEPT_TARGET_KEYS
     .map(k => ({
       dept:   k,
@@ -916,7 +916,7 @@ export default function LeadershipDashboard() {
     },
   }
 
-  // ── Forecast outlook chart (right, §7.5) ──────────────────────────────────
+  // ── Forecast outlook chart (right, 7.5) ──────────────────────────────────
   const fcChartData = {
     labels: fcMonths,
     datasets: [
@@ -1275,7 +1275,7 @@ export default function LeadershipDashboard() {
           </Banner>
         )}
 
-        {/* Staleness banner — shown when source was stale at capture (§7 migration spec) */}
+        {/* Staleness banner — shown when source was stale at capture (7 migration spec) */}
         {D.staleness?.is_stale && (
           <Banner kind="warn">
             ⚠️ Source data was {D.staleness.staleness_days} day(s) stale when this snapshot was captured.

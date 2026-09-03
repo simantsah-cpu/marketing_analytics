@@ -3,7 +3,7 @@
  * Reproduces the "Forecast By AI" sheet exactly.
  *
  * Spec: ORBIT_FORECAST_SPEC.md
- * Non-negotiables (§0):
+ * Non-negotiables (0):
  *  - model_version = fwd_v2 for geo, fwd_cust_v1 for customer (handled in edge fn)
  *  - Always MAX(forecast_date) — handled in edge fn
  *  - This tab does NOT follow the period selector (forward-looking always)
@@ -42,7 +42,7 @@ function axUsd(v){if(v===0)return '$0';return usdC(v)}
 const pctFmt=(v,d=1)=>(v===null||v===undefined||!isFinite(Number(v)))?'—':(num(v)*100).toFixed(d)+'%'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §9 — Geography colours
+// 9 — Geography colours
 // ─────────────────────────────────────────────────────────────────────────────
 const GEO_COLOR={
   'Americas':'#185FA5',
@@ -124,7 +124,7 @@ safeReg({
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §6.2 — Coverage cell (reusable across table and accounts)
+// 6.2 — Coverage cell (reusable across table and accounts)
 // ─────────────────────────────────────────────────────────────────────────────
 function CovCell({cm,rev,compact=false}){
   const c=num(rev)>0?num(cm)/num(rev):null
@@ -156,7 +156,7 @@ function RangeCell({mid,lo,hi}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §5.1 — Stacked geo chart (local plugins only — avoids cross-module conflicts)
+// 5.1 — Stacked geo chart (local plugins only — avoids cross-module conflicts)
 // ─────────────────────────────────────────────────────────────────────────────
 function GeoChart({months,geos,D}){
   const ref=useRef(null)
@@ -257,7 +257,7 @@ function GeoChart({months,geos,D}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §5.2 — Revenue coverage chart (pure HTML/CSS — no canvas, no plugin conflicts)
+// 5.2 — Revenue coverage chart (pure HTML/CSS — no canvas, no plugin conflicts)
 // ─────────────────────────────────────────────────────────────────────────────
 function CovChart({months, mAgg}) {
   if (!mAgg.length) return null
@@ -308,12 +308,12 @@ function CovChart({months, mAgg}) {
 const GEO_MERGE_DATE = '2026-08-17'
 
 export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fccVintage,asAt}){
-  // §6.1 — expand state persisted
+  // 6.1 — expand state persisted
   const[fcOpen,setFcOpen]=useState({})
   const toggleFc=m=>{setFcOpen(prev=>{const n={...prev,[m]:!prev[m]};localStorage.setItem('eam.fcOpen',JSON.stringify(n));return n})}
   const setAllFc=open=>{setFcOpen(prev=>{const n={};months.forEach(m=>{n[m]=open});localStorage.setItem('eam.fcOpen',JSON.stringify(n));return n})}
 
-  // §2 — aggregation
+  // 2 — aggregation
   const months=useMemo(()=>[...new Set((D.fc||[]).map(r=>r.ym))].sort(),[D.fc])
   const geos=useMemo(()=>[...new Set((D.fc||[]).map(r=>r.geo))].sort(),[D.fc])
   const mAgg=useMemo(()=>months.map(m=>{
@@ -322,7 +322,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
     return{ym:m,rows,pro:s('pro'),lo:s('pro_lo'),hi:s('pro_hi'),cm:s('committed'),rev:s('rev'),rev_lo:s('rev_lo'),rev_hi:s('rev_hi')}
   }),[months,D.fc])
 
-  // §2.1 — shared scale
+  // 2.1 — shared scale
   const{scLo,scHi,span}=useMemo(()=>{
     if(!mAgg.length)return{scLo:0,scHi:1,span:1}
     const lo=Math.min(...mAgg.map(a=>a.lo))
@@ -331,14 +331,14 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
   },[mAgg])
   const poscale=v=>Math.max(0,Math.min(100,((v-scLo)/span)*100))
 
-  // §7 — top forecast accounts: next month after current, fallback last
+  // 7 — top forecast accounts: next month after current, fallback last
   const nextM=useMemo(()=>months.filter(m=>m>CUR_MONTH)[0]||months[months.length-1],[months,CUR_MONTH])
   const topAccounts=useMemo(()=>(D.fcc||[]).filter(r=>r.ym===nextM).sort((a,b)=>num(b.pro)-num(a.pro)).slice(0,20),[D.fcc,nextM])
 
-  // §4 — company target for current month
+  // 4 — company target for current month
   // MUST sum only DEPT_TARGET_KEYS (4 depts). Sales Mo / Sales Jojo are sub-teams
   // already inside their parent — including them gives 2,064,299 instead of 2,045,426
-  // and makes the attainment read 85% instead of the correct 86%. §1.1 of Departments spec.
+  // and makes the attainment read 85% instead of the correct 86%. 1.1 of Departments spec.
   const DEPT_TARGET_KEYS_FC = ['EAM Chris','EAM Renaldo','EAM Gloria','B2C Matt']
   const company=useMemo(()=>{
     const deptTgts={}
@@ -350,17 +350,17 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
   const fdate = fcVintage ?? (D.fc&&D.fc[0]?.fdate) ?? null
   const fdateFCC = fccVintage ?? null
 
-  // §2.3 — model version labels: read from data, not hardcoded.
+  // 2.3 — model version labels: read from data, not hardcoded.
   // model_version is now included in the Q_FC / Q_FCC SELECT. Falls back to
   // spec-defined defaults so the label never goes blank on old cached responses.
   const fcModelVersion  = D.fc?.[0]?.model_version  ?? 'fwd_v2'
   const fccModelVersion = D.fcc?.[0]?.model_version ?? 'fwd_cust_v1'
 
-  // §2.2 — stale vintage: resolved forecast is older than the snap asAt
+  // 2.2 — stale vintage: resolved forecast is older than the snap asAt
   const fcIsStale = fdate && asAt && fdate < asAt
   const fccIsStale = fdateFCC && asAt && fdateFCC < asAt
 
-  // §3 — geo taxonomy note: vintage >= 2026-08-17 has 2 geos; older has 3
+  // 3 — geo taxonomy note: vintage >= 2026-08-17 has 2 geos; older has 3
   const geoIsMerged = fdate && fdate >= GEO_MERGE_DATE
 
   // Geo totals for legend
@@ -405,7 +405,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
         </div>
       </div>
 
-      {/* §2.2 — stale vintage warning: forecast older than the snap asAt */}
+      {/* 2.2 — stale vintage warning: forecast older than the snap asAt */}
       {fcIsStale&&(
         <div style={{background:'rgba(234,179,8,.12)',border:'1px solid #EAB308',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12.5,color:'#78590A',lineHeight:1.7}}>
           <strong>Forecast vintage {String(fdate).slice(0,10)}</strong> · this week's model had not published when the snapshot was taken.
@@ -417,14 +417,14 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
         </div>
       )}
 
-      {/* §8 — Period notice for non-MTD */}
+      {/* 8 — Period notice for non-MTD */}
       {period!=='mtd'&&(
         <div style={{background:'rgba(234,179,8,.12)',border:'1px solid #EAB308',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12.5,color:'#78590A',lineHeight:1.7}}>
           <strong>Forecast does not follow the period selector.</strong> It is forward-looking by pickup month and always shows the latest model run, so a historical period does not apply. The selector currently reads <strong>{PC?.label||period}</strong>; the figures on this tab are unchanged.
         </div>
       )}
 
-      {/* ── §4 KPI row — one tile per pickup month ─────────────────────────── */}
+      {/* ── 4 KPI row — one tile per pickup month ─────────────────────────── */}
       <div style={{marginBottom:8}}>
         <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:10}}>Forecast Total Profit by Pickup Month</div>
         <div style={{display:'grid',gridTemplateColumns:`repeat(${mAgg.length},1fr)`,gap:12,marginBottom:20}}>
@@ -446,7 +446,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
                   {unc!==null&&`± ${(unc*100).toFixed(1)}%`}
                   {cov!==null&&` · coverage ${(cov*100).toFixed(0)}%`}
                 </div>
-                {/* §4.1 Range band — shared scale */}
+                {/* 4.1 Range band — shared scale */}
                 <div title={`Range ${usdC(a.lo)} to ${usdC(a.hi)} on a scale shared across all months`}
                   style={{position:'relative',height:6,background:T.bg4,borderRadius:99,margin:'9px 0 3px'}}>
                   <span style={{position:'absolute',top:0,bottom:0,left:`${lo_p.toFixed(1)}%`,right:`${(100-hi_p).toFixed(1)}%`,background:'rgba(24,95,165,.22)',borderRadius:99}}/>
@@ -473,14 +473,14 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
         </div>
       </div>
 
-      {/* ── §5 Charts row ─────────────────────────────────────────────────── */}
+      {/* ── 5 Charts row ─────────────────────────────────────────────────── */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24}}>
-        {/* §5.1 Geo stacked bar */}
+        {/* 5.1 Geo stacked bar */}
         <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'16px 20px 14px'}}>
           <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Forecast total profit by geography</div>
           <div style={{fontSize:11.5,color:T.text3,marginBottom:14}}>
             {mAgg.length} month{mAgg.length !== 1 ? 's' : ''} ahead · totals above each column, {usdC(geoAll)} in aggregate
-            {/* §3 — geo taxonomy note */}
+            {/* 3 — geo taxonomy note */}
             {geoIsMerged&&<span style={{marginLeft:8,fontSize:10,background:'rgba(234,179,8,.15)',color:'#78590A',padding:'1px 6px',borderRadius:9,border:'1px solid rgba(234,179,8,.4)'}}>Americas &amp; Asia/Africa/Oceania merged from Aug 17</span>}
           </div>
           <div style={{height:300}}>
@@ -499,7 +499,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
           </div>
         </div>
 
-        {/* §5.2 Coverage chart */}
+        {/* 5.2 Coverage chart */}
         <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'16px 20px 14px'}}>
           <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Revenue coverage</div>
           <div style={{fontSize:11.5,color:T.text3,marginBottom:14}}>Share of forecast revenue already committed · the booking curve decays with horizon</div>
@@ -510,7 +510,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
         </div>
       </div>
 
-      {/* ── §6 Detail table ─────────────────────────────────────────────────── */}
+      {/* ── 6 Detail table ─────────────────────────────────────────────────── */}
       <div style={{marginBottom:24}}>
         <div style={{fontSize:10,fontWeight:700,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:10,display:'flex',alignItems:'center',gap:12}}>
           <span>Forecast detail</span>
@@ -591,7 +591,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
         </div>
       </div>
 
-      {/* ── §7 Top forecast accounts ──────────────────────────────────────── */}
+      {/* ── 7 Top forecast accounts ──────────────────────────────────────── */}
       {topAccounts.length>0&&(
         <div style={{marginBottom:24}}>
           <div style={{fontSize:10,fontWeight:700,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:10,display:'flex',alignItems:'center',gap:8}}>

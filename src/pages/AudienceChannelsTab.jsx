@@ -5,7 +5,7 @@
  *   - session_traffic_source_last_click only (A3) — stated in header note
  *   - No monthly channel YoY (rule R2, June-2025 partial) — conversion table stays weekly always
  *   - No per-airport channel splits — "not in this dataset"
- *   - Nine channel buckets only, fixed order and colors (§4)
+ *   - Nine channel buckets only, fixed order and colors (4)
  *   - Weekly YoY = W27-2026 ('2627') vs W27-2025 ('2527')
  *   - Stacked mix = months 2507..2606 only (12 complete months)
  *   - Country bars = June 2026 ('2606') purchases only (no YoY — rule R2)
@@ -23,7 +23,7 @@ const T = {
   coralLight: '#FDEDEB',
 }
 
-// ─── Fixed channel order and colors (brief §4 — do not reorder) ──────────────
+// ─── Fixed channel order and colors (brief 4 — do not reorder) ──────────────
 const CH_ORDER = [
   'Paid search',
   'Organic search',

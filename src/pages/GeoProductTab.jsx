@@ -4,13 +4,13 @@
  * Spec: ORBIT_GEO_PRODUCT_SPEC.md
  * Migration: ORBIT_GEO_PRODUCT_SNAPSHOT_MIGRATION.md
  *
- * §0 Non-negotiables:
+ * 0 Non-negotiables:
  *  - Product line → v2 snap (Q_PROD).  Geography → v3 snap (Q_GEO, makeQGeo).
  *  - GEO attainment NOW ENABLED — v3 revival confirmed correct (v3 rev == v2 rev on 24 Aug).
- *  - §1 gate: if v3 revenue ≠ v2 revenue (within $1), geo section refuses to render.
+ *  - 1 gate: if v3 revenue ≠ v2 revenue (within $1), geo section refuses to render.
  *  - Geo targets use Europe-partition logic — NOT a label join (labels change every month).
  *  - rollupPL: May–Jul SS/Rail show own row with '—' attainment; NOT folded into PT.
- *  - ALL shared helpers live at module scope (§6.3 structural trap avoidance).
+ *  - ALL shared helpers live at module scope (6.3 structural trap avoidance).
  */
 
 import { useMemo, useRef, useEffect } from 'react'
@@ -45,7 +45,7 @@ const pctFmt=(v,d=1)=>(v===null||v===undefined||!isFinite(Number(v)))?'—':(num
 const achColor=p=>(p===null||!isFinite(Number(p)))?T.text3:p>=0.95?T.green:p>=0.80?T.amberInk:T.red
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §7 — Colours (updated: two-bucket geo taxonomy from snapped v3)
+// 7 — Colours (updated: two-bucket geo taxonomy from snapped v3)
 // ─────────────────────────────────────────────────────────────────────────────
 const PL_COLOR = {
   'Prebooked':        '#185FA5',
@@ -73,12 +73,12 @@ const TARGET_GEO_OWNER = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §3 — Rollup constants
+// 3 — Rollup constants
 // ─────────────────────────────────────────────────────────────────────────────
 const PREBOOKED_LINES = ['Private Transfer','Shared Shuttle','Rail']
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §6.3 — ALL shared cell helpers at module scope (structural trap avoidance)
+// 6.3 — ALL shared cell helpers at module scope (structural trap avoidance)
 // These must never be declared inside a conditional branch.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -408,14 +408,15 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
   // For week: 'prev_profit'; for MTD: 'lm_profit'; for QTD/YTD: their respective fields.
   const bPF = PC?.bProfit ?? 'lm_profit'
 
-  // ── v2 revenue (from D.cust) — used for the §1 geo validity gate ─────────────────
-  // v3 revenue must equal v2 revenue within $1 for geo to be valid.
-  // Self-validates on every load — catches any future v3 revival failure automatically.
+  // ── v2 revenue (from D.prod) — used for the 1 geo validity gate ─────────────────
+  // D.prod is already period-correct (from makeQProd via PERIOD_COLS), so this
+  // compares like-for-like against geoRev (D.geo, also period-correct via makeQGeo).
+  // Previously used D.cust[].m_rev which was always MTD — caused false guard trip on week.
   const v2Revenue = useMemo(() =>
-    (D.cust || []).reduce((a, r) => a + num(r.m_rev), 0),
-  [D.cust])
+    (D.prod || []).reduce((a, r) => a + num(r.revenue), 0),
+  [D.prod])
 
-  // ── §3 — Build target maps for the current month ──────────────────────────────
+  // ── 3 — Build target maps for the current month ──────────────────────────────
   // Geo targets use Europe-partition logic — NOT a label join.
   // BI renames non-Europe buckets every month; the label join breaks silently.
   // Partition rule: r.dim === 'Europe' → Europe total; everything else → combined bucket.
@@ -448,7 +449,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
     return { targetMonth:tMonth, TARGETS:{ product, geo, dept, company } }
   },[D.targets, CUR_MONTH])
 
-  // ── §3.1 — rollupPL ─────────────────────────────────────────────────────────────────
+  // ── 3.1 — rollupPL ─────────────────────────────────────────────────────────────────
   // Aug 2026+: 'Prebooked' target exists — fold PT+SS+Rail into Prebooked bucket.
   // May–Jul: 'Private Transfer' is the only mapped line. SS and Rail have NO target
   // — they pass through unchanged and render with attainment '—'. They must NOT be
@@ -462,11 +463,11 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
     return pl
   }
 
-  // ── §3.2 — rollupGeo — identity (data arrives in 2-bucket form from snapped v3) ───
+  // ── 3.2 — rollupGeo — identity (data arrives in 2-bucket form from snapped v3) ───
   // dim_service_area drives the label at query time; no merging needed on the frontend.
   const rollupGeo = g => g
 
-  // ── §6 — geoSrc: monthly branch vs v3 branch ──────────────────────────────
+  // ── 6 — geoSrc: monthly branch vs v3 branch ──────────────────────────────
   const geoSrc = useMemo(()=>{
     // Week view reads D.geo directly (already period-correct from the edge function).
     if (weekView || !recon) return D.geo || []
@@ -488,7 +489,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
     return Object.values(agg)
   },[recon, weekView, period, D.geo, D.months])
 
-  // ── §4.1 — Product line aggregation ───────────────────────────────────────
+  // ── 4.1 — Product line aggregation ───────────────────────────────────────
   const { prod, pT } = useMemo(()=>{
     const plMap = {}
     ;(D.prod||[]).forEach(r=>{
@@ -497,18 +498,18 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
       plMap[k].profit      +=num(r.profit)
       plMap[k].revenue     +=num(r.revenue)
       plMap[k].sales       +=num(r.sales)
-      plMap[k].base_profit +=num(r[bPF])
+      plMap[k].base_profit +=num(r.prev_profit ?? r.lm_profit)
       if(k!==r.pl) plMap[k].parts.push(r.pl)
     })
-    // Hide Rail when zero (spec §7.2d: render only if non-zero)
+    // Hide Rail when zero (spec 7.2d: render only if non-zero)
     const prod=Object.values(plMap)
       .filter(r => r.pl !== 'Rail' || num(r.profit) !== 0 || num(r.revenue) !== 0)
       .sort((a,b)=>num(b.profit)-num(a.profit))
     const pT=prod.reduce((a,r)=>({profit:a.profit+num(r.profit),revenue:a.revenue+num(r.revenue),sales:a.sales+num(r.sales),lm:a.lm+num(r.base_profit)}),{profit:0,revenue:0,sales:0,lm:0})
     return {prod,pT}
-  },[D.prod, rollupPL, bPF])
+  },[D.prod, rollupPL])
 
-  // ── §5.1 — GEO aggregation ─────────────────────────────────────────────────
+  // ── 5.1 — GEO aggregation ─────────────────────────────────────────────────
   const { geoRows, geoTot, geoRev } = useMemo(()=>{
     const geoMap={}
     geoSrc.forEach(r=>{
@@ -517,21 +518,21 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
       geoMap[k].profit      +=num(r.profit)
       geoMap[k].revenue     +=num(r.revenue)
       geoMap[k].sales       +=num(r.sales)
-      geoMap[k].base_profit +=num(r[bPF] ?? r.base_profit ?? r.lm_profit)
+      geoMap[k].base_profit +=num(r.prev_profit ?? r.lm_profit)
       if(k!==r.geo) geoMap[k].parts.push(r.geo)
     })
     const geoRows=Object.values(geoMap).sort((a,b)=>num(b.profit)-num(a.profit))
     const geoTot=geoRows.reduce((a,r)=>a+num(r.profit),0)
     const geoRev=geoRows.reduce((a,r)=>a+num(r.revenue),0)
     return {geoRows,geoTot,geoRev}
-  },[geoSrc, rollupGeo, bPF])
+  },[geoSrc, rollupGeo])
 
-  // ── §1 gate — self-validating geo validity check ───────────────────────────────
+  // ── 1 gate — self-validating geo validity check ───────────────────────────────
   // v3 revenue must equal v2 revenue within $1. On 2026-08-21, v3 held Feb data:
   // v3 rev ≈ 5,233,310 vs v2 ≈ 6,226,655 — gate fails, banner shown.
   const geoValid = geoRows.length > 0 && Math.abs(geoRev - v2Revenue) < 1
 
-  // ── §3/$76 footnote — dynamic gap between geo and pl target totals ────────────
+  // ── 3/$76 footnote — dynamic gap between geo and pl target totals ────────────
   const geoTargetTotal = Object.values(TARGETS.geo).reduce((a,v)=>a+v, 0)
   const plTargetTotal  = Object.values(TARGETS.product).reduce((a,v)=>a+v, 0)
   const targetGap      = Math.round(Math.abs(plTargetTotal - geoTargetTotal))
@@ -556,11 +557,11 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
         <div style={{fontSize:13,color:T.text3,marginTop:4}}>{SHORT} total profit and revenue split by geography and by product line</div>
       </div>
 
-      {/* ── §4 Product Line section ─────────────────────────────────────────── */}
+      {/* ── 4 Product Line section ─────────────────────────────────────────── */}
       <SecLabel label="Product Line"/>
 
       {recon && !weekView ? (
-        // §6.2 — product line unavailable for single month (not for week)
+        // 6.2 — product line unavailable for single month (not for week)
         <div style={{background:T.bg2,border:`1px solid ${T.border}`,borderRadius:8,padding:'16px 20px',marginBottom:24,color:T.text3,fontSize:13}}>
           Not available for a single month — the monthly source carries no product line column. Switch to Month, Quarter or Year to date.
         </div>
@@ -656,7 +657,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
         </>
       )}
 
-      {/* ── §5 Geography section ────────────────────────────────────────────── */}
+      {/* ── 5 Geography section ────────────────────────────────────────────── */}
       <SecLabel label="Geography"/>
 
       {/* Geo week empty warning — independent from prod since v3 can go stale independently */}
@@ -670,7 +671,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
 
         <div style={{textAlign:'center',padding:'32px 0',color:T.text3,fontSize:13}}>No geography data — click Refresh.</div>
       ) : !geoValid ? (
-        /* §1 gate — v3 revenue ≠ v2 revenue: this snapshot holds stale/dead v3 data */
+        /* 1 gate — v3 revenue ≠ v2 revenue: this snapshot holds stale/dead v3 data */
         <div style={{background:'#FFF7ED',border:'1px solid #FED7AA',borderRadius:8,padding:'16px 20px',marginBottom:24}}>
           <div style={{fontWeight:700,fontSize:13,color:'#92400E',marginBottom:6}}>Geography unavailable for this snapshot</div>
           <div style={{fontSize:12.5,color:'#92400E',lineHeight:1.6}}>
@@ -743,14 +744,14 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
             </div>
           </div>
 
-          {/* §3 — $76 target gap footnote (dynamic: only when gap > 0) */}
+          {/* 3 — $76 target gap footnote (dynamic: only when gap > 0) */}
           {targetGap > 0 && geoTargetTotal > 0 && plTargetTotal > 0 && (
             <div style={{fontSize:11.5,color:T.text3,marginBottom:8,padding:'0 4px',lineHeight:1.55}}>
               ⚠ Geo targets sum to <strong>{usd(geoTargetTotal)}</strong> against a company target of <strong>{usd(plTargetTotal)}</strong> — a <strong>{usd(targetGap)}</strong> difference in the source table. This is a data-entry error in the target row, not a reporting variance.
             </div>
           )}
 
-          {/* §4 — Grain footnote */}
+          {/* 4 — Grain footnote */}
           <div style={{fontSize:11.5,color:T.text3,marginBottom:16,padding:'0 4px',lineHeight:1.55}}>
             ℹ Total profit is computed at geo grain. The profit measure includes a revenue-weighted ratio and is not additive across grains — expect a difference of up to a few hundred dollars against the Executive Summary.
           </div>

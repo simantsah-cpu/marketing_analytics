@@ -6,16 +6,16 @@
  *   sumGA4, sumOps, hasOpsData, AP_ROSTER, GA4_S, GA4_E, OPS_S, OPS_E, MIG_S, MIG_E
  *
  * Brief rules enforced:
- *   - Seven metrics in fixed order (§2)
- *   - Scaled volume floors per window length (§3) — FLOORS ARE THE POINT
- *   - Per-source validity: ga4 metrics need cf>=GA4_S; ops metrics need cf>=OPS_S and no migration (§4)
+ *   - Seven metrics in fixed order (2)
+ *   - Scaled volume floors per window length (3) — FLOORS ARE THE POINT
+ *   - Per-source validity: ga4 metrics need cf>=GA4_S; ops metrics need cf>=OPS_S and no migration (4)
  *   - Asymmetric validity: Q2+YoY gives valid movement for ops but "no basis" for ga4 (K3)
- *   - rankMap: NO tie-sharing, stable sort (§5)
- *   - Climbers/fallers: top-150 filter in at least one window (§5)
- *   - Cancellation rate: ascending, inverted movement coloring (§2)
- *   - "new" = below floor or zero in comparison window (§5, §8)
- *   - Global time bar only — no local timeframe control (§8 rule 1)
- *   - Cross-metric consistency with Overview: same functions, same data (§8 last rule)
+ *   - rankMap: NO tie-sharing, stable sort (5)
+ *   - Climbers/fallers: top-150 filter in at least one window (5)
+ *   - Cancellation rate: ascending, inverted movement coloring (2)
+ *   - "new" = below floor or zero in comparison window (5, 8)
+ *   - Global time bar only — no local timeframe control (8 rule 1)
+ *   - Cross-metric consistency with Overview: same functions, same data (8 last rule)
  *   - R4: Web bookings, never "transactions"
  */
 
@@ -113,7 +113,7 @@ const T = {
   amberLight: '#FDF4E3',
 }
 
-// ─── Seven metrics (§2 fixed order) ──────────────────────────────────────────
+// ─── Seven metrics (2 fixed order) ──────────────────────────────────────────
 const METRICS = [
   { id: 'b',   name: 'Ops net bookings', source: 'ops', asc: false },
   { id: 'tn',  name: 'Ops net TTV',      source: 'ops', asc: false },
@@ -202,7 +202,7 @@ function computeValue(metricId, cd, f, t, dayCount) {
   }
 }
 
-// ─── rankMap: stable sort, no tie-sharing (§5) ───────────────────────────────
+// ─── rankMap: stable sort, no tie-sharing (5) ───────────────────────────────
 function rankMap(metricId, codes, f, t, dayCount) {
   const metric = METRICS.find(m => m.id === metricId)
   const list = []
@@ -267,7 +267,7 @@ export default function RankingsTab({ timeRange, cmpRange, durDays, tfLabel }) {
   const dayCount = to - fo + 1
   const cmpDayCount = hasCmp ? (ct - cf + 1) : dayCount
 
-  // Per-metric comparison validity (§4 asymmetric logic)
+  // Per-metric comparison validity (4 asymmetric logic)
   const { ga4Valid, opsValid } = hasCmp
     ? cmpValidity(cf, ct)
     : { ga4Valid: false, opsValid: false }
@@ -312,7 +312,7 @@ export default function RankingsTab({ timeRange, cmpRange, durDays, tfLabel }) {
       .sort((a, b) => a.rank - b.rank)
   }, [curRank, prvRank, cmpValid])
 
-  // Climbers and fallers (§5 rules)
+  // Climbers and fallers (5 rules)
   // Only airports ranked in BOTH windows AND in top 150 in at least one
   const { climbers, fallers } = useMemo(() => {
     if (!cmpValid || !prvRank) return { climbers: [], fallers: [] }
@@ -328,7 +328,7 @@ export default function RankingsTab({ timeRange, cmpRange, durDays, tfLabel }) {
 
   const cmpLabel = cmpRange?.label || 'comparison'
 
-  // Metric-specific note line (§6)
+  // Metric-specific note line (6)
   const metricNote = metricId === 'cr'
     ? 'Lower is better · volume floor applies. "new" = unranked in the comparison window.'
     : metricId === 's2b'
@@ -349,7 +349,7 @@ export default function RankingsTab({ timeRange, cmpRange, durDays, tfLabel }) {
         </div>
       </div>
 
-      {/* Metric selector (§6 toolbar) */}
+      {/* Metric selector (6 toolbar) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', background: T.grey, borderRadius: 10, padding: 3, flexWrap: 'wrap', gap: 0 }}>
           {METRICS.map(m => (
@@ -376,7 +376,7 @@ export default function RankingsTab({ timeRange, cmpRange, durDays, tfLabel }) {
         </div>
       </div>
 
-      {/* (a) Climbers / Fallers — §5 §6 */}
+      {/* (a) Climbers / Fallers — 5 6 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
         <ClimbCard
           title="Biggest climbers"
@@ -399,7 +399,7 @@ export default function RankingsTab({ timeRange, cmpRange, durDays, tfLabel }) {
         />
       </div>
 
-      {/* (b) Full ranking table — §6 */}
+      {/* (b) Full ranking table — 6 */}
       <div style={{ background: T.card, border: `1px solid ${T.line}`, borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.line}` }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: T.ink }}>

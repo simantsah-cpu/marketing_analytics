@@ -9,16 +9,16 @@
  *  - `asAt`     : resolved snapshot date, e.g. '2026-08-24'
  *  - `targets`  : buildTargets() result — { dept: { 'EAM Chris': 1146863, ... }, ... }
  *
- * §2.1 IMPORTANT: key on (dept, cust), NOT cust alone.
+ * 2.1 IMPORTANT: key on (dept, cust), NOT cust alone.
  *   "Other" appears in both EAM Renaldo and B2C Matt. Keying on name alone
  *   would assign Renaldo's +$513 to B2C Matt's Other row.
  *
- * §2.2: profit is null when SAFE_DIVIDE(cp,cr) returns NULL for rows with no
+ * 2.2: profit is null when SAFE_DIVIDE(cp,cr) returns NULL for rows with no
  *   completed revenue. Do NOT substitute 0. Render as '—'.
  *
- * §3: (Unknown) has profit $268 — show it, muted/italic.
+ * 3: (Unknown) has profit $268 — show it, muted/italic.
  *
- * §4: Do not add IFNULL to the ratio. Nothing moves a reported number.
+ * 4: Do not add IFNULL to the ratio. Nothing moves a reported number.
  */
 import { useState, useMemo, useCallback } from 'react'
 
@@ -34,7 +34,7 @@ const DEPT_COLORS = {
   'Sales Jojo':  '#EAB308',
 }
 
-// §1.2: Sub-team targets are read from the snapshot-pinned targets prop (targets.dept),
+// 1.2: Sub-team targets are read from the snapshot-pinned targets prop (targets.dept),
 // which is populated from Q_TARGETS → mapping table. No hardcoded values here.
 // Fall-back chain: targets.dept[subTeamName] → targets.dept[parentDept] → null
 
@@ -55,7 +55,7 @@ const T = {
 
 function _num(v) { const x = (v===null||v===undefined||v==='')?NaN:Number(v); return isFinite(x)?x:0 }
 
-// §2.2: profitNull — true when the original value was null/undefined (no completed rev).
+// 2.2: profitNull — true when the original value was null/undefined (no completed rev).
 // Do NOT treat as 0. Used to render '—' instead of '$0'.
 const profitNull = v => v === null || v === undefined
 
@@ -98,7 +98,7 @@ function buildCustRows(cust, filters, sort) {
     const bs = basis === 'ly' ? _num(r.ly_sales)  : _num(r.lm_sales)
     const bp = basis === 'ly' ? _num(r.ly_profit) : _num(r.lm_profit)
     const s  = _num(r.sales)
-    // §2.2: preserve null profit — do NOT collapse to 0
+    // 2.2: preserve null profit — do NOT collapse to 0
     const p  = profitNull(r.profit) ? null : _num(r.profit)
     const rv = _num(r.revenue)
     return {
@@ -214,7 +214,7 @@ function DeltaCell({ abs, pctVal }) {
   )
 }
 
-// §2.2: profit display — null profit renders as '—' not '$0'
+// 2.2: profit display — null profit renders as '—' not '$0'
 function ProfitCell({ profit, basePt, pDelta, pPct }) {
   const isNull = profit === null
   const c = !isNull && _num(profit) < 0 ? T.red : T.text
@@ -250,7 +250,7 @@ function ProfitDeltaCell({ pDelta, pPct }) {
   )
 }
 
-// §1 — Growth cell: currency delta + pts-vs-parent sub-line
+// 1 — Growth cell: currency delta + pts-vs-parent sub-line
 // isUnknown: (Unknown) placeholder row — show delta but '—' pts
 function GrowthCell({ deltaProfit, deltaPts, parentLabel, isUnknown }) {
   if (deltaProfit === null) {
@@ -376,7 +376,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
     margin:   st.revenue > 0 ? st.profit / st.revenue : null,
   }
 
-  // ── §2.1 Growth delta map — keyed on "(dept)||(cust)", NOT cust alone ──────
+  // ── 2.1 Growth delta map — keyed on "(dept)||(cust)", NOT cust alone ──────
   // This is the trap: "Other" exists in both EAM Renaldo and B2C Matt.
   // Keying on name alone would give B2C Matt's Other row Renaldo's +$513.
   const prevMap = useMemo(() => {
@@ -452,9 +452,9 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
   )
 
   // ── Per-customer growth cell ─────────────────────────────────────────────
-  // §1: currency delta (main) + pts vs parent dept's target (sub)
-  // §2.1: key = (dept, cust) to avoid the "Other" ambiguity
-  // §1.2: sub-team rows use their own target
+  // 1: currency delta (main) + pts vs parent dept's target (sub)
+  // 2.1: key = (dept, cust) to avoid the "Other" ambiguity
+  // 1.2: sub-team rows use their own target
   const growthCell = (r) => {
     const key  = `${r.dept}||${r.cust}`
     const prev = prevMap[key]   // undefined = not in prev snapshot; null = was there but profit null
@@ -465,7 +465,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
     const curProfit  = r.profit !== null ? _num(r.profit) : null
     const prevProfit = prev !== null ? prev : 0   // null prev → 0 (no completed rev → treat as 0 base)
     const dp         = curProfit !== null ? curProfit - prevProfit : null
-    // §1.2: sub-team uses its own target; parent uses parent dept's target
+    // 1.2: sub-team uses its own target; parent uses parent dept's target
     const parentDept = rollupDept(r.dept)
     const tgt        = targets?.dept?.[r.dept] ?? targets?.dept?.[parentDept] ?? null
     const dPts       = (dp !== null && tgt && tgt > 0) ? (dp / tgt) * 100 : null
@@ -474,7 +474,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
       <GrowthCell
         deltaProfit={dp}
         deltaPts={dPts}
-        parentLabel={r.dept}   // §1.2: name the actual dept, not the rolled-up parent
+        parentLabel={r.dept}   // 1.2: name the actual dept, not the rolled-up parent
         isUnknown={isUnknown}
       />
     )
@@ -667,7 +667,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
         </div>
       </div>
 
-      {/* §4.2 cross-month notice */}
+      {/* 4.2 cross-month notice */}
       {prevSnapDate && !sameMonth && (custPrev||[]).length > 0 && (
         <div style={{ background:'rgba(234,179,8,.12)', border:'1px solid #EAB308', borderRadius:8, padding:'10px 14px', marginBottom:12, fontSize:12.5, color:'#78590A', lineHeight:1.6 }}>
           Growth column hidden — snapshots {asAt} and {prevSnapDate} span a month boundary (MTD resets). Will show once both snapshots share the same month.
@@ -760,7 +760,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
             <thead>
               <tr>
                 <TH k="cust" label={custGroup==='eam'?'Team / Customer':'Customer'} />
-                {/* §2.3: unambiguous header labels to prevent "two positive numbers" confusion */}
+                {/* 2.3: unambiguous header labels to prevent "two positive numbers" confusion */}
                 <TH k="sales"   label="Sales Amount"        right sub={`${blLabel} ▼`} />
                 <TH k="s_delta" label={`Sales vs ${blLabel}`} right />
                 <TH k="profit"  label="Total Profit"        right sub={blLabel} />
@@ -786,7 +786,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
                   <td style={{ ...TD1, fontWeight:700 }}>Total — {rows.length} account{rows.length!==1?'s':''}</td>
                   <CustCells r={stx} />
                   {hasDelta && (
-                    // §5.13: sum of all customer growth cells = Departments Total (+$144,011)
+                    // 5.13: sum of all customer growth cells = Departments Total (+$144,011)
                     (() => {
                       let sumDp = 0
                       rows.forEach(r => {
@@ -814,7 +814,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
         </div>
       </div>
 
-      {/* §10.3 — LY=LM warning on single-month reconstructed periods */}
+      {/* 10.3 — LY=LM warning on single-month reconstructed periods */}
       {filters.basis==='ly' && /^\d{4}-\d{2}$/.test(period) && (
         <div style={{ background:'rgba(234,179,8,.16)', border:'1px solid #EAB308', borderRadius:8, padding:'10px 14px', marginTop:8, fontSize:12, color:'#9A6B0C', lineHeight:1.65 }}>
           ⚠️ <strong>Last year MTD equals Last month MTD on single-month selections.</strong> The reconstructed monthly source ({period}) carries no prior-year data, so LY and LM comparisons are identical here. Switch to MTD for a true year-on-year comparison.

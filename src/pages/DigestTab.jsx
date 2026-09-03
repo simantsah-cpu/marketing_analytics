@@ -7,17 +7,17 @@
  *   - MONTHLY_KPI from opsData.js (monthly dispatch ops — verified 15,828 net Jun 2026)
  *
  * Brief rules enforced:
- *   - Fixed anchors, NOT the global time bar (§9)
+ *   - Fixed anchors, NOT the global time bar (9)
  *   - Three modes: Daily | Weekly | Monthly toggle
  *   - Three sections: Going Well / Needs Attention / Watchlist & Caveats
- *   - Every sentence carries its numbers inline (§1)
- *   - Diagnostic rule for fallers (§6) — ONLY inference allowed
+ *   - Every sentence carries its numbers inline (1)
+ *   - Diagnostic rule for fallers (6) — ONLY inference allowed
  *   - R4: site sentences use tx; airport sentences use p (purchase events) [Y3]
  *   - R2: no web YoY % for June 2025 in monthly mode [Y7]
- *   - W5 always WATCHLIST — never well/attention [§4]
- *   - Section membership follows LEAD delta sign [§2]
- *   - List caps: 3/3/4 daily, 4/4/3 weekly, 5/5/4 monthly [§7]
- *   - Daily YoY deliberately not shown [§3]
+ *   - W5 always WATCHLIST — never well/attention [4]
+ *   - Section membership follows LEAD delta sign [2]
+ *   - List caps: 3/3/4 daily, 4/4/3 weekly, 5/5/4 monthly [7]
+ *   - Daily YoY deliberately not shown [3]
  *   - "collapse" only when halving confirmed (M2)
  */
 
@@ -411,14 +411,14 @@ function buildWeeklyDigest() {
     if (Math.max(net27, net27ly) < 5) continue   // floor
     const delta = pctChg(net27, net27ly)
     if (delta == null) continue
-    // Demand signal for diagnostic rule (§6)
+    // Demand signal for diagnostic rule (6)
     const g27 = sumGA4ap(cd, W27_F, W27_T)
     const g27ly = sumGA4ap(cd, W27_LY_F, W27_LY_T)
     const dSearch = pctChg(g27.s, g27ly.s)
     movers.push({ cd, net:net27, netLY:net27ly, delta, g27, g27ly, dSearch })
   }
   movers.sort((a,b)=>b.delta-a.delta)
-  const risers  = movers.filter(m=>m.delta>0).slice(0,4)   // cap 4 [§7]
+  const risers  = movers.filter(m=>m.delta>0).slice(0,4)   // cap 4 [7]
   const fallers = movers.filter(m=>m.delta<0).slice(-4).reverse()  // cap 4
 
   // Zero-conversion (weekly): ≥300 searches in W27, 0 web bookings
@@ -428,7 +428,7 @@ function buildWeeklyDigest() {
     if (g.s >= 300 && g.p === 0) zeroConv.push({ cd, s:g.s })
   }
   zeroConv.sort((a,b)=>b.s-a.s)
-  const zeroTop = zeroConv.slice(0,3)   // cap 3 [§7]
+  const zeroTop = zeroConv.slice(0,3)   // cap 3 [7]
 
   // Section membership: W1 lead = dS_yoy
   const w1well = dS_yoy != null && dS_yoy >= 0
@@ -440,7 +440,7 @@ function buildWeeklyDigest() {
   const w4well = dS2B != null && dS2B >= 0
 
   function diagnosticSuffix(m) {
-    // §6: if searches ≥ 150 AND search delta null-or-better-than −10% → "supply/quoting"
+    // 6: if searches ≥ 150 AND search delta null-or-better-than −10% → "supply/quoting"
     const holdingDemand = m.g27.s >= 150 && (m.dSearch == null || m.dSearch > -10)
     return holdingDemand
       ? '— demand is holding, so this smells like supply/quoting.'
@@ -490,7 +490,7 @@ function buildWeeklyDigest() {
     ].filter(Boolean),
 
     watch: [
-      // W5: payment→booking — ALWAYS WATCHLIST (§4 C1)
+      // W5: payment→booking — ALWAYS WATCHLIST (4 C1)
       <>{`Payment→booking sits at `}<strong>{fmtPct(pf2b)}</strong>{` (LY `}<strong>{fmtPct(pf2bLY)}</strong>{`). The checkout event definition changed during 2025, so treat the YoY gap as directional and watch the within-2026 trend on the Full funnel tab.`}</>,
       // Zero-conversion airports — cap 3
       ...zeroTop.map(a => (
@@ -546,7 +546,7 @@ function buildMonthlyDigest() {
     if (!o26.any && !o25.any) continue
     const n26 = o26.b - o26.c
     const n25 = o25.b - o25.c
-    if (Math.max(n26, n25) < 15) continue    // floor §5
+    if (Math.max(n26, n25) < 15) continue    // floor 5
     const delta = pctChg(n26, n25)
     if (delta == null) continue
     const g26 = sumGA4ap(cd, junf, junt)
@@ -559,10 +559,10 @@ function buildMonthlyDigest() {
     })
   }
   movers.sort((a,b)=>b.delta-a.delta)
-  const risers  = movers.filter(m=>m.delta>0).slice(0,5)   // cap 5 [§7]
+  const risers  = movers.filter(m=>m.delta>0).slice(0,5)   // cap 5 [7]
   const fallers = movers.filter(m=>m.delta<0).slice(-5).reverse()
 
-  // Low-conversion audit: ≥800 Jun searches, ≤2 web bookings — cap 4 [§7]
+  // Low-conversion audit: ≥800 Jun searches, ≤2 web bookings — cap 4 [7]
   const lowConv = []
   for(const cd of ALL_CODES) {
     const g = sumGA4ap(cd, junf, junt)
