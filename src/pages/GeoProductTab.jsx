@@ -9,7 +9,7 @@
  *  - GEO attainment NOW ENABLED — v3 revival confirmed correct (v3 rev == v2 rev on 24 Aug).
  *  - 1 gate: if v3 revenue ≠ v2 revenue (within $1), geo section refuses to render.
  *  - Geo targets use Europe-partition logic — NOT a label join (labels change every month).
- *  - rollupPL: May–Jul SS/Rail show own row with '—' attainment; NOT folded into PT.
+ *  - rollupPL: always folds PREBOOKED_LINES (PT/SS/Rail) into 'Prebooked'; Ride Hailing keeps its own row.
  *  - ALL shared helpers live at module scope (6.3 structural trap avoidance).
  */
 
@@ -427,17 +427,14 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt, periodTgt
   const { ytdUnavailable, weekView: weekTgtsUnavail } = TARGETS
 
   // ── 3.1 — rollupPL ─────────────────────────────────────────────────────────────────
-  // Fold product lines into Prebooked bucket when a Prebooked target exists.
-  // For Aug 2026+ QTD/MTD: TARGETS.product['Prebooked'] is set (buildPeriodTargets maps
-  // 'Private Transfer' → 'Prebooked'), so PT+SS+Rail fold in.
-  // For week/YTD-unavailable: TARGETS.product is empty; rollupPL is a no-op.
-  const rollupPL = pl => {
-    if (TARGETS.product['Prebooked'] !== undefined) {
-      if (PREBOOKED_LINES.includes(pl)) return 'Prebooked'
-      return pl
-    }
-    return pl
-  }
+  // Presentation rule: always fold PREBOOKED_LINES into a single 'Prebooked' row.
+  // Ride Hailing passes through unchanged. Any future product line not in PREBOOKED_LINES
+  // also passes through.
+  // CRITICAL: must NOT depend on the targets map. YTD and Week have empty TARGETS.product
+  // (no attainment computed) but must still show the same two-row structure as MTD/QTD.
+  // Summing per-line results preserves each line's own completion ratio — do not move
+  // this grouping into SQL (see brief §3: the ratio term is not additive across partitions).
+  const rollupPL = pl => PREBOOKED_LINES.includes(pl) ? 'Prebooked' : pl
 
 
   // ── 3.2 — rollupGeo — identity (data arrives in 2-bucket form from snapped v3) ───
