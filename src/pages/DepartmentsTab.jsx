@@ -352,21 +352,29 @@ function AttainmentBar({ ach }) {
 // DepartmentsTab
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, period, CUR_MONTH, targets, tgtSpan, PC }) {
+export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, period, CUR_MONTH, targets, tgtSpan, PC, periodTgts }) {
   // 2 — collapse state, persisted in localStorage
   const [expandedDepts, setExpandedDepts] = useState(() => {
     return {} // always start collapsed
   })
 
+  // effTgts — period-aware dept targets for per-row attainment.
+  // periodTgts.dept is summed across the active period (QTD = Jul+Aug, etc.) with
+  // the stable Europe/Prebooked label mapping applied. Falls back to monthly targets
+  // if periodTgts is not provided (e.g. older snapshot path).
+  const effTgts = periodTgts
+    ? { ...targets, dept: periodTgts.dept, company: periodTgts.company }
+    : targets
+
   // Data arrives pre-normalized from LeadershipDashboard.normCust() — no period resolution needed
-  const { depts, deptKids } = useMemo(() => buildDepts(cust, targets), [cust, targets])
+  const { depts, deptKids } = useMemo(() => buildDepts(cust, effTgts), [cust, effTgts])
   const t = useMemo(() => deptTotals(depts), [depts])
 
   // ── 3 — snap-based weekly growth ──────────────────────────────────────────
   // prevDepts: buildDepts on the previous snapshot rows (same function, same parser)
   const prevDepts = useMemo(
-    () => custPrev?.length ? buildDepts(custPrev, targets).depts : [],
-    [custPrev, targets]
+    () => custPrev?.length ? buildDepts(custPrev, effTgts).depts : [],
+    [custPrev, effTgts]
   )
 
   // MTD month of a snapshot_date: snapshot_date − 1 day, then YYYY-MM.
@@ -422,12 +430,16 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
     : deltaGapDays !== null ? `${deltaGapDays}-day growth`
     : null
 
-  // Company target from parent's tgtSpan (already spans full period, 6)
-  const company    = tgtSpan?.total ?? targets.company ?? 0
+  // Company target: use periodTgts.company (period-summed) when available;
+  // fall back to tgtSpan.total (also period-summed, but dept-only) then monthly.
+  // periodTgts.company === 0 for week and YTD-unavailable → attainment suppressed.
+  const company    = periodTgts?.company || tgtSpan?.total || 0
   const totalAch   = company > 0 ? t.profit / company : null
   const hasDeptKids = Object.keys(deptKids).length > 0
 
-  // 3.7 — unexpected department banner
+  // 3.7 — unexpected department banner.
+  // After the QTD fix, tgtSum === periodTgts.company so this banner disappears for QTD.
+  // Still shows if a phantom department carries a target in the source table.
   const tgtSum = depts.reduce((a, d) => a + _num(d.target), 0)
   const showUnexpBanner = company > 0 && Math.abs(tgtSum - company) > 1
 

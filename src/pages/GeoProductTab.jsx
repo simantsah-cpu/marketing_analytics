@@ -400,7 +400,7 @@ function AttBar({rows, companyAch, labelKey}) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
+export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt, periodTgts}) {
   const isMonthKey = k => /^\d{4}-\d{2}$/.test(k ?? '')
   const recon    = isMonthKey(period)
   const weekView = period === 'week'
@@ -416,52 +416,29 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
     (D.prod || []).reduce((a, r) => a + num(r.revenue), 0),
   [D.prod])
 
-  // ── 3 — Build target maps for the current month ──────────────────────────────
-  // Geo targets use Europe-partition logic — NOT a label join.
-  // BI renames non-Europe buckets every month; the label join breaks silently.
-  // Partition rule: r.dim === 'Europe' → Europe total; everything else → combined bucket.
-  const { targetMonth, TARGETS } = useMemo(()=>{
-    const rows = D.targets || []
-    const months = [...new Set(rows.map(r=>r.ym))].sort()
-    const tMonth = months.includes(CUR_MONTH) ? CUR_MONTH : (months[months.length-1]||CUR_MONTH)
 
-    // Product line: keyed by dim directly (e.g. 'Prebooked', 'Ride Hailing')
-    const product = {}, dept = {}
-    rows.filter(r=>r.ym===tMonth).forEach(r=>{
-      if(r.kind==='pl')   product[r.dim] = num(r.tgt)
-      if(r.kind==='dept') dept[r.dim]    = num(r.tgt)
-    })
-
-    // Geo targets: Europe-partition.
-    // Sum all non-Europe rows into 'Americas/Asia/Africa/Oceania' regardless of label.
-    // This is robust to BI renaming (May:'Americas'+'Africa, Asia, Oceania',
-    // Jun/Jul:'Americas'+'Asia/Africa/Oceania', Aug:'America&Africa, Asia, Oceania').
-    let geoEurope = 0, geoRest = 0
-    rows.filter(r=>r.ym===tMonth && r.kind==='geo').forEach(r=>{
-      r.dim === 'Europe' ? geoEurope += num(r.tgt) : geoRest += num(r.tgt)
-    })
-    const geo = {
-      'Europe':                       geoEurope,
-      'Americas/Asia/Africa/Oceania': geoRest,
-    }
-
-    const company=['EAM Chris','EAM Renaldo','EAM Gloria','B2C Matt'].reduce((a,k)=>a+(dept[k]||0),0)
-    return { targetMonth:tMonth, TARGETS:{ product, geo, dept, company } }
-  },[D.targets, CUR_MONTH])
+  // ── 3 — Period-aware targets from LeadershipDashboard.buildPeriodTargets ──────────────
+  // product and geo maps are empty when attainment cannot be shown:
+  //   ytdUnavailable=true  — YTD with missing historical months (Jan–Apr 2026 absent)
+  //   weekView=true        — no weekly targets exist in the source tables
+  // In both cases TARGETS.product / TARGETS.geo are empty objects, so attainment
+  // cells naturally render '—' and the bar chart is suppressed.
+  const TARGETS = periodTgts ?? { dept:{}, geo:{}, product:{}, company:0, ytdUnavailable:false, weekView:false, missingMonths:[] }
+  const { ytdUnavailable, weekView: weekTgtsUnavail } = TARGETS
 
   // ── 3.1 — rollupPL ─────────────────────────────────────────────────────────────────
-  // Aug 2026+: 'Prebooked' target exists — fold PT+SS+Rail into Prebooked bucket.
-  // May–Jul: 'Private Transfer' is the only mapped line. SS and Rail have NO target
-  // — they pass through unchanged and render with attainment '—'. They must NOT be
-  // folded into Private Transfer's denominator.
+  // Fold product lines into Prebooked bucket when a Prebooked target exists.
+  // For Aug 2026+ QTD/MTD: TARGETS.product['Prebooked'] is set (buildPeriodTargets maps
+  // 'Private Transfer' → 'Prebooked'), so PT+SS+Rail fold in.
+  // For week/YTD-unavailable: TARGETS.product is empty; rollupPL is a no-op.
   const rollupPL = pl => {
     if (TARGETS.product['Prebooked'] !== undefined) {
       if (PREBOOKED_LINES.includes(pl)) return 'Prebooked'
-      return pl  // Ride Hailing passes through
+      return pl
     }
-    // May–Jul: SS and Rail return unchanged (own row, no target, '—' attainment)
     return pl
   }
+
 
   // ── 3.2 — rollupGeo — identity (data arrives in 2-bucket form from snapped v3) ───
   // dim_service_area drives the label at query time; no merging needed on the frontend.
@@ -573,6 +550,18 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
               ⚠️ No last-week product line data for this snapshot. The pipeline may not have run for this period.
             </div>
           )}
+          {/* YTD / week attainment notice */}
+          {ytdUnavailable && (
+            <div style={{background:'rgba(99,102,241,.07)',border:'1px solid rgba(99,102,241,.25)',borderRadius:8,padding:'12px 16px',marginBottom:16,color:'#3730A3',fontSize:13,lineHeight:1.55}}>
+              ℹ️ <strong>YTD target unavailable.</strong> Monthly profit targets exist only from May 2026.
+              Showing YTD actuals — attainment is hidden to avoid a misleading partial-year figure.
+            </div>
+          )}
+          {weekTgtsUnavail && (
+            <div style={{background:'rgba(107,114,128,.07)',border:'1px solid rgba(107,114,128,.25)',borderRadius:8,padding:'10px 14px',marginBottom:16,color:T.text3,fontSize:12.5}}>
+              ℹ️ Targets are monthly. Attainment is not shown for the week view.
+            </div>
+          )}
           {/* Product line table */}
           {D.prod.length === 0 ? (
             <div style={{textAlign:'center',padding:'32px 0',color:T.text3,fontSize:13}}>No product line data — click Refresh.</div>
@@ -664,6 +653,17 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt}) {
       {weekView && D.geoWeekEmpty && (
         <div style={{background:'rgba(234,179,8,.1)',border:'1px solid rgba(234,179,8,.4)',borderRadius:8,padding:'12px 16px',marginBottom:16,color:'#92600A',fontSize:13}}>
           ⚠️ No last-week geography data for this snapshot. The v3 pipeline may not have run for this period.
+        </div>
+      )}
+      {/* YTD / week attainment notice — Geography section */}
+      {ytdUnavailable && (
+        <div style={{background:'rgba(99,102,241,.07)',border:'1px solid rgba(99,102,241,.25)',borderRadius:8,padding:'12px 16px',marginBottom:16,color:'#3730A3',fontSize:13,lineHeight:1.55}}>
+          ℹ️ <strong>YTD target unavailable.</strong> Showing YTD actuals — attainment is hidden.
+        </div>
+      )}
+      {weekTgtsUnavail && !D.geoWeekEmpty && (
+        <div style={{background:'rgba(107,114,128,.07)',border:'1px solid rgba(107,114,128,.25)',borderRadius:8,padding:'10px 14px',marginBottom:16,color:T.text3,fontSize:12.5}}>
+          ℹ️ Targets are monthly. Attainment is not shown for the week view.
         </div>
       )}
 

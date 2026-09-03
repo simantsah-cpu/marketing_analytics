@@ -442,6 +442,58 @@ function targetAcross(period, CUR_MONTH, targetsRows) {
   return { total: missing.length ? null : total, missing, months }
 }
 
+// buildPeriodTargets — period-summed targets for Geo & Product and Departments tabs.
+// Applies stable label mapping for geo (Europe-partition) and product line
+// (Private Transfer and variants → Prebooked; Ride Hailing stays).
+// Returns empty maps (company=0) for periods where attainment cannot be shown:
+//   week          — no weekly targets exist in the source tables.
+//   ytdUnavailable — YTD with any month missing (Jan–Apr 2026 absent from mapping tables).
+function buildPeriodTargets(period, CUR_MONTH, targetsRows) {
+  if (period === 'week') {
+    return { dept:{}, geo:{}, product:{}, company:0, ytdUnavailable:false, weekView:true, missingMonths:[] }
+  }
+
+  const months = periodMonths(period, CUR_MONTH)
+  const availableYms = new Set(targetsRows.map(r => r.ym))
+  const missingMonths = months.filter(m => !availableYms.has(m))
+
+  // YTD with any month missing — cannot show a correct full-year cumulative target.
+  // Suppressing rather than showing a partial sum (which would overstate attainment 2×).
+  if (period === 'ytd' && missingMonths.length > 0) {
+    return { dept:{}, geo:{}, product:{}, company:0, ytdUnavailable:true, weekView:false, missingMonths }
+  }
+
+  const dept = {}, product = {}
+  let geoEurope = 0, geoRest = 0
+
+  months.forEach(ym => {
+    targetsRows.filter(r => r.ym === ym).forEach(r => {
+      if (r.kind === 'dept') {
+        dept[r.dim] = (dept[r.dim] || 0) + num(r.tgt)
+      }
+      if (r.kind === 'geo') {
+        // Europe-partition: sum all non-Europe rows into combined bucket.
+        // Robust to BI renaming every month (Americas, Africa/Asia/Oceania, etc.).
+        r.dim === 'Europe' ? (geoEurope += num(r.tgt)) : (geoRest += num(r.tgt))
+      }
+      if (r.kind === 'pl') {
+        // Stable mapping: Ride Hailing keeps its label; everything else folds to Prebooked.
+        // Covers 'Private Transfer' (May–Jul) and 'Prebooked' (Aug 2026 onward).
+        const key = r.dim === 'Ride Hailing' ? 'Ride Hailing' : 'Prebooked'
+        product[key] = (product[key] || 0) + num(r.tgt)
+      }
+    })
+  })
+
+  const geo = {
+    'Europe':                       geoEurope,
+    'Americas/Asia/Africa/Oceania': geoRest,
+  }
+  const company = DEPT_TARGET_KEYS.reduce((a, k) => a + (dept[k] || 0), 0)
+
+  return { dept, geo, product, company, ytdUnavailable:false, weekView:false, missingMonths }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────────
@@ -749,9 +801,10 @@ export default function LeadershipDashboard() {
   const lyProfit = t.ly_profit
 
   // 6 — company target spans the full period (null if any month missing)
-  const tgtSpan  = targetAcross(period, CUR_MONTH, D.targets)
-  const company  = tgtSpan.total ?? 0
-  const targetOk = company > 0
+  const tgtSpan    = targetAcross(period, CUR_MONTH, D.targets)
+  const periodTgts = buildPeriodTargets(period, CUR_MONTH, D.targets || [])
+  const company    = tgtSpan.total ?? 0
+  const targetOk   = company > 0
 
   const ach    = targetOk ? profit / company : null
   const gap    = targetOk ? company - profit : null
@@ -1152,12 +1205,13 @@ export default function LeadershipDashboard() {
         {/* ── GEO & Product tab ─────────────────────────────────────────── */}
         {activeTab === 4 ? (
           !loading ? (
-            <GeoProductTab
+          <GeoProductTab
               D={D}
               period={period}
               CUR_MONTH={CUR_MONTH}
               PC={PC}
               asAt={D.asAt}
+              periodTgts={periodTgts}
             />
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: T.text3, fontSize: 13 }}>Loading…</div>
@@ -1222,6 +1276,7 @@ export default function LeadershipDashboard() {
               CUR_MONTH={CUR_MONTH}
               targets={targets}
               tgtSpan={tgtSpan}
+              periodTgts={periodTgts}
               PC={PC}
             />
           ) : loading ? (
