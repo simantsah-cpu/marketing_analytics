@@ -352,7 +352,7 @@ function AttainmentBar({ ach }) {
 // DepartmentsTab
 // ─────────────────────────────────────────────────────────────────────────────
 
-export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, period, CUR_MONTH, targets, tgtSpan, PC, periodTgts }) {
+export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, period, CUR_MONTH, targets, tgtSpan, PC, periodTgts, weekFallback, weekPCLabel }) {
   // 2 — collapse state, persisted in localStorage
   const [expandedDepts, setExpandedDepts] = useState(() => {
     return {} // always start collapsed
@@ -638,6 +638,13 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
           {PC.short} Total Profit, Complete GMV and Original Sales Amount by owning team, versus target and versus {PC.baseShort}
         </div>
       </div>
+
+      {/* Week fallback notice */}
+      {weekFallback && (
+        <div style={{ background:'rgba(234,179,8,.12)', border:'1px solid #EAB308', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12.5, color:'#78590A', lineHeight:1.7 }}>
+          <strong>This view does not follow the period selector.</strong> Departments reads month-to-date snapshot data and does not have a week-grain equivalent. The selector currently reads <strong>{weekPCLabel || 'Last complete week'}</strong>; the figures below are Month to date.
+        </div>
+      )}
 
       {/* 3.7 — unexpected department banner */}
       {showUnexpBanner && (

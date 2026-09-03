@@ -313,7 +313,7 @@ function KpiTile({ label, value, sub, subColor }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, period, CUR_MONTH, PC, targets }) {
+export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, period, CUR_MONTH, PC, targets, weekFallback, weekPCLabel }) {
   const [custGroup, setCustGroup] = useState(() => localStorage.getItem('eam.custGroup') || 'eam')
   const [custOpen,  setCustOpen]  = useState({})
   const [custSort,  setCustSort]  = useState({ key:'sales', dir:-1 })
@@ -666,6 +666,13 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
           Aggregated to (department, customer) grain from snapshot data · sorted by Sales Amount
         </div>
       </div>
+
+      {/* Week fallback notice */}
+      {weekFallback && (
+        <div style={{ background:'rgba(234,179,8,.12)', border:'1px solid #EAB308', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12.5, color:'#78590A', lineHeight:1.7 }}>
+          <strong>This view does not follow the period selector.</strong> Customer data is aggregated from month-to-date snapshot data and does not have a week-grain equivalent. The selector currently reads <strong>{weekPCLabel || 'Last complete week'}</strong>; the figures below are Month to date.
+        </div>
+      )}
 
       {/* 4.2 cross-month notice */}
       {prevSnapDate && !sameMonth && (custPrev||[]).length > 0 && (

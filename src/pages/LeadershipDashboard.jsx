@@ -685,6 +685,12 @@ export default function LeadershipDashboard() {
   const snapMonth = (D.asAt ?? D.snapDates[0] ?? '').slice(0, 7)
   const CUR_MONTH = snapMonth || curMonth()
   const PC        = PM(period)           // 4 — always use PM(), never branch on period directly
+  // snapPeriod — 'week' is not supported on snapshot-driven tabs (Exec Summary, Departments,
+  // Customers). Those tabs fall back to 'mtd' data with an explanatory note.
+  // Six other tabs (B2C, RH, Quality, AI, Forecast, Geo & Product) handle week natively
+  // and always receive the real period + PC.
+  const snapPeriod = period === 'week' ? 'mtd' : period
+  const snapPC     = PM(snapPeriod)      // period context for the three snapshot-driven tabs
 
   // 2.1 — correct guard: month keys are valid even though they're not in PERIOD_META
   const setPeriod = k => {
@@ -780,12 +786,10 @@ export default function LeadershipDashboard() {
   useEffect(() => { fetchData() }, [fetchData, refreshKey])
 
   // ── Derived data ───────────────────────────────────────────────────────────
-  // cust is normalized once here — never pass D.cust directly to renderers
-  const cust       = normCust(period, D.cust,     D.months)  // 5 — neutral field names
-  // custPrev must go through the same normCust() so DepartmentsTab.buildDepts
-  // receives field names {profit, sales, revenue, lm_profit, ...} not {m_profit, m_sales, ...}
-  // Fix 1a+1b (Departments fix guide): raw rows have m_profit, not profit.
-  const custPrevNorm = normCust(period, D.custPrev, D.months) // normalized prev snapshot rows
+  // cust/custPrevNorm use snapPeriod ('week' falls back to 'mtd').
+  // Never pass D.cust directly to renderers — normCust() applies neutral field names.
+  const cust         = normCust(snapPeriod, D.cust,     D.months)
+  const custPrevNorm = normCust(snapPeriod, D.custPrev, D.months)
   const depts  = buildDepts(cust)                       // Map<dept, neutralAgg>
   const t      = totals(depts)
   const targets = buildTargets(D.targets, CUR_MONTH)    // dept targets for Exec Summary compat
@@ -801,10 +805,13 @@ export default function LeadershipDashboard() {
   const lyProfit = t.ly_profit
 
   // 6 — company target spans the full period (null if any month missing)
-  const tgtSpan    = targetAcross(period, CUR_MONTH, D.targets)
-  const periodTgts = buildPeriodTargets(period, CUR_MONTH, D.targets || [])
-  const company    = tgtSpan.total ?? 0
-  const targetOk   = company > 0
+  // snapPeriod used: the three snapshot tabs don't support week, so target must be MTD.
+  const tgtSpan      = targetAcross(snapPeriod, CUR_MONTH, D.targets)
+  const periodTgts   = buildPeriodTargets(period, CUR_MONTH, D.targets || [])     // real period, for GeoProductTab
+  const snapPeriodTgts = snapPeriod === period ? periodTgts                        // no-op for MTD/QTD/YTD
+                       : buildPeriodTargets(snapPeriod, CUR_MONTH, D.targets || []) // MTD targets for DeptTab
+  const company      = tgtSpan.total ?? 0
+  const targetOk     = company > 0
 
   const ach    = targetOk ? profit / company : null
   const gap    = targetOk ? company - profit : null
@@ -913,7 +920,7 @@ export default function LeadershipDashboard() {
     labels: deptRows.map(r => r.dept),
     datasets: [
       {
-        label: `${PC.short} total profit`,
+        label: `${snapPC.short} total profit`,
         data:  deptRows.map(r => r.profit),
         backgroundColor: T.blue,
         borderRadius: 3,
@@ -1249,10 +1256,12 @@ export default function LeadershipDashboard() {
               custPrev={custPrevNorm}
               prevSnapDate={D.prevSnapDate}
               asAt={D.asAt ?? D.snapDates[0] ?? null}
-              period={period}
+              period={snapPeriod}
               CUR_MONTH={CUR_MONTH}
-              PC={PC}
+              PC={snapPC}
               targets={targets}
+              weekFallback={period === 'week'}
+              weekPCLabel={PC?.label || 'Last complete week'}
             />
           ) : loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: T.text3, fontSize: 13 }}>Loading…</div>
@@ -1272,12 +1281,14 @@ export default function LeadershipDashboard() {
               custPrev={custPrevNorm}
               prevSnapDate={D.prevSnapDate}
               asAt={D.asAt}
-              period={period}
+              period={snapPeriod}
               CUR_MONTH={CUR_MONTH}
               targets={targets}
               tgtSpan={tgtSpan}
-              periodTgts={periodTgts}
-              PC={PC}
+              periodTgts={snapPeriodTgts}
+              PC={snapPC}
+              weekFallback={period === 'week'}
+              weekPCLabel={PC?.label || 'Last complete week'}
             />
           ) : loading ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: T.text3, fontSize: 13 }}>
@@ -1308,9 +1319,9 @@ export default function LeadershipDashboard() {
             </span>
           </div>
           <div style={{ fontSize: 13, color: T.text3, marginTop: 4 }}>
-            {isMonthKey(period) ? PC.label : monthLabel(CUR_MONTH)} total profit against target, compared with{' '}
-            {PC.base}
-            {PC.recon ? ' — reconstructed source' : ''}
+            {isMonthKey(period) ? snapPC.label : monthLabel(CUR_MONTH)} total profit against target, compared with{' '}
+            {snapPC.base}
+            {snapPC.recon ? ' — reconstructed source' : ''}
           </div>
         </div>
 
@@ -1344,7 +1355,14 @@ export default function LeadershipDashboard() {
           </Banner>
         )}
 
-        {targets.missing && period === 'mtd' && (
+        {/* Week fallback banner — shown when period=week crosses over to a tab that doesn't support it */}
+        {period === 'week' && (
+          <div style={{background:'rgba(234,179,8,.12)',border:'1px solid #EAB308',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12.5,color:'#78590A',lineHeight:1.7}}>
+            <strong>This view does not follow the period selector.</strong> Executive Summary reads month-to-date snapshot data and does not have a week-grain equivalent. The selector currently reads <strong>{PC?.label || 'Last complete week'}</strong>; the figures below are Month to date.
+          </div>
+        )}
+
+        {targets.monthIsFallback && snapPeriod === 'mtd' && (
           <Banner kind="warn">
             ⚠️ No total profit target loaded for <strong>{CUR_MONTH}</strong>. Using{' '}
             <strong>{targets.month}</strong> targets instead. Actuals are complete.
@@ -1382,7 +1400,7 @@ export default function LeadershipDashboard() {
             marginBottom: 12, paddingBottom: 8,
             borderBottom: `1px solid ${T.border}`,
           }}>
-            {isMonthKey(period) ? PC.label : monthLabel(CUR_MONTH)} — TOTAL PROFIT AGAINST TARGET
+            {isMonthKey(period) ? snapPC.label : monthLabel(CUR_MONTH)} — TOTAL PROFIT AGAINST TARGET
           </div>
         )}
 
@@ -1396,7 +1414,7 @@ export default function LeadershipDashboard() {
           }}>
             {/* 1 — Total Profit */}
             <KpiTile1
-              label={`${PC.short} Total Profit`}
+              label={`${snapPC.short} Total Profit`}
               value={usdC(profit)}
               sub={`Complete GMV ${usdC(revenue)}`}
               goal={targetOk ? `vs target ${usdC(company)}` : 'No target loaded'}
@@ -1428,7 +1446,7 @@ export default function LeadershipDashboard() {
               valueColor={gap !== null ? (gap > 0 ? T.red : T.green) : T.text3}
               sub={gap !== null
                 ? (gap > 0 ? 'still to book' : 'target exceeded')
-                : `targets incomplete for ${PC.short}`}
+                : `targets incomplete for ${snapPC.short}`}
             />
 
             {/* 4 — Projected Month-End Profit */}
@@ -1456,7 +1474,7 @@ export default function LeadershipDashboard() {
               sub={marginDelta !== null
                 ? (
                   <span style={{ color: marginDelta >= 0 ? T.green : T.red }}>
-                    {marginDelta >= 0 ? '+' : ''}{(marginDelta * 100).toFixed(1)} pts vs {PC.baseShort}
+                    {marginDelta >= 0 ? '+' : ''}{(marginDelta * 100).toFixed(1)} pts vs {snapPC.baseShort}
                   </span>
                 )
                 : '—'}
@@ -1473,19 +1491,19 @@ export default function LeadershipDashboard() {
             gap: 12, marginBottom: 20,
           }}>
             <KpiTile2
-              label={`Total Profit vs ${PC.baseShort}`}
+              label={`Total Profit vs ${snapPC.baseShort}`}
               value={signed(profit - lmProfit)}
               valueColor={(profit - lmProfit) > 0 ? T.green : (profit - lmProfit) < 0 ? T.red : T.text3}
-              sub={`${pctFmt(profitPct(profit, lmProfit), 1)} · ${PC.baseShort} ${usdC(lmProfit)}`}
+              sub={`${pctFmt(profitPct(profit, lmProfit), 1)} · ${snapPC.baseShort} ${usdC(lmProfit)}`}
             />
             <KpiTile2
-              label={`Original Sales Amount vs ${PC.base}`}
+              label={`Original Sales Amount vs ${snapPC.base}`}
               value={signed(sales - lmSales)}
               valueColor={(sales - lmSales) > 0 ? T.green : (sales - lmSales) < 0 ? T.red : T.text3}
-              sub={`${pctFmt(salesPct(sales, lmSales), 1)} · ${PC.short} ${usdC(sales)}`}
+              sub={`${pctFmt(salesPct(sales, lmSales), 1)} · ${snapPC.short} ${usdC(sales)}`}
             />
             <KpiTile2
-              label={`Total Profit vs last year ${PC.short}`}
+              label={`Total Profit vs last year ${snapPC.short}`}
               value={signed(profit - lyProfit)}
               valueColor={(profit - lyProfit) > 0 ? T.green : (profit - lyProfit) < 0 ? T.red : T.text3}
               sub={`${pctFmt(profitPct(profit, lyProfit), 1)} · LY ${usdC(lyProfit)}`}
@@ -1511,7 +1529,7 @@ export default function LeadershipDashboard() {
                 Total Profit vs target by department
               </div>
               <div style={{ fontSize: 11, color: T.text3, marginTop: 2 }}>
-                {PC.short} {isMonthKey(period) ? PC.label : monthLabel(CUR_MONTH)}
+                {snapPC.short} {isMonthKey(period) ? snapPC.label : monthLabel(CUR_MONTH)}
                 {targets.monthIsFallback ? ` · target ${targets.month} (fallback)` : ''}
               </div>
               <div style={{ height: 260, marginTop: 14 }}>
@@ -1572,20 +1590,20 @@ export default function LeadershipDashboard() {
         {!loading && hasData && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <MoversTable
-              title={`Top 10 total profit gains vs ${PC.base}`}
+              title={`Top 10 total profit gains vs ${snapPC.base}`}
               subtitle={`Where the growth is coming from · ${usdC(gainsSum)} combined`}
               rows={topGains}
               positive
-              periodShort={PC.short}
-              baseShort={PC.baseShort}
+              periodShort={snapPC.short}
+              baseShort={snapPC.baseShort}
             />
             <MoversTable
-              title={`Top 10 total profit declines vs ${PC.base}`}
+              title={`Top 10 total profit declines vs ${snapPC.base}`}
               subtitle={`Where the leak is, the action list · ${usdC(declinesSum)} combined`}
               rows={topDeclines}
               positive={false}
-              periodShort={PC.short}
-              baseShort={PC.baseShort}
+              periodShort={snapPC.short}
+              baseShort={snapPC.baseShort}
             />
           </div>
         )}
