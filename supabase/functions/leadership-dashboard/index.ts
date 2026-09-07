@@ -1010,7 +1010,6 @@ ORDER BY period DESC, grain, dim, metric
     useLegacySql: false,
   }
 }
-
 // makeQAI — AI Code & Test, snapshot-only via snap.kpi_weekly
 // 0:  source is snap.manual_kpi_input — no live ads.* table exists
 // 1.1: values stored on 0-100 scale — display as-is, do NOT multiply by 100
@@ -1065,81 +1064,116 @@ ORDER BY win.period DESC, k.metric
   }
 }
 
-// makeQWilson — Wilson's Partner Incident Rate (Lost) table
-// Build spec: Quality tab 4
-// Three windows derived from snap.kpi_weekly week_end for @as_at:
-//   cur_28d  = [week_end-27d .. week_end]
-//   prev_28d = [week_end-34d .. week_end-7d]
-//   ytd      = [Jan 1 .. week_end]
-// Returns 9 rows: 3 windows × (Total + Prebooked + Ride Hailing) via ROLLUP
-// 1.1 guardrails enforced here (exact string, has_complaint, dispatch_stat, dedup, partner_name only)
-function makeQWilson(asAt: string | null): { query: string; queryParameters: any[]; useLegacySql: boolean } {
+// makeQWilson28 — reads frozen 28D data from snap.v_quality_28d (Wilson's method).
+// REPLACES the old makeQWilson which recomputed both 28D columns live on every page load.
+//
+// Why the old approach was wrong (brief §1):
+//   Both 28D windows are measured at DIFFERENT ages — Prior has had 8+ extra days to
+//   accumulate closed-against-elife decisions, so the comparison is not like-for-like.
+//   For the Aug 3–30 window, Prebooked climbed from 0.563% (age 1 day) to 0.770% (age 8 days)
+//   — a 37% gain. The old tab reported a 22% improvement on Prebooked; in reality it got worse.
+//
+// What this function returns (3 rows, one per product_line):
+//   current_28d_pct  — Wilson's published rate, frozen at his report time (~05:30 UTC Monday)
+//   prior_28d_pct    — previous week's stored row via LAG; null when no prior week stored
+//   ytd_valid/lost/ex — live-computed YTD ending on current_window_end (same cutoff as 28D)
+//
+// Window resolution: fallback to MAX(report_date) <= asAt, never a future date (brief §2).
+function makeQWilson28(asAt: string | null): { query: string; queryParameters: any[]; useLegacySql: boolean } {
   const query = `
+-- makeQWilson28: frozen 28D from snap.v_quality_28d + live YTD ending on current_window_end.
+-- Prior column = carry-forward via LAG in the view. Never recomputed here.
+-- YTD ends on current_window_end so all three columns share the same measurement cutoff (§3d).
 WITH
--- Anchor: resolve week_end from the selected snapshot
-sel AS (
-  SELECT DISTINCT snapshot_date, week_end
-  FROM \`elife-data-warehouse-prod.snap.kpi_weekly\`
-  WHERE snapshot_date = @as_at
-  LIMIT 1
+-- 1: Resolve the report date for the selected snapshot.
+--    Fallback to MAX(report_date) <= asAt — never a future date (brief §2).
+rd AS (
+  SELECT MAX(report_date) AS rd
+  FROM \`elife-data-warehouse-prod.snap.v_quality_28d\`
+  WHERE report_date <= COALESCE(SAFE_CAST(NULLIF(@as_at,'') AS DATE), CURRENT_DATE())
 ),
--- Three windows derived from week_end (2)
-win AS (
-  SELECT 'cur_28d'  AS col, DATE_SUB(week_end, INTERVAL 27 DAY) AS s, week_end               AS e FROM sel
-  UNION ALL
-  SELECT 'prev_28d',        DATE_SUB(week_end, INTERVAL 34 DAY),     DATE_SUB(week_end, INTERVAL 7 DAY)  FROM sel
-  UNION ALL
-  SELECT 'ytd',             DATE_TRUNC(week_end, YEAR),               week_end                           FROM sel
+-- 2: Frozen 28D data from the view (both Current and Prior in a single row per product line)
+v28 AS (
+  SELECT
+    v.product_line,
+    v.current_window_start,
+    v.current_window_end,
+    CAST(v.current_28d_pct  AS FLOAT64) AS current_28d_pct,
+    v.prior_window_start,
+    v.prior_window_end,
+    CAST(v.prior_28d_pct    AS FLOAT64) AS prior_28d_pct,
+    CAST(v.wow_change_pct   AS FLOAT64) AS wow_change_pct,
+    v.basis,
+    CAST(v.report_date AS STRING)       AS report_date
+  FROM \`elife-data-warehouse-prod.snap.v_quality_28d\` v
+  JOIN rd ON v.report_date = rd.rd
 ),
--- Incident flags deduplicated to trip grain (1.1 — exact string, 1.1.4 dedup)
+-- 3: YTD window bounds — Jan 1 to current_window_end (brief §3d: aligned cutoff)
+ytd_bounds AS (
+  SELECT
+    DATE_TRUNC(MAX(current_window_end), YEAR) AS ytd_start,
+    MAX(current_window_end)                   AS ytd_end
+  FROM v28
+),
+-- 4: Incident flags at trip grain (no date filter — late closures count against trip's window)
+--    Same guardrails as old makeQWilson: exact 'Customer No show' string, dispatch_stat exclusion.
 inc AS (
   SELECT
-    dd.ride_id,
-    dd.trip_no,
-    MAX(IF(dc.complaint_reason <> 'Customer No show', 1, 0)) AS pi_in,
+    dd.ride_id, dd.trip_no,
     MAX(IF(dc.complaint_reason <> 'Customer No show'
-           AND dc.complaint_status IN ('Closed against Elife, lost','Initiated'), 1, 0)) AS pi_ex,
+           AND dc.complaint_status = 'Closed against Elife, lost', 1, 0)) AS pi_lost,
     MAX(IF(dc.complaint_reason <> 'Customer No show'
-           AND dc.complaint_status = 'Closed against Elife, lost', 1, 0)) AS pi_lost
+           AND dc.complaint_status IN ('Closed against Elife, lost','Initiated'), 1, 0)) AS pi_ex
   FROM \`elife-data-warehouse-prod.dwb.dwb_complaint\` dc
   JOIN \`elife-data-warehouse-prod.dwb.dwb_dispatch_detail\` dd
     ON dd.dispatch_id = dc.dispatch_id
   GROUP BY 1, 2
 ),
--- Valid trips per window, with product line from partner_name only (1.1.5)
-wt AS (
+-- 5: YTD trips — product line from partner_name only (same rule as old §1.1.5)
+wt_ytd AS (
   SELECT
-    win.col,
-    win.s,
-    win.e,
     IF(STRPOS(IFNULL(v.partner_name,''), 'Ride Hailing') > 0,
-       'Ride Hailing', 'Prebooked') AS biz,
-    IFNULL(i.pi_in,   0) AS pi_in,
-    IFNULL(i.pi_ex,   0) AS pi_ex,
-    IFNULL(i.pi_lost, 0) AS pi_lost
+       'Ride Hailing', 'Prebooked')     AS biz,
+    IFNULL(i.pi_lost, 0)               AS pi_lost,
+    IFNULL(i.pi_ex,   0)               AS pi_ex
   FROM \`elife-data-warehouse-prod.ads.ads_ride_dispatch_v\` v
-  JOIN win ON v.pickup_date BETWEEN win.s AND win.e
+  JOIN ytd_bounds ON v.pickup_date BETWEEN ytd_bounds.ytd_start AND ytd_bounds.ytd_end
   LEFT JOIN inc i ON i.ride_id = v.ride_id AND i.trip_no = v.trip_no
-  -- 1.1.2: has_complaint trips included in denominator even if ride_stat not Accepted/Pending
+  -- 1.1.2: has_complaint included in denominator; 1.1.3: exclude empty dispatch_stat
   WHERE (v.ride_stat IN ('Accepted','Pending') OR v.has_complaint = 1)
-  -- 1.1.3: exclude dispatch_stat = '' (empty string — Hoppa self-supply)
     AND IFNULL(v.dispatch_stat, 'x') <> ''
+),
+-- 6: YTD aggregated — ROLLUP gives weighted Total row (never an average of two rates)
+ytd_agg AS (
+  SELECT
+    IFNULL(biz, 'Total')          AS product_line,
+    CAST(COUNT(*)    AS FLOAT64)  AS ytd_valid,
+    CAST(SUM(pi_lost) AS FLOAT64) AS ytd_lost,
+    CAST(SUM(pi_ex)   AS FLOAT64) AS ytd_ex
+  FROM wt_ytd
+  GROUP BY ROLLUP(biz)
 )
--- ROLLUP produces the weighted Total row (4.1 — not an average of two rates)
+-- 7: Combine frozen 28D + live YTD into one row per product_line
 SELECT
-  col,
-  MIN(s)             AS window_start,
-  MAX(e)             AS window_end,
-  IFNULL(biz,'Total') AS product_line,
-  CAST(COUNT(*)       AS FLOAT64) AS valid_trips,
-  CAST(SUM(pi_lost)   AS FLOAT64) AS incidents_lost,
-  CAST(SUM(pi_ex)     AS FLOAT64) AS incidents_ex,
-  CAST(SUM(pi_in)     AS FLOAT64) AS incidents_in
-FROM wt
-GROUP BY ROLLUP(col, biz)
-HAVING col IS NOT NULL
-ORDER BY col,
-  CASE IFNULL(biz,'Total') WHEN 'Total' THEN 0 WHEN 'Prebooked' THEN 1 ELSE 2 END
+  v28.product_line,
+  CAST(v28.current_window_start AS STRING) AS current_window_start,
+  CAST(v28.current_window_end   AS STRING) AS current_window_end,
+  v28.current_28d_pct,
+  CAST(v28.prior_window_start   AS STRING) AS prior_window_start,
+  CAST(v28.prior_window_end     AS STRING) AS prior_window_end,
+  v28.prior_28d_pct,
+  v28.wow_change_pct,
+  v28.basis,
+  v28.report_date,
+  ya.ytd_valid,
+  ya.ytd_lost,
+  ya.ytd_ex,
+  CAST(ytd_bounds.ytd_start AS STRING) AS ytd_start,
+  CAST(ytd_bounds.ytd_end   AS STRING) AS ytd_end
+FROM v28
+LEFT JOIN ytd_agg ya USING (product_line)
+CROSS JOIN ytd_bounds
+ORDER BY CASE v28.product_line WHEN 'Total' THEN 0 WHEN 'Prebooked' THEN 1 ELSE 2 END
 `
   return {
     query,
@@ -1150,6 +1184,7 @@ ORDER BY col,
     useLegacySql: false,
   }
 }
+
 
 // Q_MQ — Margin & Quality partner incident rate
 // Reconciled to Power BI RP0036 to the row. Replaces Q_INC entirely.
@@ -1323,7 +1358,7 @@ serve(async (req) => {
       runQueryParameterised(projectId, makeQRH(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
       runQuery(projectId, Q_MQ,      accessToken).catch(() => []),
       runQueryParameterised(projectId, makeQAI(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
-      runQueryParameterised(projectId, makeQWilson(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
+      runQueryParameterised(projectId, makeQWilson28(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
       stalenessPromise,
       Q_CUST_PREV ? runQuery(projectId, Q_CUST_PREV, accessToken).catch(() => []) : Promise.resolve([]),
     ])

@@ -688,174 +688,225 @@ function CustomerSection({MQ, months, baseMonths, forceOpen}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Wilson's Partner Incident Rate (Lost) — 28-day window table
-// Build spec: Quality tab spec 4
-// 3   Option A: both columns recomputed live; prior column labelled accordingly
-// 3.1 Ex% shown as muted secondary text under each Lost% cell
-// 4.1 Total is the ROLLUP row — weighted rate, never an average of two rates
-// 4.2 Round to 2dp (not truncate)
-// 5   Target column: 1% for Prebooked only; blank for Total and Ride Hailing
-// 7.8 RAG colouring only on Prebooked (has a target); Total + RH uncoloured
+// Wilson's Partner Incident Rate (Lost) — 28-day frozen table
+//
+// Data source: snap.v_quality_28d via makeQWilson28 (edge function).
+// Both 28D columns are frozen at Wilson's publication time; the view uses LAG
+// to carry the prior week's row forward — no recomputation (brief §1).
+//
+// Data shape: 3 rows (Total / Prebooked / Ride Hailing), one per product_line.
+//   current_28d_pct  — Wilson's published figure (0–100 scale, e.g. 0.750 = 0.750%)
+//   prior_28d_pct    — previous stored row; null when no prior week exists
+//   ytd_valid/lost/ex — live-computed, ending on current_window_end (§3d)
+//
+// "incl. open" removed: brief §3e — it cannot be frozen alongside the headline
+// without a schema addition. Shown explicitly in footnote rather than silently dropped.
 // ─────────────────────────────────────────────────────────────────────────────
-function WilsonTable({ wilsonRows, queriedAt }) {
+function WilsonTable({ wilsonRows }) {
   if (!wilsonRows || wilsonRows.length === 0) return null
 
-  // Parse date for Option A vintage label
-  function fmtDate(iso) {
+  // Index by product_line (3 rows: Total, Prebooked, Ride Hailing)
+  const byPL = {}
+  wilsonRows.forEach(r => { byPL[r.product_line] = r })
+
+  const meta = byPL['Total'] ?? wilsonRows[0]
+  if (!meta) return null
+
+  // Window label formatters — all labels from the view, never recomputed here
+  function fmtD(iso) {
+    if (!iso) return ''
+    const d = new Date(iso + 'T00:00:00Z')
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  }
+  function fmtRange(s, e) {
+    if (!s || !e) return null
+    return `${fmtD(s)} – ${fmtD(e)}`
+  }
+  function fmtFull(iso) {
     if (!iso) return null
-    try {
-      const d = new Date(iso)
-      const dd = d.getUTCDate()
-      const mo = d.toLocaleString('en-US', { month: 'short', timeZone: 'UTC' })
-      return `${dd} ${mo} ${d.getUTCFullYear()}`
-    } catch { return null }
+    const d = new Date(iso + 'T00:00:00Z')
+    return d.toLocaleString('en-US', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
   }
 
-  // Format date range for column headers (e.g. "Jul 20 – Aug 16")
-  function fmtRange(startStr, endStr) {
-    if (!startStr || !endStr) return null
-    function fmtD(s) {
-      const d = new Date(s + 'T00:00:00Z')
-      return d.toLocaleString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  const curRange   = fmtRange(meta.current_window_start, meta.current_window_end)
+  const priorRange = fmtRange(meta.prior_window_start,   meta.prior_window_end)
+  const ytdRange   = fmtRange(meta.ytd_start, meta.ytd_end)
+  const reportDate = fmtFull(meta.report_date)   // date Wilson's row was stored
+
+  const ROWS = [
+    { pl: 'Total',        bold: true  },
+    { pl: 'Prebooked',    bold: false },
+    { pl: 'Ride Hailing', bold: false },
+  ]
+
+  // Frozen rate cell — reads stored pct directly, never recomputes (§1 / §3b)
+  function FrozenCell({ pl, field }) {
+    const r = byPL[pl]
+    const v = r?.[field]
+    if (v === null || v === undefined || !isFinite(Number(v))) {
+      // Prior is null on the first stored week (no LAG row available)
+      if (field === 'prior_28d_pct' && pl === 'Total') {
+        return (
+          <div>
+            <span style={{ color: T.text3 }}>—</span>
+            <div style={{ fontSize: 10, color: T.text3, marginTop: 1 }}>no prior week stored</div>
+          </div>
+        )
+      }
+      return <span style={{ color: T.text3 }}>—</span>
     }
-    return `${fmtD(startStr)} – ${fmtD(endStr)}`
-  }
-
-  // Index rows by col × product_line
-  const idx = {}
-  wilsonRows.forEach(r => {
-    if (!r.col) return
-    ;(idx[r.col] = idx[r.col] || {})[r.product_line] = r
-  })
-
-  // Extract window metadata for headers
-  function meta(col) {
-    const r = idx[col]?.Total || Object.values(idx[col] || {})[0]
-    if (!r) return { range: null, start: null, end: null }
-    return { range: fmtRange(r.window_start, r.window_end), start: r.window_start, end: r.window_end }
-  }
-  const prevMeta = meta('prev_28d')
-  const curMeta  = meta('cur_28d')
-  const ytdMeta  = meta('ytd')
-
-  const vintageLabel = fmtDate(queriedAt)
-
-  // Rate cell renderer: 4.2 round to 2dp; 3.1 Ex% secondary; 5 RAG only if hasTarget
-  function RCell({ col, pl }) {
-    const r = idx[col]?.[pl]
-    if (!r) return <span style={{ color: T.text3, fontStyle: 'italic', fontSize: 11 }}>—</span>
-    const valid = Number(r.valid_trips)
-    const lost  = Number(r.incidents_lost)
-    const ex    = Number(r.incidents_ex)
-    if (!valid) return <span style={{ color: T.text3, fontStyle: 'italic', fontSize: 11 }}>n/a</span>
-    const rateLost = lost / valid
-    const rateEx   = ex   / valid
+    // Values are on 0-100 scale (e.g. 0.750 means 0.750%)
+    const rate      = Number(v)
     const hasTarget = pl === 'Prebooked'
-    const col_rag = hasTarget
-      ? (rateLost < 0.01 ? T.green : T.red)
-      : T.text  // no target → neutral colour
+    const col       = hasTarget ? (rate < 1.0 ? T.green : T.red) : T.text
+    return (
+      <span style={{ fontWeight: pl === 'Total' ? 700 : 600, color: col, fontSize: 13 }}>
+        {rate.toFixed(3)}%
+      </span>
+    )
+  }
+
+  // YTD cell — live computed, ending on current_window_end (§3d)
+  function YtdCell({ pl }) {
+    const r     = byPL[pl]
+    const valid = Number(r?.ytd_valid ?? 0)
+    const lost  = Number(r?.ytd_lost  ?? 0)
+    const ex    = Number(r?.ytd_ex    ?? 0)
+    if (!valid) return <span style={{ color: T.text3 }}>—</span>
+    const rate      = (lost / valid) * 100   // pct scale, same as frozen columns
+    const hasTarget = pl === 'Prebooked'
+    const col       = hasTarget ? (rate < 1.0 ? T.green : T.red) : T.text
+    const openShare = ex > 0 ? (ex - lost) / ex : 0
+    const provisional = openShare > 0.05
     return (
       <div>
-        <div style={{ fontWeight: pl === 'Total' ? 700 : 600, color: col_rag, fontSize: 13 }}>
-          {(rateLost * 100).toFixed(2)}%
+        <div style={{ fontWeight: pl === 'Total' ? 700 : 600, color: col, fontSize: 13 }}>
+          {rate.toFixed(3)}%
+          {provisional && <span style={{ ...CHIP_PROV, marginLeft: 4 }}>provisional</span>}
         </div>
-        <div style={{ fontSize: 10, color: T.text3, marginTop: 1 }}>
-          {(rateEx * 100).toFixed(2)}% incl. open
-        </div>
+        {provisional && (
+          <div style={{ fontSize: 10, color: T.amber, marginTop: 1 }}>
+            up to {(ex / valid * 100).toFixed(3)}%
+          </div>
+        )}
       </div>
     )
   }
 
-  // Target cell
-  function TargetCell({ pl }) {
-    if (pl === 'Prebooked') {
-      return (
-        <span style={{
-          display: 'inline-block', fontSize: 10.5, fontWeight: 700,
-          padding: '1px 7px', borderRadius: 5,
-          background: 'rgba(29,158,117,.11)', color: T.green,
-          border: `1px solid rgba(29,158,117,.25)`
-        }}>1%</span>
-      )
-    }
-    return null  // blank for Total + Ride Hailing (5)
-  }
-
-  const ROWS = [
-    { pl: 'Total',        bold: true },
-    { pl: 'Prebooked',   bold: false },
-    { pl: 'Ride Hailing', bold: false },
-  ]
-
-  const tableStyle = {
-    width: '100%', borderCollapse: 'collapse', fontSize: 12.5,
-  }
-  const thStyle = {
-    ...TH, padding: '8px 12px', fontSize: 10, textAlign: 'right',
-  }
+  const thStyle = { ...TH, padding: '8px 12px', fontSize: 10, textAlign: 'right' }
   const tdStyle = { ...TD, padding: '10px 12px' }
 
   return (
     <div style={{ marginBottom: 24 }}>
+
+      {/* Settling-lag notice — brief §7 */}
+      <div style={{
+        background: 'rgba(234,179,8,.12)', border: '1px solid #EAB308',
+        borderRadius: 8, padding: '10px 14px', marginBottom: 14,
+        fontSize: 12.5, color: '#78590A', lineHeight: 1.7,
+      }}>
+        <strong>Partner Incident Rate is reported on a one-week settling lag.</strong>{' '}
+        Complaint cases continue to be decided against us for weeks after a window closes — the
+        rate keeps climbing over time. Both 28-day columns are frozen at Wilson's publication
+        time{reportDate ? ` (${reportDate})` : ''} so they can be compared like for like.
+        {curRange && (
+          <> The current window covers {curRange.toUpperCase()}, while the rest of the dashboard
+          shows more recent data — this is intentional, not staleness.</>
+        )}
+      </div>
+
       <SectionLabel>Partner Incident Rate (Lost)</SectionLabel>
       <div style={{
         background: T.bg, borderRadius: 12, boxShadow: T.lift,
         border: `1px solid ${T.border}`, overflow: 'hidden',
       }}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={tableStyle}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <colgroup>
-              <col style={{ width: '24%' }}/>
+              <col style={{ width: '22%' }}/>
               <col style={{ width: '8%'  }}/>
               <col style={{ width: '23%' }}/>
               <col style={{ width: '23%' }}/>
-              <col style={{ width: '22%' }}/>
+              <col style={{ width: '24%' }}/>
             </colgroup>
             <thead>
               <tr>
                 <th style={{ ...thStyle, textAlign: 'left', paddingLeft: 16 }}>Product Line</th>
                 <th style={thStyle}>Target</th>
-                {/* Prior 28d — Option A: recomputed live (3) */}
+
+                {/* Prior 28d — carry-forward from previous stored week (never recomputed) */}
                 <th style={thStyle}>
                   <div>Prior 28d</div>
-                  {prevMeta.range && <div style={{ fontWeight: 400, opacity: 0.8 }}>{prevMeta.range}</div>}
-                  {vintageLabel && (
-                    <div style={{ fontWeight: 400, fontSize: 9, color: T.text3, marginTop: 1, textTransform: 'none' }}>
-                      recomputed {vintageLabel}
-                    </div>
-                  )}
+                  {priorRange
+                    ? <div style={{ fontWeight: 400, opacity: 0.8 }}>{priorRange}</div>
+                    : <div style={{ fontWeight: 400, fontSize: 9, textTransform: 'none', color: T.text3 }}>no prior week stored</div>
+                  }
+                  <div style={{ fontWeight: 400, fontSize: 9, textTransform: 'none', color: T.text3 }}>
+                    frozen at publication
+                  </div>
                 </th>
+
+                {/* Current 28d — Wilson's figure, frozen at his report time */}
                 <th style={thStyle}>
                   <div>Current 28d</div>
-                  {curMeta.range && <div style={{ fontWeight: 400, opacity: 0.8 }}>{curMeta.range}</div>}
+                  {curRange && <div style={{ fontWeight: 400, opacity: 0.8 }}>{curRange}</div>}
+                  <div style={{ fontWeight: 400, fontSize: 9, textTransform: 'none', color: T.text3 }}>
+                    frozen{reportDate ? ` ${reportDate}` : ' at publication'}
+                  </div>
                 </th>
+
+                {/* YTD — live computed, ending on current_window_end (§3d) */}
                 <th style={thStyle}>
                   <div>YTD</div>
-                  {ytdMeta.start && ytdMeta.end && (
-                    <div style={{ fontWeight: 400, opacity: 0.8 }}>
-                      {fmtRange(ytdMeta.start, ytdMeta.end)}
-                    </div>
-                  )}
+                  {ytdRange && <div style={{ fontWeight: 400, opacity: 0.8 }}>{ytdRange}</div>}
+                  <div style={{ fontWeight: 400, fontSize: 9, textTransform: 'none', color: T.text3 }}>
+                    live · ends current window
+                  </div>
                 </th>
               </tr>
             </thead>
             <tbody>
               {ROWS.map(({ pl, bold }) => (
-                <tr key={pl} style={{
-                  ...ROW,
-                  background: bold ? T.bg3 : T.bg,
-                }}>
+                <tr key={pl} style={{ ...ROW, background: bold ? T.bg3 : T.bg }}>
                   <td style={{ ...tdStyle, paddingLeft: 16, fontWeight: bold ? 700 : 600 }}>{pl}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}><TargetCell pl={pl} /></td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}><RCell col="prev_28d" pl={pl} /></td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}><RCell col="cur_28d"  pl={pl} /></td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}><RCell col="ytd"      pl={pl} /></td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    {pl === 'Prebooked' && (
+                      <span style={{
+                        display: 'inline-block', fontSize: 10.5, fontWeight: 700,
+                        padding: '1px 7px', borderRadius: 5,
+                        background: 'rgba(29,158,117,.11)', color: T.green,
+                        border: `1px solid rgba(29,158,117,.25)`,
+                      }}>1%</span>
+                    )}
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <FrozenCell pl={pl} field="prior_28d_pct" />
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <FrozenCell pl={pl} field="current_28d_pct" />
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <YtdCell pl={pl} />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
 
+        {/* §3e — incl. open footnote: not silently dropped, explicitly surfaced */}
+        <div style={{
+          padding: '8px 16px 10px', borderTop: `1px solid ${T.border}`,
+          fontSize: 11, color: T.text3, lineHeight: 1.6,
+        }}>
+          <strong>Note:</strong> The "incl. open" ceiling (open complaints as an upper bound on
+          the lost rate) is not shown for the frozen 28-day columns — displaying a live figure
+          directly below a frozen headline would recreate the inconsistency this change exists to
+          remove. It will return once the open-case count is stored at publication time alongside
+          the main rate (brief §3e, pending schema addition to{' '}
+          <code>snap.manual_kpi_input</code>). The YTD column above is live-computed and shows
+          provisional status where applicable.
+        </div>
       </div>
     </div>
   )
@@ -918,7 +969,9 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
       ) : (
         <>
       {/* ── Wilson's Partner Incident Rate table ── */}
-          <WilsonTable wilsonRows={D.wilson || []} queriedAt={D.queried_at} />
+          <WilsonTable wilsonRows={D.wilson || []} />
+
+
 
           {/* ── 8 KPI Tiles — two tiles, NEVER combined (0.7) ── */}
           <SectionLabel>Headline Metrics</SectionLabel>
