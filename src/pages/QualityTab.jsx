@@ -814,22 +814,6 @@ function WilsonTable({ wilsonRows }) {
   return (
     <div style={{ marginBottom: 24 }}>
 
-      {/* Settling-lag notice — brief §7 */}
-      <div style={{
-        background: 'rgba(234,179,8,.12)', border: '1px solid #EAB308',
-        borderRadius: 8, padding: '10px 14px', marginBottom: 14,
-        fontSize: 12.5, color: '#78590A', lineHeight: 1.7,
-      }}>
-        <strong>Partner Incident Rate is reported on a one-week settling lag.</strong>{' '}
-        Complaint cases continue to be decided against us for weeks after a window closes — the
-        rate keeps climbing over time. Both 28-day columns are frozen at Wilson's publication
-        time{reportDate ? ` (${reportDate})` : ''} so they can be compared like for like.
-        {curRange && (
-          <> The current window covers {curRange.toUpperCase()}, while the rest of the dashboard
-          shows more recent data — this is intentional, not staleness.</>
-        )}
-      </div>
-
       <SectionLabel>Partner Incident Rate (Lost)</SectionLabel>
       <div style={{
         background: T.bg, borderRadius: 12, boxShadow: T.lift,
@@ -909,19 +893,6 @@ function WilsonTable({ wilsonRows }) {
           </table>
         </div>
 
-        {/* §3e — incl. open footnote: not silently dropped, explicitly surfaced */}
-        <div style={{
-          padding: '8px 16px 10px', borderTop: `1px solid ${T.border}`,
-          fontSize: 11, color: T.text3, lineHeight: 1.6,
-        }}>
-          <strong>Note:</strong> The "incl. open" ceiling (open complaints as an upper bound on
-          the lost rate) is not shown for the frozen 28-day columns — displaying a live figure
-          directly below a frozen headline would recreate the inconsistency this change exists to
-          remove. It will return once the open-case count is stored at publication time alongside
-          the main rate (brief §3e, pending schema addition to{' '}
-          <code>snap.manual_kpi_input</code>). The YTD column above is live-computed and shows
-          provisional status where applicable.
-        </div>
       </div>
     </div>
   )
