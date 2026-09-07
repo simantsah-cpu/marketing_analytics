@@ -1358,7 +1358,7 @@ serve(async (req) => {
       runQueryParameterised(projectId, makeQRH(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
       runQuery(projectId, Q_MQ,      accessToken).catch(() => []),
       runQueryParameterised(projectId, makeQAI(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
-      runQueryParameterised(projectId, makeQWilson28(rawAsAt ?? resolvedCurrent), accessToken).catch(() => []),
+      runQueryParameterised(projectId, makeQWilson28(rawAsAt ?? resolvedCurrent), accessToken).catch((e) => { console.error('[makeQWilson28] query failed:', e?.message ?? e); return [] }),
       stalenessPromise,
       Q_CUST_PREV ? runQuery(projectId, Q_CUST_PREV, accessToken).catch(() => []) : Promise.resolve([]),
     ])
