@@ -1104,7 +1104,10 @@ v28 AS (
     CAST(v.prior_28d_pct    AS FLOAT64) AS prior_28d_pct,
     CAST(v.wow_change_pct   AS FLOAT64) AS wow_change_pct,
     v.basis,
-    CAST(v.report_date AS STRING)       AS report_date
+    CAST(v.report_date AS STRING)       AS report_date,
+    -- Freeze timestamps (TIMESTAMP) formatted as 'YYYY-MM-DD HH:MM UTC' for display
+    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M UTC', v.current_as_of) AS current_as_of,
+    FORMAT_TIMESTAMP('%Y-%m-%d %H:%M UTC', v.prior_as_of)   AS prior_as_of
   FROM \`elife-data-warehouse-prod.snap.v_quality_28d\` v
   JOIN rd ON v.report_date = rd.rd
 ),
@@ -1165,6 +1168,8 @@ SELECT
   v28.wow_change_pct,
   v28.basis,
   v28.report_date,
+  v28.current_as_of,
+  v28.prior_as_of,
   ya.ytd_valid,
   ya.ytd_lost,
   ya.ytd_ex,
