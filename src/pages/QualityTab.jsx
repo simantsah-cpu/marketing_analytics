@@ -749,8 +749,8 @@ function WilsonTable({ wilsonRows }) {
   // Freeze timestamps from the view — FORMAT_TIMESTAMP('%Y-%m-%d %H:%M UTC', ...)
   const currentAsOf = meta.current_as_of || null   // e.g. "2026-09-07 06:09 UTC"
   const priorAsOf   = meta.prior_as_of   || null   // null when no prior week stored
-  // Extract just the time portion for the settling-lag banner (e.g. "06:09 UTC")
-  const freezeTime  = currentAsOf ? currentAsOf.split(' ').slice(1, 3).join(' ') : '06:09 UTC'
+  // Extract just the time portion for the settling-lag banner — null when view has no timestamp
+  const freezeTime  = currentAsOf ? currentAsOf.split(' ').slice(1, 3).join(' ') : null
 
   const ROWS = [
     { pl: 'Total',        bold: true  },
@@ -826,9 +826,11 @@ function WilsonTable({ wilsonRows }) {
       }}>
         <strong>Partner Incident Rate is reported on a one-week settling lag.</strong>{' '}
         Complaint cases continue to be decided against us for weeks after a window closes — the
-        rate keeps climbing over time. Both 28-day columns are computed and frozen at{' '}
-        <strong>{freezeTime}</strong> on their reporting Monday, so they can be compared
-        like for like.
+        rate keeps climbing over time. Both 28-day columns are computed and frozen
+        {freezeTime
+          ? <> at <strong>{freezeTime}</strong></>
+          : ''}{' '}
+        on their reporting Monday, so they can be compared like for like.
         {curRange && (
           <> The current window covers {curRange.toUpperCase()}, while the rest of the dashboard
           shows more recent data — this is intentional, not staleness.</>
@@ -924,7 +926,7 @@ function WilsonTable({ wilsonRows }) {
           <strong>Note:</strong> The “incl. open” ceiling (open complaints as an upper bound
           on the lost rate) is not shown for the frozen 28-day columns. It will return once
           an open-case count and denominator are captured at the same{' '}
-          {freezeTime} freeze in{' '}
+          {freezeTime ? <>{freezeTime} </> : ''}freeze in{' '}
           <code>snap.quality_28d_weekly</code>. The YTD column is live-computed and shows
           provisional status where applicable.
         </div>
