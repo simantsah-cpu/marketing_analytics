@@ -750,7 +750,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt, periodTgt
 
           {/* 4 — Grain footnote */}
           <div style={{fontSize:11.5,color:T.text3,marginBottom:16,padding:'0 4px',lineHeight:1.55}}>
-            ℹ Total profit is computed at geo grain. The profit measure includes a revenue-weighted ratio and is not additive across grains — expect a difference of up to a few hundred dollars against the Executive Summary.
+            ℹ Geography totals can differ from the Executive Summary by a few hundred dollars. This is expected: profit is calculated separately for each region and the two figures don't sum identically.
           </div>
 
           {/* GEO charts */}

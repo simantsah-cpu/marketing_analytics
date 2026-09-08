@@ -1461,9 +1461,9 @@ export default function LeadershipDashboard() {
               goalLabelColor={achColor(fcAch)}
               bar={fcAch !== null ? { pct: Math.min(1, fcAch), color: achColor(fcAch) } : null}
               tooltip={
-                `Where the full month is projected to finish, from the forward-booking model (fwd_v2` +
-                (fcDate ? `, run ${String(fcDate).slice(0, 10)}` : '') +
-                `). Not a straight-line extrapolation — built from bookings already on the books for the rest of the month plus modelled pickup.`
+                `Where the full month is projected to finish, from the forward-booking model` +
+                (fcDate ? ` (run ${String(fcDate).slice(0, 10)})` : '') +
+                `. Not a straight-line extrapolation — built from bookings already on the books for the rest of the month plus modelled pickup.`
               }
             />
 

@@ -350,11 +350,6 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
   const fdate = fcVintage ?? (D.fc&&D.fc[0]?.fdate) ?? null
   const fdateFCC = fccVintage ?? null
 
-  // 2.3 — model version labels: read from data, not hardcoded.
-  // model_version is now included in the Q_FC / Q_FCC SELECT. Falls back to
-  // spec-defined defaults so the label never goes blank on old cached responses.
-  const fcModelVersion  = D.fc?.[0]?.model_version  ?? 'fwd_v2'
-  const fccModelVersion = D.fcc?.[0]?.model_version ?? 'fwd_cust_v1'
 
   // 2.2 — stale vintage: resolved forecast is older than the snap asAt
   const fcIsStale = fdate && asAt && fdate < asAt
@@ -397,11 +392,6 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
           <span style={{fontSize:10,fontWeight:600,padding:'2px 8px',borderRadius:10,background:'rgba(0,0,0,.06)',color:T.text3,letterSpacing:'0.04em'}}>
             Vintage {fdate ? String(fdate).slice(0,10) : '…'}
           </span>
-        </div>
-        <div style={{fontSize:13,color:T.text3,marginTop:4}}>
-          Model <code style={{fontSize:12,background:T.bg4,padding:'1px 5px',borderRadius:4}}>{fcModelVersion}</code>
-          {' · geo'}
-          {fdateFCC&&<> · customer vintage {String(fdateFCC).slice(0,10)}</>}
         </div>
       </div>
 
@@ -478,11 +468,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
         {/* 5.1 Geo stacked bar */}
         <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,padding:'16px 20px 14px'}}>
           <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Forecast total profit by geography</div>
-          <div style={{fontSize:11.5,color:T.text3,marginBottom:14}}>
-            {mAgg.length} month{mAgg.length !== 1 ? 's' : ''} ahead · totals above each column, {usdC(geoAll)} in aggregate
-            {/* 3 — geo taxonomy note */}
-            {geoIsMerged&&<span style={{marginLeft:8,fontSize:10,background:'rgba(234,179,8,.15)',color:'#78590A',padding:'1px 6px',borderRadius:9,border:'1px solid rgba(234,179,8,.4)'}}>Americas &amp; Asia/Africa/Oceania merged from Aug 17</span>}
-          </div>
+
           <div style={{height:300}}>
             <GeoChart months={months} geos={geos} D={D}/>
           </div>
@@ -521,7 +507,7 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
           <button onClick={()=>setAllFc(true)} style={{fontSize:12,fontWeight:600,padding:'5px 12px',border:`1px solid ${T.border}`,borderRadius:6,background:T.bg,color:T.text2,cursor:'pointer',fontFamily:'inherit'}}>Expand all</button>
           <button onClick={()=>setAllFc(false)} style={{fontSize:12,fontWeight:600,padding:'5px 12px',border:`1px solid ${T.border}`,borderRadius:6,background:T.bg,color:T.text2,cursor:'pointer',fontFamily:'inherit'}}>Collapse all</button>
           <div style={{marginLeft:'auto',fontSize:12,color:T.text3,background:T.bg4,padding:'4px 10px',borderRadius:6}}>
-            {mAgg.length} months · {mAgg.reduce((a,x)=>a+x.rows.length,0)} rows · model {fcModelVersion}
+            {mAgg.length} months · {mAgg.reduce((a,x)=>a+x.rows.length,0)} rows
           </div>
         </div>
 

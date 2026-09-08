@@ -663,7 +663,7 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
           </span>
         </div>
         <div style={{ fontSize:13, color:T.text3, marginTop:4 }}>
-          Aggregated to (department, customer) grain from snapshot data · sorted by Sales Amount
+          One row per customer, per team · sorted by Sales Amount
         </div>
       </div>
 
@@ -671,6 +671,14 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
       {weekFallback && (
         <div style={{ background:'rgba(234,179,8,.12)', border:'1px solid #EAB308', borderRadius:8, padding:'10px 14px', marginBottom:14, fontSize:12.5, color:'#78590A', lineHeight:1.7 }}>
           <strong>This view does not follow the period selector.</strong> Customer data is aggregated from month-to-date snapshot data and does not have a week-grain equivalent. The selector currently reads <strong>{weekPCLabel || 'Last complete week'}</strong>; the figures below are Month to date.
+        </div>
+      )}
+
+      {/* 4.2 cross-month notice — leadership copy, no implementation language */}
+      {prevSnapDate && !sameMonth && (custPrev||[]).length > 0 && (
+        <div style={{ background:'rgba(234,179,8,.12)', border:'1px solid #EAB308', borderRadius:8, padding:'10px 14px', marginBottom:12, fontSize:12.5, color:'#78590A', lineHeight:1.6 }}>
+          Week-on-week growth is hidden because these two dates fall in different months,
+          so their month-to-date figures aren’t comparable. It returns next week.
         </div>
       )}
 

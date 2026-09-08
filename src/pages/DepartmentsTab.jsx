@@ -659,6 +659,17 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
         </div>
       )}
 
+      {/* 4.2 — cross-month notice: leadership copy, no implementation language */}
+      {prevSnapDate && !sameMonth && prevDepts.length > 0 && (
+        <div style={{
+          background: 'rgba(234,179,8,.12)', border: '1px solid #EAB308',
+          borderRadius: 8, padding: '10px 14px', marginBottom: 12,
+          fontSize: 12.5, color: '#78590A', lineHeight: 1.6,
+        }}>
+          Week-on-week growth is hidden because these two dates fall in different months,
+          so their month-to-date figures aren't comparable. It returns next week.
+        </div>
+      )}
 
       {/* 2 — Expand / collapse controls */}
       {hasDeptKids && (

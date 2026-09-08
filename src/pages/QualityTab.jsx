@@ -703,22 +703,26 @@ function CustomerSection({MQ, months, baseMonths, forceOpen}){
 // without a schema addition. Shown explicitly in footnote rather than silently dropped.
 // ─────────────────────────────────────────────────────────────────────────────
 function WilsonTable({ wilsonRows }) {
-  if (!wilsonRows || wilsonRows.length === 0) return (
-    <div style={{ marginBottom: 24 }}>
-      <SectionLabel>Partner Incident Rate (Lost)</SectionLabel>
-      <div style={{
-        background: 'rgba(234,179,8,.10)', border: '1px solid #EAB308',
-        borderRadius: 10, padding: '14px 18px', fontSize: 12.5, color: '#78590A', lineHeight: 1.7,
-      }}>
-        <strong>28-day data unavailable for this snapshot.</strong>{' '}
-        The edge function query for <code>snap.v_quality_28d</code> returned no rows —
-        check the Supabase Function logs for a <code>[makeQWilson28]</code> error message.
-        Likely causes: the view does not yet have a row for this report date, the column
-        names differ from the spec, or the service account lacks read access to the
-        <code> snap</code> dataset.
+  if (!wilsonRows || wilsonRows.length === 0) {
+    console.warn(
+      '[WilsonTable] snap.v_quality_28d returned no rows via makeQWilson28.\n' +
+      'Check Supabase Function logs for [makeQWilson28] — likely causes:\n' +
+      '  · No row for this report_date in snap.v_quality_28d\n' +
+      '  · Column name mismatch\n' +
+      '  · Service account lacks read access to the snap dataset'
+    )
+    return (
+      <div style={{ marginBottom: 24 }}>
+        <SectionLabel>Partner Incident Rate (Lost)</SectionLabel>
+        <div style={{
+          background: T.bg2, border: `1px solid ${T.border}`,
+          borderRadius: 10, padding: '14px 18px', fontSize: 13, color: T.text3,
+        }}>
+          Partner Incident Rate is not available for this snapshot.
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   // Index by product_line (3 rows: Total, Prebooked, Ride Hailing)
   const byPL = {}
@@ -818,6 +822,23 @@ function WilsonTable({ wilsonRows }) {
   return (
     <div style={{ marginBottom: 24 }}>
 
+      {/* §3a — settling-lag banner: explains why this tab shows an older window */}
+      <div style={{
+        background: 'rgba(234,179,8,.12)', border: '1px solid #EAB308',
+        borderRadius: 8, padding: '10px 14px', marginBottom: 14,
+        fontSize: 12.5, color: '#78590A', lineHeight: 1.7,
+      }}>
+        <strong>Partner Incident Rate is reported on a one-week settling lag.</strong>{' '}
+        Complaint cases continue to be decided against us for weeks after a window closes —
+        the rate keeps climbing over time. Both 28-day columns are computed and frozen
+        {freezeTime ? <> at <strong>{freezeTime}</strong></> : ''}{' '}
+        on their reporting Monday, so they can be compared like for like.
+        {curRange && (
+          <> The current window covers {curRange.toUpperCase()}, while the rest of the
+          dashboard shows more recent data — this is intentional, not staleness.</>
+        )}
+      </div>
+
       <SectionLabel>Partner Incident Rate (Lost)</SectionLabel>
       <div style={{
         background: T.bg, borderRadius: 12, boxShadow: T.lift,
@@ -897,6 +918,18 @@ function WilsonTable({ wilsonRows }) {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* §1b — incl. open footnote: meaningful to reader, no internal refs */}
+        <div style={{
+          padding: '8px 16px 10px', borderTop: `1px solid ${T.border}`,
+          fontSize: 11, color: T.text3, lineHeight: 1.6,
+        }}>
+          <strong>Note:</strong> The “incl. open” ceiling (open complaints as an upper bound
+          on the lost rate) is not shown for the frozen 28-day columns.
+          It will return in a future update.
+          The YTD column is live-computed and shows provisional status where applicable.
+        </div>
       </div>
     </div>
   )

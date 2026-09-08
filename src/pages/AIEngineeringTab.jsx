@@ -243,9 +243,6 @@ function HistoryTable({ cur, prev }){
     <div style={{ background:T.bg, borderRadius:12, boxShadow:T.lift, border:`1px solid ${T.border}`, overflow:'hidden' }}>
       <div style={{ padding:'10px 16px 8px', borderBottom:`1px solid ${T.border}`, background:T.bg2 }}>
         <span style={{ fontWeight:700, fontSize:13, color:T.text }}>Week-on-Week History</span>
-        <span style={{ fontSize:11, color:T.text3, marginLeft:10 }}>
-          snapshot data · values on 0–100 scale
-        </span>
       </div>
       <table style={{ width:'100%', borderCollapse:'collapse' }}>
         <thead>
