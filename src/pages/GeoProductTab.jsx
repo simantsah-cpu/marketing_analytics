@@ -433,7 +433,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt, periodTgt
   // CRITICAL: must NOT depend on the targets map. YTD and Week have empty TARGETS.product
   // (no attainment computed) but must still show the same two-row structure as MTD/QTD.
   // Summing per-line results preserves each line's own completion ratio — do not move
-  // this grouping into SQL (see brief §3: the ratio term is not additive across partitions).
+  // this grouping into SQL (see brief the ratio term is not additive across partitions).
   const rollupPL = pl => PREBOOKED_LINES.includes(pl) ? 'Prebooked' : pl
 
 

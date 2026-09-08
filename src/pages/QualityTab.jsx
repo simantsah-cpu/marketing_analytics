@@ -692,14 +692,14 @@ function CustomerSection({MQ, months, baseMonths, forceOpen}){
 //
 // Data source: snap.v_quality_28d via makeQWilson28 (edge function).
 // Both 28D columns are frozen at Wilson's publication time; the view uses LAG
-// to carry the prior week's row forward — no recomputation (brief §1).
+// to carry the prior week's row forward — no recomputation (brief).
 //
 // Data shape: 3 rows (Total / Prebooked / Ride Hailing), one per product_line.
 //   current_28d_pct  — Wilson's published figure (0–100 scale, e.g. 0.750 = 0.750%)
 //   prior_28d_pct    — previous stored row; null when no prior week exists
-//   ytd_valid/lost/ex — live-computed, ending on current_window_end (§3d)
+//   ytd_valid/lost/ex — live-computed, ending on current_window_end ()
 //
-// "incl. open" removed: brief §3e — it cannot be frozen alongside the headline
+// "incl. open" removed: brief — it cannot be frozen alongside the headline
 // without a schema addition. Shown explicitly in footnote rather than silently dropped.
 // ─────────────────────────────────────────────────────────────────────────────
 function WilsonTable({ wilsonRows }) {
@@ -762,7 +762,7 @@ function WilsonTable({ wilsonRows }) {
     { pl: 'Ride Hailing', bold: false },
   ]
 
-  // Frozen rate cell — reads stored pct directly, never recomputes (§1 / §3b)
+  // Frozen rate cell — reads stored pct directly, never recomputes ( /)
   function FrozenCell({ pl, field }) {
     const r = byPL[pl]
     const v = r?.[field]
@@ -789,7 +789,7 @@ function WilsonTable({ wilsonRows }) {
     )
   }
 
-  // YTD cell — live computed, ending on current_window_end (§3d)
+  // YTD cell — live computed, ending on current_window_end ()
   function YtdCell({ pl }) {
     const r     = byPL[pl]
     const valid = Number(r?.ytd_valid ?? 0)
@@ -864,7 +864,7 @@ function WilsonTable({ wilsonRows }) {
                   </div>
                 </th>
 
-                {/* YTD — live computed, ending on current_window_end (§3d) */}
+                {/* YTD — live computed, ending on current_window_end () */}
                 <th style={thStyle}>
                   <div>YTD</div>
                   {ytdRange && <div style={{ fontWeight: 400, opacity: 0.8 }}>{ytdRange}</div>}
@@ -903,7 +903,7 @@ function WilsonTable({ wilsonRows }) {
           </table>
         </div>
 
-        {/* §1b — incl. open footnote: meaningful to reader, no internal refs */}
+        {/* — incl. open footnote: meaningful to reader, no internal refs */}
         <div style={{
           padding: '8px 16px 10px', borderTop: `1px solid ${T.border}`,
           fontSize: 11, color: T.text3, lineHeight: 1.6,
