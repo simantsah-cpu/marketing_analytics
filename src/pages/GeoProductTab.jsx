@@ -729,7 +729,13 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt, periodTgt
                   })}
                   {/* Total row */}
                   <tr style={{background:T.bg,borderTop:`2px solid ${T.border}`}}>
-                    <td style={{...TD,paddingLeft:14,fontWeight:700}}>Total</td>
+                  <td style={{...TD,paddingLeft:14,fontWeight:700}}>
+                    Total{' '}
+                    <span
+                      title="Geography totals can differ from the Executive Summary by a few hundred dollars. Profit is calculated separately for each region."
+                      style={{cursor:'help',fontSize:11,color:T.text3,userSelect:'none'}}
+                    >ⓘ</span>
+                  </td>
                     <td style={{...TD,textAlign:'right'}}>{gPair(usd(geoTot),geoTargetTotal>0?usd(geoTargetTotal):'—')}</td>
                     <td style={{...TD,textAlign:'right'}}>{gAtt(geoTargetTotal>0?geoTot/geoTargetTotal:null)}</td>
                     <td style={{...TD,textAlign:'right'}}>—</td>
@@ -748,10 +754,7 @@ export default function GeoProductTab({D, period, CUR_MONTH, PC, asAt, periodTgt
             </div>
           )}
 
-          {/* 4 — Grain footnote */}
-          <div style={{fontSize:11.5,color:T.text3,marginBottom:16,padding:'0 4px',lineHeight:1.55}}>
-            ℹ Geography totals can differ from the Executive Summary by a few hundred dollars. This is expected: profit is calculated separately for each region and the two figures don't sum identically.
-          </div>
+
 
           {/* GEO charts */}
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24}}>

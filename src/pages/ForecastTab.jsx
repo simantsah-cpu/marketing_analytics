@@ -490,9 +490,6 @@ export default function ForecastTab({D,period,CUR_MONTH,targets,PC,fcVintage,fcc
           <div style={{fontWeight:700,fontSize:14,color:T.text,marginBottom:2}}>Revenue coverage</div>
           <div style={{fontSize:11.5,color:T.text3,marginBottom:14}}>Share of forecast revenue already committed · the booking curve decays with horizon</div>
           <CovChart months={months} mAgg={mAgg}/>
-          <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${T.border}`,fontSize:11.5,color:T.text3,lineHeight:1.65}}>
-            Decay with distance is expected, not a warning — the current month is nearly all booked while later months are still mostly modelled. What matters is the <em>rate</em>: a month sitting well below the curve is under-booked for its horizon.
-          </div>
         </div>
       </div>
 

@@ -674,14 +674,6 @@ export default function CustomersTab({ cust, custPrev, prevSnapDate, asAt, perio
         </div>
       )}
 
-      {/* 4.2 cross-month notice — leadership copy, no implementation language */}
-      {prevSnapDate && !sameMonth && (custPrev||[]).length > 0 && (
-        <div style={{ background:'rgba(234,179,8,.12)', border:'1px solid #EAB308', borderRadius:8, padding:'10px 14px', marginBottom:12, fontSize:12.5, color:'#78590A', lineHeight:1.6 }}>
-          Week-on-week growth is hidden because these two dates fall in different months,
-          so their month-to-date figures aren’t comparable. It returns next week.
-        </div>
-      )}
-
       {/* Filter bar */}
       <div style={{ display:'flex', alignItems:'flex-end', gap:14, flexWrap:'wrap', padding:'12px 14px', background:T.bg2, border:`1px solid ${T.border}`, borderRadius:10, marginBottom:14 }}>
         <div style={{ display:'flex', flexDirection:'column', gap:4 }}>

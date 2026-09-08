@@ -822,23 +822,6 @@ function WilsonTable({ wilsonRows }) {
   return (
     <div style={{ marginBottom: 24 }}>
 
-      {/* §3a — settling-lag banner: explains why this tab shows an older window */}
-      <div style={{
-        background: 'rgba(234,179,8,.12)', border: '1px solid #EAB308',
-        borderRadius: 8, padding: '10px 14px', marginBottom: 14,
-        fontSize: 12.5, color: '#78590A', lineHeight: 1.7,
-      }}>
-        <strong>Partner Incident Rate is reported on a one-week settling lag.</strong>{' '}
-        Complaint cases continue to be decided against us for weeks after a window closes —
-        the rate keeps climbing over time. Both 28-day columns are computed and frozen
-        {freezeTime ? <> at <strong>{freezeTime}</strong></> : ''}{' '}
-        on their reporting Monday, so they can be compared like for like.
-        {curRange && (
-          <> The current window covers {curRange.toUpperCase()}, while the rest of the
-          dashboard shows more recent data — this is intentional, not staleness.</>
-        )}
-      </div>
-
       <SectionLabel>Partner Incident Rate (Lost)</SectionLabel>
       <div style={{
         background: T.bg, borderRadius: 12, boxShadow: T.lift,
