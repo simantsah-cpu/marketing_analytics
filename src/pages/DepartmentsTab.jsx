@@ -659,16 +659,6 @@ export default function DepartmentsTab({ cust, custPrev, prevSnapDate, asAt, per
         </div>
       )}
 
-      {/* 4.2 — month boundary notice: cross-month pair suppressed */}
-      {prevSnapDate && !sameMonth && prevDepts.length > 0 && (
-        <div style={{
-          background: 'rgba(234,179,8,.12)', border: '1px solid #EAB308',
-          borderRadius: 8, padding: '10px 14px', marginBottom: 12,
-          fontSize: 12.5, color: '#78590A', lineHeight: 1.6,
-        }}>
-          {deltaLabel ?? 'Growth'} column hidden — snapshots {asAt} and {prevSnapDate} span a month boundary (MTD resets). Will show once both snapshots share the same month.
-        </div>
-      )}
 
       {/* 2 — Expand / collapse controls */}
       {hasDeptKids && (

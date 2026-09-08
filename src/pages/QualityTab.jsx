@@ -818,25 +818,6 @@ function WilsonTable({ wilsonRows }) {
   return (
     <div style={{ marginBottom: 24 }}>
 
-      {/* Settling-lag notice — freeze source is snap.quality_28d_weekly, not Wilson's sheet */}
-      <div style={{
-        background: 'rgba(234,179,8,.12)', border: '1px solid #EAB308',
-        borderRadius: 8, padding: '10px 14px', marginBottom: 14,
-        fontSize: 12.5, color: '#78590A', lineHeight: 1.7,
-      }}>
-        <strong>Partner Incident Rate is reported on a one-week settling lag.</strong>{' '}
-        Complaint cases continue to be decided against us for weeks after a window closes — the
-        rate keeps climbing over time. Both 28-day columns are computed and frozen
-        {freezeTime
-          ? <> at <strong>{freezeTime}</strong></>
-          : ''}{' '}
-        on their reporting Monday, so they can be compared like for like.
-        {curRange && (
-          <> The current window covers {curRange.toUpperCase()}, while the rest of the dashboard
-          shows more recent data — this is intentional, not staleness.</>
-        )}
-      </div>
-
       <SectionLabel>Partner Incident Rate (Lost)</SectionLabel>
       <div style={{
         background: T.bg, borderRadius: 12, boxShadow: T.lift,
@@ -916,20 +897,6 @@ function WilsonTable({ wilsonRows }) {
               ))}
             </tbody>
           </table>
-        </div>
-
-        {/* incl. open footnote — pending open-case count in snap.quality_28d_weekly */}
-        <div style={{
-          padding: '8px 16px 10px', borderTop: `1px solid ${T.border}`,
-          fontSize: 11, color: T.text3, lineHeight: 1.6,
-        }}>
-          <strong>Note:</strong> The “incl. open” ceiling (open complaints as an upper bound
-          on the lost rate) is not shown for the frozen 28-day columns. It will return once
-          an open-case count and denominator are captured at the same{' '}
-          {freezeTime ? <>{freezeTime} </> : ''}freeze in{' '}
-          <code>snap.quality_28d_weekly</code>. The YTD column is live-computed and shows
-          provisional status where applicable.
-        </div>
       </div>
     </div>
   )
