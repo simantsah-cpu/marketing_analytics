@@ -355,7 +355,7 @@ function ProductTable({MQ, months, forceOpen}){
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 8 Trend chart — dual-axis SVG (Prebooked left, Ride Hailing right)
+// 8 Trend chart — single shared axis (Prebooked + Ride Hailing)
 // ─────────────────────────────────────────────────────────────────────────────
 function TrendChart({MQ, allMonths, CUR_MONTH}){
   // Exclude the current (partial) month — it has incomplete data and misleads the trend
@@ -365,16 +365,16 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
   const pbVals=months.map(ym=>{const t=mqFor(MQ,'biz','Prebooked',[ym]);return t?t.rateLost*100:null})
   const rhVals=months.map(ym=>{const t=mqFor(MQ,'biz','Ride Hailing',[ym]);return t?t.rateLost*100:null})
 
-  const pbMax=Math.max(2,...pbVals.filter(v=>v!==null))*1.25
-  const rhMax=Math.max(2,...rhVals.filter(v=>v!==null))*1.25
+  // Single shared scale — max across both series so both lines are comparable
+  const allVals=[...pbVals,...rhVals].filter(v=>v!==null)
+  const sharedMax=Math.max(2,...allVals)*1.25
 
-  const W=1000, H=175, PL={t:14, r:44, b:26, l:44}
+  const W=1000, H=175, PL={t:14, r:20, b:26, l:44}
   const iW=W-PL.l-PL.r, iH=H-PL.t-PL.b
   const xP=i=>(months.length>1?(i/(months.length-1)):0.5)*iW
-  const pbY=v=>v===null?null:iH-(v/pbMax)*iH
-  const rhY=v=>v===null?null:iH-(v/rhMax)*iH
+  const yFn=v=>v===null?null:iH-(v/sharedMax)*iH
 
-  const makePath=(vals,yFn)=>{
+  const makePath=(vals)=>{
     let d='',first=true
     vals.forEach((v,i)=>{
       const y=yFn(v)
@@ -386,22 +386,22 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
   }
 
   const monthLbl=ym=>new Date(ym+'-02').toLocaleString('en-US',{month:'short'})
-  const tick3=(max)=>[0,max/2,max]
+  const ticks=[0, sharedMax/4, sharedMax/2, sharedMax*3/4, sharedMax]
 
   return (
     <div style={{background:T.bg,borderRadius:12,boxShadow:T.lift,border:`1px solid ${T.border}`,overflow:'hidden',marginBottom:16}}>
-      {/* Card header — uniform with table cards */}
+      {/* Card header */}
       <div style={{padding:'10px 16px 8px',borderBottom:`1px solid ${T.border}`}}>
         <div style={{fontWeight:700,fontSize:13.5,color:T.text}}>Lost rate by month</div>
         <div style={{fontSize:11.5,color:T.text3,marginTop:2,display:'flex',alignItems:'center',gap:16,flexWrap:'wrap'}}>
-          <span>Prebooked vs Ride Hailing · dual-axis · current month excluded</span>
+          <span>Prebooked vs Ride Hailing · current month excluded</span>
           <span style={{display:'inline-flex',alignItems:'center',gap:5}}>
             <span style={{width:7,height:7,borderRadius:'50%',background:T.blue,display:'inline-block'}}/>
-            <span>Prebooked (left)</span>
+            <span>Prebooked</span>
           </span>
           <span style={{display:'inline-flex',alignItems:'center',gap:5}}>
             <span style={{width:7,height:7,borderRadius:'50%',background:T.amber,display:'inline-block'}}/>
-            <span>Ride Hailing (right)</span>
+            <span>Ride Hailing</span>
           </span>
         </div>
       </div>
@@ -409,19 +409,16 @@ function TrendChart({MQ, allMonths, CUR_MONTH}){
         <svg viewBox={`0 0 ${W} ${H}`} style={{width:'100%',height:'auto',display:'block',
           fontFamily:"'Inter', system-ui, -apple-system, sans-serif"}}>
           <g transform={`translate(${PL.l},${PL.t})`}>
-            {tick3(iH).map((y,i)=>(
-              <line key={i} x1={0} y1={y} x2={iW} y2={y} stroke={T.border} strokeWidth={0.8} strokeDasharray="3 3"/>
+            {ticks.map((v,i)=>(
+              <line key={i} x1={0} y1={yFn(v)} x2={iW} y2={yFn(v)} stroke={T.border} strokeWidth={0.8} strokeDasharray="3 3"/>
             ))}
-            {tick3(pbMax).map((v,i)=>(
-              <text key={i} x={-8} y={pbY(v)+3} textAnchor='end' fontSize={8.5} fontWeight="400" fill={T.text3}>{v.toFixed(1)}%</text>
+            {ticks.map((v,i)=>(
+              <text key={i} x={-8} y={yFn(v)+3} textAnchor='end' fontSize={8.5} fontWeight="400" fill={T.text3}>{v.toFixed(1)}%</text>
             ))}
-            {tick3(rhMax).map((v,i)=>(
-              <text key={i} x={iW+8} y={rhY(v)+3} textAnchor='start' fontSize={8.5} fontWeight="400" fill={T.text3}>{v.toFixed(1)}%</text>
-            ))}
-            <path d={makePath(pbVals,pbY)} fill='none' stroke={T.blue} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
-            <path d={makePath(rhVals,rhY)} fill='none' stroke={T.amber} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
-            {pbVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={pbY(v)} r={3} fill={T.blue} stroke="#ffffff" strokeWidth={1}/>)}
-            {rhVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={rhY(v)} r={3} fill={T.amber} stroke="#ffffff" strokeWidth={1}/>)}
+            <path d={makePath(pbVals)} fill='none' stroke={T.blue}  strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
+            <path d={makePath(rhVals)} fill='none' stroke={T.amber} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
+            {pbVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={yFn(v)} r={3} fill={T.blue}  stroke="#ffffff" strokeWidth={1}/>)}
+            {rhVals.map((v,i)=>v!==null&&<circle key={i} cx={xP(i)} cy={yFn(v)} r={3} fill={T.amber} stroke="#ffffff" strokeWidth={1}/>)}
             {months.map((ym,i)=>(
               <text key={i} x={xP(i)} y={iH+18} textAnchor='middle' fontSize={8.5} fontWeight="400" fill={T.text3}>{monthLbl(ym)}</text>
             ))}
