@@ -656,9 +656,10 @@ function CohortDrillPanel({ cell, data, loading, tab, onTabChange, onClose, onAp
   const filtered = tab === 'ALL' ? roster : roster.filter(r => r.status === tab)
 
   const doExport = () => {
-    const cols = ['Account', 'Customer', 'Owner', 'Partner', 'Status', 'Last Booked', 'Days Quiet', 'Trips', 'GMV', 'Profit']
+    const cols = ['Account', 'Second Species Name', 'Customer', 'EAM Manager', 'EAM Manager Email', 'Partner', 'Status', 'Last Booked', 'Days Quiet', 'Trips', 'GMV', 'Profit']
     const rows = filtered.map(r => [
-      r.account_label, r.customer_name, r.owner, r.partner, r.status,
+      r.account_label, r.secondary_species_name ?? '', r.customer_name ?? '',
+      r.eam_manager ?? '', r.eam_manager_email ?? '', r.partner ?? '', r.status,
       r.last_booked ?? '', r.days_quiet ?? '', r.trips, r.gmv, r.profit,
     ])
     const csv = [cols, ...rows]
@@ -686,10 +687,10 @@ function CohortDrillPanel({ cell, data, loading, tab, onTabChange, onClose, onAp
 
       {/* Panel */}
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 560, zIndex: 901,
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 700, zIndex: 901,
         background: '#fff', boxShadow: '-4px 0 32px rgba(0,0,0,.14)',
         display: 'flex', flexDirection: 'column',
-        fontFamily: '"DM Sans",-apple-system,BlinkMacSystemFont,sans-serif',
+        fontFamily: '"DM Sans",-apple-system,BlinkMacSystemFont,"Noto Sans CJK SC","Microsoft YaHei",sans-serif',
       }}>
         {/* Header */}
         <div style={{ padding: '18px 20px 14px', borderBottom: `1px solid ${T.border}`, background: T.bg2 }}>
@@ -771,13 +772,14 @@ function CohortDrillPanel({ cell, data, loading, tab, onTabChange, onClose, onAp
               <thead style={{ position: 'sticky', top: 0, background: T.bg2, zIndex: 1 }}>
                 <tr>
                   {[
-                    { h: 'Account',     align: 'left' },
-                    { h: 'Owner',       align: 'left' },
-                    { h: 'Status',      align: 'right' },
-                    { h: 'Last booked', align: 'right' },
-                    { h: 'Quiet',       align: 'right' },
-                    { h: 'GMV',         align: 'right' },
-                    { h: 'Profit',      align: 'right' },
+                    { h: 'Account',             align: 'left'  },
+                    { h: 'Second Species Name',  align: 'left'  },
+                    { h: 'EAM Manager',          align: 'left'  },
+                    { h: 'Status',               align: 'right' },
+                    { h: 'Last booked',          align: 'right' },
+                    { h: 'Quiet',                align: 'right' },
+                    { h: 'GMV',                  align: 'right' },
+                    { h: 'Profit',               align: 'right' },
                   ].map(({ h, align }) => (
                     <th key={h} style={{
                       padding: '8px 10px', textAlign: align,
@@ -794,17 +796,29 @@ function CohortDrillPanel({ cell, data, loading, tab, onTabChange, onClose, onAp
                     style={{ background: i % 2 === 0 ? '#fff' : T.bg2 }}
                     onMouseEnter={e => { e.currentTarget.style.background = T.blueBg }}
                     onMouseLeave={e => { e.currentTarget.style.background = i % 2 === 0 ? '#fff' : T.bg2 }}>
+                    {/* Account — group label (customer_name hierarchy) */}
                     <td style={{
                       padding: '9px 10px', fontWeight: 600, color: T.navy,
-                      maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }} title={`${row.account_label}\n${row.customer_name ?? ''} · ${row.partner ?? ''}`}>
                       {row.account_label}
                     </td>
+                    {/* Second Species Name — actual business name; widest column; CJK-safe */}
                     <td style={{
-                      padding: '9px 10px', color: T.text3, fontSize: 11,
-                      maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      padding: '9px 10px', color: T.text, fontSize: 11.5,
+                      maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }} title={row.secondary_species_name ?? ''}>
+                      {row.secondary_species_name ?? <span style={{ color: T.text3 }}>—</span>}
+                    </td>
+                    {/* EAM Manager — display name derived from PJM_Manager email; null = unassigned */}
+                    <td style={{
+                      padding: '9px 10px', color: row.eam_manager ? T.text3 : T.text3, fontSize: 11,
+                      maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
-                      {row.owner ?? '—'}
+                      {row.eam_manager
+                        ? <a href={`mailto:${row.eam_manager_email}`}
+                            style={{ color: T.blue, textDecoration: 'none' }}>{row.eam_manager}</a>
+                        : <span style={{ color: T.text3 }}>—</span>}
                     </td>
                     <td style={{ padding: '9px 10px', textAlign: 'right' }}>
                       <span style={{

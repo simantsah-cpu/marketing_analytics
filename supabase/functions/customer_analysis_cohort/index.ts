@@ -97,7 +97,8 @@ params AS (
 ),
 
 -- Same scan pattern as customer_analysis main function.
--- account_label = customer_name from dim (fallback: raw fleet_id). owner = NULL (department not in current schema).
+-- secondary_species_name: actual business name (~1:1 with fleet_id).
+-- PJM_Manager: stored as email; display name extracted for UI — never show "PJM" to users.
 scope AS (
   SELECT
     v.ride_id, v.trip_no, v.pickup_date,
@@ -106,7 +107,11 @@ scope AS (
     v.has_complaint, v.has_ops_complaint,
     d.customer_name,
     COALESCE(d.customer_name, CAST(v.from_fleet_id_as_customer AS STRING)) AS account_label,
+    d.secondary_species_name,
     COALESCE(d.partner, '(unmapped)')                        AS partner,
+    d.customer_type, d.existing_partner,
+    d.lost_check, d.lossing_check,
+    NULLIF(d.PJM_Manager, '')                               AS eam_manager_email,
     CAST(IFNULL(v.elife_amount_usd, 0) AS FLOAT64)
       + CAST(IFNULL(v.additional_charge_amount_usd, 0) AS FLOAT64) AS gmv,
     CAST(IFNULL(v.dispatch_amount_net_usd, 0) AS FLOAT64)          AS cost
@@ -135,15 +140,12 @@ acct_monthly AS (
   GROUP BY 1, 2
 ),
 
--- Pre-window base roster: accounts with first trip before window start
--- that were active in the anchor month (same definition as main function fix).
 pre_base_roster AS (
   SELECT DISTINCT a.fleet_id
   FROM acct_monthly a JOIN fleet_first f USING (fleet_id), params p
   WHERE a.am = p.win_start_month AND f.first_month < p.win_start_month
 ),
 
--- Cohort roster: accounts that belong to this cohort at +0
 cohort_roster AS (
   SELECT DISTINCT fleet_id FROM (
     SELECT f.fleet_id
@@ -156,19 +158,16 @@ cohort_roster AS (
   )
 ),
 
--- Anchor month for this cohort
 cohort_anchor AS (
   SELECT IF(@cohort = '__PRE__', p.win_start_month,
     DATE_TRUNC(DATE(CONCAT(@cohort, '-01')), MONTH)) AS anchor
   FROM params p LIMIT 1
 ),
 
--- Target month = anchor + mi
 target_month AS (
   SELECT DATE_ADD(anchor, INTERVAL @mi MONTH) AS target_m FROM cohort_anchor
 ),
 
--- Active at +N: roster members who had a trip in the target month
 active_at_n AS (
   SELECT DISTINCT a.fleet_id
   FROM acct_monthly a, target_month
@@ -176,19 +175,25 @@ active_at_n AS (
     AND a.fleet_id IN (SELECT fleet_id FROM cohort_roster)
 ),
 
--- Per-account labels — customer_name is the primary label
+-- Per-account dimension labels (ANY_VALUE safe — all are dim attributes, constant per fleet_id)
 account_labels AS (
   SELECT
     fleet_id,
-    ANY_VALUE(customer_name)  AS customer_name,
-    ANY_VALUE(account_label)  AS account_label,
-    ANY_VALUE(partner)        AS partner
+    ANY_VALUE(customer_name)        AS customer_name,
+    ANY_VALUE(account_label)        AS account_label,
+    ANY_VALUE(secondary_species_name) AS secondary_species_name,
+    ANY_VALUE(partner)              AS partner,
+    ANY_VALUE(customer_type)        AS customer_type,
+    MAX(existing_partner)           AS existing_partner,
+    ANY_VALUE(lost_check)           AS lost_check,
+    ANY_VALUE(lossing_check)        AS lossing_check,
+    ANY_VALUE(eam_manager_email)    AS eam_manager_email
   FROM scope
   WHERE fleet_id IN (SELECT fleet_id FROM cohort_roster)
   GROUP BY fleet_id
 ),
 
--- Per-account in-window metrics
+-- Per-account in-window metrics (do NOT use ANY_VALUE on gmv/cost)
 account_metrics AS (
   SELECT
     fleet_id,
@@ -202,19 +207,26 @@ account_metrics AS (
   GROUP BY fleet_id
 ),
 
--- Full roster with status
+-- Full roster with status and all new dimension fields
 roster AS (
   SELECT
     r.fleet_id,
     COALESCE(l.account_label, CAST(r.fleet_id AS STRING)) AS account_label,
     l.customer_name,
-    NULL                   AS owner,
+    l.secondary_species_name,
     l.partner,
+    l.customer_type,
+    l.existing_partner,
+    l.lost_check,
+    l.lossing_check,
+    l.eam_manager_email,
+    -- PJM_Manager → display name: necla@elifetransfer.com → "Necla"; sara.ramos@ → "Sara Ramos"
+    INITCAP(REPLACE(REGEXP_EXTRACT(l.eam_manager_email, r'^[^@]+'), '.', ' ')) AS eam_manager,
     IF(a.fleet_id IS NOT NULL, 'ACTIVE', 'LOST') AS status,
     m.last_booked,
     IF(m.last_booked IS NOT NULL,
        DATE_DIFF(p.win_end, m.last_booked, DAY), NULL) AS days_quiet,
-    COALESCE(m.trips,  0) AS trips,
+    COALESCE(m.trips,  0)   AS trips,
     COALESCE(m.gmv,    0.0) AS gmv,
     COALESCE(m.profit, 0.0) AS profit
   FROM cohort_roster r
@@ -236,8 +248,7 @@ summary AS (
   FROM roster
 ),
 
--- Re-aggregated Partner Profitability for cohort fleet_ids only.
--- This is what populates the cross-filter in the UI.
+-- Re-aggregated Partner Profitability for cohort fleet_ids only (cross-filter source).
 cohort_partners AS (
   SELECT TO_JSON_STRING(ARRAY_AGG(STRUCT(
     customer_name, partner, accounts, service_trips, service_rides,
@@ -270,7 +281,9 @@ cohort_partners AS (
 SELECT
   (SELECT j FROM summary) AS summary,
   TO_JSON_STRING(ARRAY_AGG(STRUCT(
-    fleet_id, account_label, customer_name, owner, partner,
+    fleet_id, account_label, customer_name, secondary_species_name,
+    partner, eam_manager, eam_manager_email,
+    customer_type, existing_partner, lost_check, lossing_check,
     status, last_booked, days_quiet, trips, gmv, profit
   ) ORDER BY gmv DESC)) AS roster,
   (SELECT j FROM cohort_partners) AS cohort_partners

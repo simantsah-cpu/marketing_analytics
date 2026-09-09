@@ -198,8 +198,15 @@ scope AS (
     v.ride_id, v.trip_no, v.pickup_date,
     v.from_fleet_id_as_customer                        AS fleet_id,
     d.customer_name,
+    d.secondary_species_name,                          -- actual business name (~1:1 with fleet_id)
     COALESCE(d.partner, '(unmapped)')                  AS partner,
     d.customer_type, d.existing_partner,
+    -- PJM_Manager stored as email; extract display name for UI (never show "PJM" to users)
+    NULLIF(d.PJM_Manager, '')                          AS eam_manager_email,
+    INITCAP(REPLACE(REGEXP_EXTRACT(NULLIF(d.PJM_Manager, ''), r'^[^@]+'), '.', ' '))
+                                                       AS eam_manager,
+    d.lost_check,
+    d.lossing_check,
     v.passenger_id, v.ride_stat, v.dispatch_stat,
     v.has_complaint, v.has_ops_complaint,
     CAST(IFNULL(v.elife_amount_usd, 0)                 AS FLOAT64)
