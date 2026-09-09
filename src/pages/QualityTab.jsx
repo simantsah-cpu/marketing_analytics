@@ -979,12 +979,6 @@ export default function QualityTab({D, period, CUR_MONTH, PM}){
 
 
 
-          {/* ── 8 KPI Tiles — two tiles, NEVER combined (0.7) ── */}
-          <SectionLabel>Headline Metrics</SectionLabel>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16,marginBottom:24,flexWrap:'wrap'}}>
-            <BizTile label="Prebooked"    t={pbCur} base={pbBase} accentColor={T.blue}/>
-            <BizTile label="Ride Hailing" t={rhCur} base={rhBase} accentColor={T.amber}/>
-          </div>
 
           {/* ── Trend chart ── */}
           <SectionLabel>Trend</SectionLabel>
