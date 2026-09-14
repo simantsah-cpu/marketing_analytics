@@ -239,7 +239,7 @@ function SearchTiles({ cur, prev, wowLbl }){
   return (
     <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
       <Tile label="Requests" val={cc.requests} priorVal={pc.requests}
-        sub="by pickup date — not search date" />
+        sub="by search date · all fleets" />
       <Tile label="Quotes" val={cc.quotes} priorVal={pc.quotes}
         sub={cc.quote_rate !== null ? `Quote rate ${safePct(cc.quote_rate)}` : null} />
       <Tile label="Failed Quotes" val={cc.failed_quotes} priorVal={pc.failed_quotes}
@@ -544,7 +544,7 @@ export default function RideHailingTab({ D }){
       </div>
 
       {/* Demand — company-level, not scope-filtered */}
-      <SL>Demand — Search Metrics (pickup-date basis · company level)</SL>
+      <SL>Demand — Search Metrics (search-date basis · company level)</SL>
       <SearchTiles cur={cur} prev={prev} wowLbl={wowLbl} />
 
       {/* Trip volume */}

@@ -932,9 +932,11 @@ GROUP BY 1,2,3,4
 // 2:  partner_name LIKE '%Ride Hailing%' (case-sensitive, 4.3)
 // 2.1: completed excludes ride_stat='Cancelled' even at dispatch_stat='At destination'
 // 2.2: per-row rounding before SUM (matches Power BI)
-// 2.3: failed_quotes added (by_pickup_date basis)
+// 2.3: failed_quotes on search-date basis (consistent with Requests/Quotes)
 // 3:  dim.dim_service_area for Japan/Global — cannot fan out (1,558 rows, all distinct)
-// 4.1: by_pickup_date — NOT by_search_date (10.9× wrong)
+// 4.1: Requests/Quotes/FailedQuotes use by_search_date columns from ads_ride_hailing_search_ride_summary
+//      INNER JOIN dim_service_area matches Power BI's implicit model relationship (removes unmapped rows)
+//      No fleet filter on demand metrics — matches PBI 'All' on Customer Name
 // 4.2: BETWEEN window excludes 2099-12-31 sentinel automatically
 // 4.3: case-sensitive LIKE — 13 Tujing rows excluded, matches snapshot/Power BI basis
 // Long format: 26 rows for 2 periods × (2 scopes × 5 metrics + 1 company × 3 metrics)
@@ -974,11 +976,13 @@ disp_agg AS (
 ),
 srch AS (
   SELECT win.period, win.week_key, win.s, win.e,
-    SUM(t.request_number_by_pickup_date)      AS requests,
-    SUM(t.quote_number_by_pickup_date)        AS quotes,
-    SUM(t.failed_quote_number_by_pickup_date) AS failed_quotes
-  FROM \`elife-data-warehouse-prod.ads.ads_ride_hailing_search_ride_summary\` t
-  JOIN win ON t.date_calculate BETWEEN win.s AND win.e
+    SUM(rh.request_number_by_search_date)      AS requests,
+    SUM(rh.quote_number_by_search_date)        AS quotes,
+    SUM(rh.failed_quote_number_by_search_date) AS failed_quotes
+  FROM \`elife-data-warehouse-prod.ads.ads_ride_hailing_search_ride_summary\` rh
+  INNER JOIN \`elife-data-warehouse-prod.dim.dim_service_area\` sa
+    ON rh.service_area_id = sa.id
+  JOIN win ON rh.date_calculate BETWEEN win.s AND win.e
   GROUP BY 1,2,3,4
 )
 SELECT period, week_key, week_start, week_end, grain, dim, metric, value FROM (
