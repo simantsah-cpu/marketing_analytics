@@ -1,6 +1,6 @@
 /**
  * RideHailingTab.jsx — Weekly, live sources via makeQRH
- * Global and Japan are disjoint scopes — never summed.
+ * 'All' headline = Global + Japan summed; breakdown still shown in DispatchTable.
  * rh_sales_trips not rendered — broken since 2026-07-11.
  */
 
@@ -152,6 +152,30 @@ function parseRH(rows){
   }
 }
 
+// Sum Global + Japan additive fields; recompute derived rates from combined counts.
+// Used when scope === 'All' so the headline equals Power BI's company total.
+function sumScopes(g, j) {
+  if (!g || !j) return g || j || null
+  const service   = (g.service_trips   ?? 0) + (j.service_trips   ?? 0)
+  const completed = (g.completed_trips ?? 0) + (j.completed_trips ?? 0)
+  const cancelled = (g.cancelled_trips ?? 0) + (j.cancelled_trips ?? 0)
+  const revenue   = (g.revenue_usd  ?? 0) + (j.revenue_usd  ?? 0)
+  const cost      = (g.cost_usd     ?? 0) + (j.cost_usd     ?? 0)
+  const margin    = revenue - cost
+  return {
+    service_trips:     service,
+    completed_trips:   completed,
+    cancelled_trips:   cancelled,
+    revenue_usd:       revenue,
+    cost_usd:          cost,
+    margin_usd:        margin,
+    completion_rate:   service > 0 ? safeDiv(completed, service) : null,
+    cancel_rate:       service > 0 ? safeDiv(cancelled, service) : null,
+    gross_margin:      revenue > 0 ? safeDiv(margin, revenue)    : null,
+    rev_per_completed: completed > 0 ? safeDiv(revenue, completed) : null,
+  }
+}
+
 // WoW label
 function wowLabel(prevMeta, curMeta){
   if (!prevMeta || !curMeta) return null
@@ -229,12 +253,15 @@ function KpiStrip({ cur, prev, wowLbl, scope }){
   const g = cur.global, j = cur.japan
   const pg = prev?.global, pj = prev?.japan
 
-  // Global+Japan are disjoint — 'All' shows both rows, never sums them
+  // 'All' headline = Global + Japan summed (matches RP0080 company total)
+  const combined  = sumScopes(g, j)
+  const pcombined = sumScopes(pg, pj)
+
   const scopes = scope === 'All'
-    ? [{ key:'Global', data:g, pData:pg }, { key:'Japan', data:j, pData:pj }]
+    ? [{ key: 'All', data: combined, pData: pcombined }]
     : scope === 'Global'
-      ? [{ key:'Global', data:g, pData:pg }]
-      : [{ key:'Japan', data:j, pData:pj }]
+      ? [{ key: 'Global', data: g, pData: pg }]
+      : [{ key: 'Japan',  data: j, pData: pj }]
 
   function Tile({ label, metricKey, fmtFn, invert, subFn }){
     return (
@@ -254,8 +281,8 @@ function KpiStrip({ cur, prev, wowLbl, scope }){
               ...(i > 0 ? { borderTop: `1px solid ${T.border}`, paddingTop: 8, marginTop: 8 } : {})
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                {scope === 'All' && <ScopeTag scope={key} small />}
-                <span style={{ fontSize: scope === 'All' ? 20 : 26, fontWeight: 700, color: T.text }}>
+                {scope !== 'All' && <ScopeTag scope={key} small />}
+                <span style={{ fontSize: 26, fontWeight: 700, color: T.text }}>
                   <Val v={vFmt} />
                 </span>
                 {w && <span style={{ fontSize: 11, fontWeight: 600, color: w.col }}>{w.str}</span>}
@@ -273,11 +300,11 @@ function KpiStrip({ cur, prev, wowLbl, scope }){
 
   return (
     <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 18 }}>
-      <Tile label="Service Trips" metricKey="service_trips" fmtFn={fmt} invert={false} />
+      <Tile label="Service Trips"  metricKey="service_trips"  fmtFn={fmt} invert={false} />
       <Tile label="Completed Trips" metricKey="completed_trips" fmtFn={fmt} invert={false}
         subFn={(s, v) => (s === 'Japan' && v === 0) ? '0 is genuine — every trip was cancelled' : null} />
-      <Tile label="Cancelled" metricKey="cancelled_trips" fmtFn={fmt} invert={true} />
-      <Tile label="Revenue (USD)" metricKey="revenue_usd" fmtFn={usdK} invert={false}
+      <Tile label="Cancelled"      metricKey="cancelled_trips" fmtFn={fmt} invert={true} />
+      <Tile label="Revenue (USD)"  metricKey="revenue_usd"    fmtFn={usdK} invert={false}
         subFn={(s) => s === 'Japan' ? '$0 — all trips cancelled' : null} />
     </div>
   )
@@ -288,11 +315,15 @@ function EconStrip({ cur, prev, wowLbl, scope }){
   const g = cur.global, j = cur.japan
   const pg = prev?.global, pj = prev?.japan
 
+  // 'All' headline = Global + Japan summed (rates recomputed from combined counts)
+  const combined  = sumScopes(g, j)
+  const pcombined = sumScopes(pg, pj)
+
   const scopes = scope === 'All'
-    ? [{ key:'Global', data:g, pData:pg }, { key:'Japan', data:j, pData:pj }]
+    ? [{ key: 'All', data: combined, pData: pcombined }]
     : scope === 'Global'
-      ? [{ key:'Global', data:g, pData:pg }]
-      : [{ key:'Japan', data:j, pData:pj }]
+      ? [{ key: 'Global', data: g, pData: pg }]
+      : [{ key: 'Japan',  data: j, pData: pj }]
 
   function Tile({ label, metricKey, fmtFn, invert, subFn }){
     return (
@@ -312,8 +343,8 @@ function EconStrip({ cur, prev, wowLbl, scope }){
               ...(i > 0 ? { borderTop: `1px solid ${T.border}`, paddingTop: 8, marginTop: 8 } : {})
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                {scope === 'All' && <ScopeTag scope={key} small />}
-                <span style={{ fontSize: scope === 'All' ? 20 : 26, fontWeight: 700, color: T.text }}>
+                {scope !== 'All' && <ScopeTag scope={key} small />}
+                <span style={{ fontSize: 26, fontWeight: 700, color: T.text }}>
                   <Val v={vFmt} />
                 </span>
                 {w && <span style={{ fontSize: 11, fontWeight: 600, color: w.col }}>{w.str}</span>}
@@ -397,7 +428,7 @@ function DispatchTable({ cur, prev, wowLbl }){
     <div style={CARD}>
       <div style={{ padding: '8px 14px 7px', borderBottom: `1px solid ${T.border}`, background: T.bg2 }}>
         <span style={{ fontSize: 11, color: T.text3 }}>
-          Global and Japan are disjoint subsets — never summed
+          Global and Japan breakdown
           {hasWow && <> · {wowLbl}</>}
         </span>
       </div>
@@ -432,7 +463,7 @@ export default function RideHailingTab({ D }){
   const data = useMemo(() => parseRH(rhRows), [rhRows])
   const { cur, prev } = data
 
-  // Scope toggle — 'All' shows both rows side-by-side, never sums Global+Japan
+  // Scope toggle — 'All' sums Global + Japan into a single headline figure
   const [scope, setScope] = useState('All')
 
   const hasData = rhRows.length > 0 && cur.meta !== null
@@ -509,7 +540,6 @@ export default function RideHailingTab({ D }){
           {(scope === 'Global' || scope === 'All') && <><ScopeTag scope="Global" /><span>all regions except Japan</span></>}
           {scope === 'All' && <span style={{ color: T.border2 }}>·</span>}
           {(scope === 'Japan'  || scope === 'All') && <><ScopeTag scope="Japan" /><span>Japan service areas only</span></>}
-          {scope === 'All' && <><span style={{ color: T.border2 }}>·</span><span>disjoint — never summed</span></>}
         </div>
       </div>
 
