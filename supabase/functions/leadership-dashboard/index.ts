@@ -512,20 +512,20 @@ FROM u
 }
 
 // 1.3 Q_FC — geo-level forward-booking forecast
-// model_version MUST be "fwd_v2" (1.3).
+// model_version MUST be "fwd_v4" (switched from fwd_v2 on 2026-09-28 per Wilson).
 //
 // 2 LATENT BUG FIX — resolve the vintage on the version you are using.
 // The old code: SELECT MAX(forecast_date) WHERE forecast_date <= as_at
 // resolves across ALL versions. On Monday between 02:00–07:18, fwd_v1 exists
-// for that Monday but fwd_v2 does not — so MAX returns today, and the
-// WHERE fwd_v2 filter matches zero rows. Panel goes blank.
+// for that Monday but fwd_v4 does not — so MAX returns today, and the
+// WHERE fwd_v4 filter matches zero rows. Panel goes blank.
 //
-// The fix: resolve MAX within model_version='fwd_v2' only.
-// If this Monday's fwd_v2 has not landed, falls back to last Monday's —
+// The fix: resolve MAX within model_version='fwd_v4' only.
+// If this Monday's fwd_v4 has not landed, falls back to last Monday's —
 // one week stale but complete and coherent, strictly better than blank.
 // Same pattern applied to Q_FCC (fwd_cust_v1).
 function makeQFC(snapFilter: string | null): string {
-  // Vintage guard: resolve on fwd_v2 specifically. Never on all versions.
+  // Vintage guard: resolve on fwd_v4 specifically. Never on all versions.
   const vintageGuard = (USE_SNAP && snapFilter !== null)
     ? `AND forecast_date <= ${snapFilter}`
     : ''
@@ -533,7 +533,7 @@ function makeQFC(snapFilter: string | null): string {
 WITH mx AS (
   SELECT MAX(forecast_date) AS fd
   FROM \`elife-data-warehouse-prod.ads.ads_forward_booking_forecast\`
-  WHERE model_version = "fwd_v2"
+  WHERE model_version = "fwd_v4"
   ${vintageGuard}
 )
 SELECT
@@ -550,7 +550,7 @@ SELECT
   CAST(ROUND(f.pro_blended_hi,0) AS FLOAT64) AS pro_hi,
   f.blend_note AS note
 FROM \`elife-data-warehouse-prod.ads.ads_forward_booking_forecast\` f, mx
-WHERE f.model_version = "fwd_v2" AND f.forecast_date = mx.fd
+WHERE f.model_version = "fwd_v4" AND f.forecast_date = mx.fd
 `
 }
 
