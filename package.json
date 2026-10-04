@@ -10,7 +10,9 @@
     "deploy:da": "supabase functions deploy destination-analysis --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
     "deploy:da-new": "supabase functions deploy destination-analysis-new --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
     "deploy:leadership": "supabase functions deploy leadership-dashboard --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
-    "deploy:customer": "supabase functions deploy customer_analysis --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt"
+    "deploy:customer": "supabase functions deploy customer_analysis --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
+    "deploy:profitability": "supabase functions deploy profitability --project-ref fpwgnceigulqonjdzfbo",
+    "test:profitability": "deno test --allow-read tests/profitability"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

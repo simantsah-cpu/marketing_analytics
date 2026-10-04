@@ -35,6 +35,17 @@ const LEADERSHIP_NAV_ITEMS = [
 
 const DEST_NAV_ITEMS = []
 
+// Profitability sidebar — one item per built page (each later page adds its own).
+// Icons: 24px grid, outline; styled by .pf-nav-item in profitability.css.
+const PROFITABILITY_NAV_ITEMS = [
+  { to: '/profitability/executive-summary', label: 'Executive Summary', icon: <path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/> },
+  { to: '/profitability/countries',         label: 'Countries',         icon: <><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 3.5 5.4 3.5 8.5s-1 5.9-3.5 8.5c-2.5-2.6-3.5-5.4-3.5-8.5s1-5.9 3.5-8.5z"/></> },
+  { to: '/profitability/cities',            label: 'Cities',            icon: <path d="M4 20V9l5-3v14M9 20V4l7 3v13M16 20v-9l4 2v7M3 20h18"/> },
+  { to: '/profitability/routes',            label: 'Routes',            icon: <><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/></> },
+  // Orbit's Leadership "Customers" person icon (16×16 grid; stroke scaled to match 1.7 at 24px).
+  { to: '/profitability/customers',         label: 'Customers',         viewBox: '0 0 16 16', strokeWidth: 1.13, icon: <path d="M3 13c0-2.2 1.8-4 4-4s4 1.8 4 4M7 7a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM11 9c1.5 0 3 1.2 3 3M11 3.5a2.5 2.5 0 0 1 0 5"/> },
+]
+
 // Sub-nav tabs for Destination Analysis New — shown in sidebar when on that route
 const DEST_NEW_TABS = [
   { index: 0, label: 'Network Pulse',        icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><path d="M1 10 L4 6 L7 9 L10 4 L13 7 L15 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/><circle cx="15" cy="5" r="1.2" fill="currentColor"/></svg> },
@@ -48,6 +59,14 @@ const DEST_NEW_TABS = [
   { index: 8, label: 'Data & Method',        icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" opacity=".6"/><line x1="8" y1="7" x2="8" y2="11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><circle cx="8" cy="5" r="1" fill="currentColor"/></svg> },
 ]
 
+// Query parameters shared by every Profitability page.
+function carrySearch(search) {
+  const from = new URLSearchParams(search), to = new URLSearchParams()
+  for (const k of ['period', 'as_of', 'region', 'country', 'product']) if (from.get(k)) to.set(k, from.get(k))
+  const q = to.toString()
+  return q ? `?${q}` : ''
+}
+
 export default function Sidebar() {
   const { user, signOut } = useAuth()
   const location = useLocation()
@@ -56,6 +75,7 @@ export default function Sidebar() {
   const isLeadership   = location.pathname.startsWith('/leadership')
   const isDestAnalysis = location.pathname.startsWith('/destination-analysis') && location.pathname !== '/destination-analysis-new'
   const isDestNew      = location.pathname === '/destination-analysis-new'
+  const isProfitability = location.pathname.startsWith('/profitability')
   const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : isDestNew ? [] : navItemsFallback(isLeadership, AFFILIATE_NAV_ITEMS)
 
   function navItemsFallback(isLead, items) { return items }
@@ -77,9 +97,22 @@ export default function Sidebar() {
 
       </div>
 
-      <nav className="sidebar-nav">
-        {!isDestNew && <div className="nav-label">{isReport109 ? 'Report — 109' : isLeadership ? 'Leadership' : 'Dashboard'}</div>}
-        {isLeadership ? (
+      <nav className="sidebar-nav" aria-label={isProfitability ? 'Profitability' : undefined}>
+        {!isDestNew && <div className="nav-label">{isReport109 ? 'Report — 109' : isLeadership ? 'Leadership' : isProfitability ? 'Profitability' : 'Dashboard'}</div>}
+        {isProfitability ? (
+          <div className="pf-nav-list">
+            {PROFITABILITY_NAV_ITEMS.map(item => (
+              // Links (not buttons) so middle-click / new tab work; NavLink sets aria-current="page"
+              // from the route. period, as_of, region, country and product carry across pages (on
+              // Countries ?country= is the selected country; elsewhere it filters). ?city=, ?route=,
+              // ?customer=, ?team= and ?ctype= are page-local and do not carry.
+              <NavLink key={item.to} to={{ pathname: item.to, search: carrySearch(location.search) }} className="pf-nav-item">
+                <svg viewBox={item.viewBox ?? '0 0 24 24'} style={item.strokeWidth ? { strokeWidth: item.strokeWidth } : undefined} aria-hidden="true">{item.icon}</svg>
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        ) : isLeadership ? (
           LEADERSHIP_NAV_ITEMS.map(tab => {
             const isActive = activeTabIndex === tab.index
             return (
@@ -116,7 +149,7 @@ export default function Sidebar() {
           ))
         )}
 
-        {!isDestNew && !isLeadership && (
+        {!isDestNew && !isLeadership && !isProfitability && (
           <NavLink
             to="/glossary"
             className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
@@ -165,7 +198,7 @@ export default function Sidebar() {
 
 
       {/* Logout / User section */}
-      <div style={{
+      <div className="sidebar-footer" style={{
         padding: '12px 16px',
         borderTop: '1px solid var(--border)',
         marginTop: 'auto',
