@@ -1,296 +1,398 @@
-/* Profitability dashboard — scoped under .pf so nothing leaks into other Orbit pages.
-   Values are the measured Leadership-screenshot targets from the Profitability brief. */
-/* Montserrat is loaded in index.html (an @import here would land mid-bundle and be ignored). */
+/* Profitability dashboard — design tokens match CustomerAnalytics exactly.
+   Scoped under .pf so nothing leaks into other Orbit pages. */
 
+/* ── Design tokens (mirror of CustomerAnalytics T object) ───────────────── */
 .pf {
-  --pf-font: 'Montserrat', 'DM Sans', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
-  --pf-chart-font: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  --pf-bg: #F5F6F8;
-  --pf-panel: #FFFFFF;
-  --pf-border: #E3E6EB;
-  --pf-ink: #1B2433;
-  --pf-muted: #5F6B7A;
-  --pf-soft: #EEF1F5;
-  --pf-primary: #2D5BA6;
-  --pf-pos: #3C9A6A;
-  --pf-neg: #D64545;
-  --pf-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+  --pf-font:       'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --pf-chart-font: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
+  /* Backgrounds */
+  --pf-bg:         #ffffff;   /* T.bg */
+  --pf-bg2:        #F8FAFC;   /* T.bg2 */
+  --pf-bg3:        #F1F5F9;   /* T.bg3 */
+  --pf-bg4:        #E2EAF0;   /* T.bg4 */
+  --pf-panel:      #ffffff;
+
+  /* Text */
+  --pf-ink:        #1A2B3C;   /* T.text */
+  --pf-text2:      #374151;   /* T.text2 */
+  --pf-muted:      #64748B;   /* T.text3 */
+  --pf-navy:       #1e3a5f;   /* T.navy */
+
+  /* Borders */
+  --pf-border:     #E2EAF0;   /* T.border */
+  --pf-border2:    #CBD5E1;   /* T.border2 */
+
+  /* Accent colours */
+  --pf-primary:    #185FA5;   /* T.blue */
+  --pf-pos:        #1D9E75;   /* T.green */
+  --pf-neg:        #E24B4A;   /* T.red */
+  --pf-amber:      #D97706;   /* T.amber */
+  --pf-purple:     #7F77DD;   /* T.purple */
+  --pf-coral:      #D85A30;   /* T.coral */
+  --pf-teal:       #0E8E8E;   /* T.teal */
+
+  /* Tinted backgrounds */
+  --pf-green-bg:   rgba(29,158,117,.10);
+  --pf-blue-bg:    rgba(24,95,165,.09);
+  --pf-amber-bg:   rgba(217,119,6,.12);
+  --pf-red-bg:     rgba(226,75,74,.09);
+
+  /* Shadows */
+  --pf-shadow:     0 1px 3px rgba(0,0,0,.04), 0 4px 12px rgba(0,0,0,.06);   /* T.lift */
+  --pf-shadow2:    0 2px 8px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.08);   /* T.lift2 */
+
+  /* Page */
   min-height: 100%;
-  background: var(--pf-bg);
+  background: var(--pf-bg2);
   color: var(--pf-ink);
   font-family: var(--pf-font);
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
 .pf *, .pf *::before, .pf *::after { box-sizing: border-box; }
 .pf button, .pf select { font: inherit; color: inherit; }
-.pf :focus-visible { outline: 3px solid rgba(45, 91, 166, .45); outline-offset: 2px; border-radius: 8px; }
+.pf :focus-visible { outline: 3px solid rgba(24,95,165,.4); outline-offset: 2px; border-radius: 7px; }
 .pf-vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* Controls bar */
+/* ── Controls bar (matches CustomerAnalytics FilterBar style) ────────────── */
 .pf-top {
   position: sticky; top: 0; z-index: 5;
-  display: flex; justify-content: flex-end; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 14px 36px;
-  background: rgba(245, 246, 248, .94); backdrop-filter: blur(6px);
+  display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 16px;
+  background: rgba(248,250,252,.94); backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--pf-border);
 }
 .pf-select { position: relative; }
 .pf-select select {
   appearance: none; -webkit-appearance: none;
-  background: var(--pf-panel); border: 1px solid var(--pf-border); border-radius: 10px;
-  padding: 9px 40px 9px 16px; font-size: 15px; font-weight: 500; min-width: 200px; cursor: pointer;
+  background: var(--pf-bg); border: 1px solid var(--pf-border2); border-radius: 7px;
+  padding: 6px 32px 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+  color: var(--pf-ink); min-width: 160px;
 }
+.pf-select select:focus { border-color: var(--pf-primary); outline: none; }
 .pf-select::after {
-  content: ''; position: absolute; right: 16px; top: 50%; width: 7px; height: 7px;
-  border-right: 1.6px solid var(--pf-muted); border-bottom: 1.6px solid var(--pf-muted);
+  content: ''; position: absolute; right: 12px; top: 50%; width: 6px; height: 6px;
+  border-right: 1.5px solid var(--pf-muted); border-bottom: 1.5px solid var(--pf-muted);
   transform: translateY(-70%) rotate(45deg); pointer-events: none;
 }
 .pf-btn {
-  background: var(--pf-panel); border: 1px solid var(--pf-border); border-radius: 10px;
-  padding: 9px 18px; font-size: 15px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  background: var(--pf-bg); border: 1px solid var(--pf-border2); border-radius: 7px;
+  padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  color: var(--pf-ink);
 }
-.pf-btn:hover:not(:disabled) { background: var(--pf-soft); }
+.pf-btn:hover:not(:disabled) { background: var(--pf-bg3); border-color: var(--pf-primary); color: var(--pf-primary); }
 .pf-btn:disabled { opacity: .6; cursor: progress; }
 .pf-btn-secondary {
-  background: #fff; border: 1px solid var(--pf-border); border-radius: 10px; padding: 8px 14px;
-  font-size: 14px; font-weight: 500; color: var(--pf-ink); text-decoration: none; white-space: nowrap;
+  background: var(--pf-bg); border: 1px solid var(--pf-border); border-radius: 7px;
+  padding: 5px 12px; font-size: 12px; font-weight: 600; color: var(--pf-ink);
+  text-decoration: none; white-space: nowrap; cursor: pointer;
 }
-.pf-btn-secondary:hover { background: var(--pf-soft); }
+.pf-btn-secondary:hover { background: var(--pf-bg3); }
+.pf-select select:disabled { cursor: not-allowed; color: var(--pf-muted); background: var(--pf-bg3); }
 
-.pf-main { padding: 30px 36px 60px; min-width: 0; container: pf-main / inline-size; }
+/* ── Page content ─────────────────────────────────────────────────────────── */
+.pf-main {
+  padding: 20px 16px 60px;
+  display: flex; flex-direction: column; gap: 20px;
+  min-width: 0;
+  container: pf-main / inline-size;
+}
+
+/* Page heading block (PageHeader component) */
+.pf-head { margin-bottom: 4px; }
 .pf-head h1 {
-  margin: 0; font-size: 29px; font-weight: 700; letter-spacing: -.01em;
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: 0; font-size: 13.5px; font-weight: 700; color: var(--pf-ink); line-height: 1.3;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
 .pf-badge {
-  font-size: 13px; font-weight: 500; background: var(--pf-soft); color: var(--pf-muted);
-  border-radius: 8px; padding: 4px 11px; letter-spacing: .02em; cursor: help;
+  font-size: 11px; font-weight: 500; background: var(--pf-bg3); color: var(--pf-muted);
+  border-radius: 6px; padding: 2px 9px; letter-spacing: .01em; cursor: help;
 }
-.pf-head p { margin: 10px 0 0; color: var(--pf-muted); font-size: 17px; }
+.pf-head p { margin: 2px 0 0; color: var(--pf-muted); font-size: 11.5px; }
+
+/* Section label above KPI rows */
 .pf-seclabel {
-  margin: 30px 0 18px; padding-bottom: 14px; border-bottom: 1px solid var(--pf-border);
-  font-size: 14px; font-weight: 600; letter-spacing: .08em; color: var(--pf-muted);
+  margin: 0 0 10px; padding-bottom: 10px; border-bottom: 1px solid var(--pf-border);
+  font-size: 10.5px; font-weight: 600; letter-spacing: .07em;
+  color: var(--pf-muted); text-transform: uppercase;
 }
 
-/* Notices */
+/* ── Notices ─────────────────────────────────────────────────────────────── */
 .pf-notice {
-  margin: 18px 0 0; padding: 12px 16px; border-radius: 10px; font-size: 14px; line-height: 1.5;
-  background: rgba(214, 69, 69, .08); border: 1px solid rgba(214, 69, 69, .35); color: #9B2C2C;
+  padding: 12px 16px; border-radius: 10px; font-size: 13px; line-height: 1.5;
+  background: var(--pf-red-bg); border: 1px solid rgba(226,75,74,.3); color: #9B2C2C;
 }
-.pf-notice.warn { background: rgba(224, 164, 58, .12); border-color: rgba(224, 164, 58, .5); color: #8A5A0B; }
+.pf-notice.warn {
+  background: var(--pf-amber-bg); border-color: rgba(217,119,6,.35); color: #92400E;
+}
 
-/* KPI cards */
-.pf-krow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 20px; }
-.pf-krow.k4 { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 20px; }
+/* ── KPI cards — match CustomerAnalytics KpiTile1/KpiTile2 exactly ──────── */
+.pf-krow { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.pf-krow.k4 { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 10px; }
 .pf-kcard {
-  background: var(--pf-panel); border: 1px solid var(--pf-border); border-radius: 14px;
-  padding: 26px; box-shadow: var(--pf-shadow); min-width: 0;
+  background: var(--pf-bg); border-radius: 10px; padding: 20px 18px;
+  box-shadow: var(--pf-shadow); border: 1px solid var(--pf-border);
+  display: flex; flex-direction: column; gap: 3px;
+  min-width: 0;
 }
-.pf-kl { font-size: 15px; color: var(--pf-muted); font-weight: 500; }
+/* Label — 11px, muted, weight 500 */
+.pf-kl { font-size: 11px; color: var(--pf-muted); font-weight: 500; line-height: 1.3; }
+/* Value — 26px bold, dark */
 .pf-kv {
-  font-size: clamp(26px, 2.3vw, 36px); font-weight: 700; line-height: 1.15;
-  margin: 12px 0 10px; letter-spacing: -.01em; font-variant-numeric: tabular-nums;
+  font-size: 26px; font-weight: 700; line-height: 1.2;
+  margin: 3px 0 0; letter-spacing: -0.3px;
+  font-variant-numeric: tabular-nums;
 }
-.pf-kv.up { color: var(--pf-pos); }
+.pf-kv.up   { color: var(--pf-pos); }
 .pf-kv.down { color: var(--pf-neg); }
-.pf-ks, .pf-kd { font-size: 15px; color: var(--pf-muted); }
-.pf-kd { margin-top: 8px; }
+/* Sub-line — 11.5px, muted */
+.pf-ks, .pf-kd { font-size: 11.5px; color: var(--pf-muted); line-height: 1.4; margin-top: 1px; }
+.pf-kd { margin-top: 5px; }
+/* Delta */
 .pf-dl { font-weight: 600; white-space: nowrap; }
-.pf-dl.up { color: var(--pf-pos); }
+.pf-dl.up   { color: var(--pf-pos); }
 .pf-dl.down { color: var(--pf-neg); }
 .pf-dl.flat { color: var(--pf-muted); }
-.pf-dl.new { color: var(--pf-muted); font-weight: 500; }
-.pf-neg { color: var(--pf-neg); }
+.pf-dl.new  { color: var(--pf-muted); font-weight: 500; }
+.pf-neg     { color: var(--pf-neg); }
 
-/* Panels */
-.pf-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 24px; margin-top: 24px; }
+/* ── Cards (Panel wrapper) — match CustomerAnalytics Card ────────────────── */
+.pf-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 20px; }
 .pf-panel {
-  background: var(--pf-panel); border: 1px solid var(--pf-border); border-radius: 16px;
-  padding: 30px 32px 26px; min-width: 0; margin: 0; box-shadow: var(--pf-shadow);
+  background: var(--pf-bg); border-radius: 12px; border: 1px solid var(--pf-border);
+  box-shadow: var(--pf-shadow); overflow: hidden;
+  padding: 16px 20px 20px; min-width: 0; margin: 0;
 }
+/* Panel title — matches CardHead in CustomerAnalytics */
 .pf-panel > h3 {
-  margin: 0; font-size: 21px; font-weight: 600;
+  margin: 0; font-size: 13.5px; font-weight: 700; color: var(--pf-ink); line-height: 1.3;
   display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-bottom: 10px; border-bottom: 1px solid var(--pf-border);
 }
-.pf-panel > .pf-sub { margin: 6px 0 18px; color: var(--pf-muted); font-size: 16px; }
-.s12 { grid-column: span 12; } .s7 { grid-column: span 7; } .s6 { grid-column: span 6; } .s5 { grid-column: span 5; }
-.s8 { grid-column: span 8; } .s4 { grid-column: span 4; }
-.pf-ch { position: relative; height: 340px; }
-.pf-ch.tall { height: 400px; }
-.pf-ch.xl { height: 480px; }
-.pf-note { color: var(--pf-muted); font-size: 14px; margin: 12px 0 0; }
-.pf-empty { color: var(--pf-muted); padding: 28px 0; text-align: center; margin: 0; }
+.pf-panel > .pf-sub {
+  margin: 6px 0 12px; color: var(--pf-muted); font-size: 11.5px;
+}
+/* Span helpers */
+.s12 { grid-column: span 12; }
+.s8  { grid-column: span 8;  }
+.s7  { grid-column: span 7;  }
+.s6  { grid-column: span 6;  }
+.s5  { grid-column: span 5;  }
+.s4  { grid-column: span 4;  }
+
+/* Chart containers */
+.pf-ch      { position: relative; height: 260px; }
+.pf-ch.tall { height: 320px; }
+.pf-ch.xl   { height: 400px; }
+
+/* Misc helpers */
+.pf-note    { color: var(--pf-muted); font-size: 11.5px; margin: 10px 0 0; }
+.pf-empty   { color: var(--pf-muted); padding: 28px 0; text-align: center; margin: 0; font-size: 13px; }
 .pf-one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pf-nowrap { white-space: nowrap; }
-.pf-stat { margin: -6px 0 16px; font-size: 15px; color: var(--pf-muted); }
-.pf-stat b { color: var(--pf-ink); font-weight: 600; }
+.pf-nowrap  { white-space: nowrap; }
+.pf-stat    { margin: -4px 0 12px; font-size: 11.5px; color: var(--pf-muted); }
+.pf-stat b  { color: var(--pf-ink); font-weight: 600; }
+.pf-muted   { color: var(--pf-muted); }
+
+/* Legend */
 .pf-legend {
-  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 18px; margin-top: 10px;
-  font: 13px 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #666;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; margin-top: 10px;
+  font-size: 11px; color: var(--pf-muted);
 }
-.pf-legend i { display: inline-block; width: 12px; height: 12px; margin-right: 6px; vertical-align: -1px; }
+.pf-legend i { display: inline-block; width: 11px; height: 11px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
 .pf-legend-note { flex-basis: 100%; text-align: center; color: var(--pf-muted); }
 
-/* Segmented toggle */
-.pf-seg { display: inline-flex; border: 1px solid var(--pf-border); border-radius: 10px; overflow: hidden; }
+/* ── Segmented toggle — matches CustomerAnalytics inline toggle ───────────── */
+.pf-seg { display: inline-flex; border: 1px solid var(--pf-border); border-radius: 7px; overflow: hidden; }
 .pf-seg button {
-  background: var(--pf-panel); border: 0; padding: 7px 14px; font-size: 14px; font-weight: 500;
-  cursor: pointer; color: var(--pf-muted);
+  background: var(--pf-bg); border: 0; padding: 4px 10px;
+  font-size: 11.5px; font-weight: 600; cursor: pointer; color: var(--pf-muted);
+  transition: all .12s;
 }
 .pf-seg button + button { border-left: 1px solid var(--pf-border); }
 .pf-seg button[aria-pressed='true'] { background: var(--pf-primary); color: #fff; }
 
-/* Tables */
+/* ── Swatch */
+.pf-sw { display: inline-block; width: 11px; height: 11px; margin-right: 8px; vertical-align: -1px; border-radius: 2px; }
+
+/* ── Tables — match CustomerAnalytics DataTable exactly ─────────────────── */
 .pf-twrap { overflow-x: auto; }
-.pf table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
-.pf th, .pf td { padding: 11px 12px; border-bottom: 1px solid var(--pf-border); text-align: left; vertical-align: middle; }
-.pf thead th {
-  font-size: 13px; color: var(--pf-muted); font-weight: 600; background: var(--pf-soft);
-  border-bottom: 0; vertical-align: bottom;
+.pf table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.pf th, .pf td {
+  padding: 10px 16px; border-bottom: 1px solid var(--pf-border);
+  text-align: left; vertical-align: middle;
 }
-.pf thead th:first-child { border-radius: 8px 0 0 8px; }
-.pf thead th:last-child { border-radius: 0 8px 8px 0; }
-.pf thead th button { background: none; border: 0; padding: 0; font-weight: 600; color: inherit; cursor: pointer; }
-.pf td.num { white-space: nowrap; }
+.pf thead th {
+  font-size: 10.5px; color: var(--pf-muted); font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em;
+  background: var(--pf-bg2); border-bottom: 2px solid var(--pf-border);
+  white-space: nowrap; user-select: none; cursor: pointer;
+}
+.pf thead th button {
+  background: none; border: 0; padding: 0;
+  font-weight: 600; font-size: inherit; color: inherit;
+  text-transform: inherit; letter-spacing: inherit;
+  cursor: pointer; font-family: inherit;
+}
 .pf th.num, .pf td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pf td.num { white-space: nowrap; }
 .pf tbody th { font-weight: 500; }
 .pf tbody td:first-child, .pf tbody th { white-space: nowrap; }
 .pf tfoot td { border-bottom: 0; border-top: 2px solid var(--pf-border); font-weight: 700; }
-.pf td small, .pf th small { display: block; color: var(--pf-muted); font-size: 12.5px; font-weight: 400; }
-.pf-sw { display: inline-block; width: 12px; height: 12px; margin-right: 10px; vertical-align: -1px; }
-.pf table.pf-mtd td b { font-size: 18px; }
+.pf td small, .pf th small { display: block; color: var(--pf-muted); font-size: 11px; font-weight: 400; }
+.pf table.pf-mtd td b { font-size: 15px; }
+
+/* Hover rows — matches CustomerAnalytics table row hover */
+.pf tbody tr:hover td { background: var(--pf-bg2); }
+
+/* Search */
 .pf-tsearch { margin-bottom: 12px; }
 .pf-tsearch input {
-  width: min(360px, 100%); background: var(--pf-panel); border: 1px solid var(--pf-border);
-  border-radius: 10px; padding: 9px 14px; font: inherit; font-size: 15px;
+  width: min(320px, 100%); background: var(--pf-bg);
+  border: 1px solid var(--pf-border); border-radius: 8px;
+  padding: 7px 12px; font: inherit; font-size: 13px; color: var(--pf-ink);
 }
-.pf-more {
-  margin-top: 14px; background: var(--pf-panel); border: 1px solid var(--pf-border); border-radius: 10px;
-  padding: 8px 14px; cursor: pointer; font-weight: 500; font-size: 14px;
-}
-.pf-more:hover { background: var(--pf-soft); }
-.pf-more-row { display: flex; align-items: center; gap: 16px; margin-top: 14px; }
-.pf-more-row .pf-more { margin-top: 0; }
-.pf-more-link { background: none; border: 0; padding: 0; color: var(--pf-primary); font-weight: 500; font-size: 14px; cursor: pointer; text-decoration: underline; }
-.pf tr.pf-clickable { cursor: pointer; }
-.pf tr.pf-clickable:hover td, .pf tr.pf-selected td { background: var(--pf-soft); }
-.pf tr.pf-clickable:focus-visible { outline: 2px solid rgba(45, 91, 166, .55); outline-offset: -2px; }
-.pf tr.pf-muted-row td { color: var(--pf-muted); font-style: italic; }
-.pf tr.pf-muted-row { cursor: default; }
-.pf tr.pf-muted-row:hover td { background: none; }
-.pf-muted { color: var(--pf-muted); }
-.pf-tag {
-  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px; background: var(--pf-soft);
-  color: var(--pf-muted); font-size: 12px; font-weight: 500; font-style: normal; vertical-align: 1px;
-}
-.pf-select select:disabled { cursor: not-allowed; color: var(--pf-muted); background: var(--pf-soft); }
+.pf-tsearch input:focus { border-color: var(--pf-primary); outline: none; }
 
-/* Routes: city filter chip under the header */
-.pf-chip-row { margin: -8px 0 22px; }
+/* Show more buttons */
+.pf-more {
+  margin-top: 12px; background: var(--pf-bg); border: 1px solid var(--pf-border);
+  border-radius: 8px; padding: 7px 20px; cursor: pointer;
+  font-weight: 600; font-size: 12.5px; color: var(--pf-primary);
+  display: inline-flex; align-items: center; gap: 6px; transition: all .15s;
+}
+.pf-more:hover { background: var(--pf-bg2); border-color: var(--pf-primary); }
+.pf-more-row { display: flex; align-items: center; gap: 16px; margin-top: 12px; }
+.pf-more-row .pf-more { margin-top: 0; }
+.pf-more-link {
+  background: none; border: 0; padding: 0; color: var(--pf-primary);
+  font-weight: 600; font-size: 12.5px; cursor: pointer; text-decoration: underline;
+}
+
+/* Clickable / selected rows */
+.pf tr.pf-clickable { cursor: pointer; }
+.pf tr.pf-clickable:hover td, .pf tr.pf-selected td { background: var(--pf-bg2); }
+.pf tr.pf-clickable:focus-visible { outline: 2px solid rgba(24,95,165,.5); outline-offset: -2px; }
+.pf tr.pf-muted-row td { color: var(--pf-muted); font-style: italic; }
+.pf tr.pf-muted-row:hover td { background: none; }
+
+/* Tag / badge inline */
+.pf-tag {
+  display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 5px;
+  background: var(--pf-bg3); color: var(--pf-muted);
+  font-size: 11px; font-weight: 500; font-style: normal; vertical-align: 1px;
+}
+.pf-new-tag {
+  display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 5px;
+  background: var(--pf-ink); color: #F5C518;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .02em; vertical-align: 1px;
+}
+
+/* ── Link button ─────────────────────────────────────────────────────────── */
+.pf-linkbtn {
+  background: none; border: 0; padding: 0; font: inherit;
+  color: inherit; cursor: pointer; text-align: left;
+}
+.pf-linkbtn:hover { color: var(--pf-primary); text-decoration: underline; }
+
+/* ── Chip filter (Routes city filter) ───────────────────────────────────── */
+.pf-chip-row { margin: -4px 0 16px; }
 .pf-chip {
-  display: inline-flex; align-items: center; gap: 10px; background: #EEF1F5; border-radius: 8px;
-  padding: 6px 8px 6px 12px; font-size: 14px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 8px;
+  background: var(--pf-bg3); border-radius: 8px;
+  padding: 4px 6px 4px 10px; font-size: 12.5px; font-weight: 500;
 }
 .pf-chip button {
-  border: 0; background: none; cursor: pointer; color: var(--pf-muted); font-size: 13px; line-height: 1;
-  padding: 3px 5px; border-radius: 6px;
+  border: 0; background: none; cursor: pointer; color: var(--pf-muted);
+  font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 5px;
 }
-.pf-chip button:hover { background: rgba(0, 0, 0, .06); color: var(--pf-ink); }
+.pf-chip button:hover { background: rgba(0,0,0,.06); color: var(--pf-ink); }
+
+/* Sparkline */
 .pf-spark { display: block; margin-left: auto; }
 
-/* Skeletons */
-.pf-skel { position: relative; overflow: hidden; background: var(--pf-soft); border-radius: 8px; }
-.pf-skel::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .6), transparent);
-  animation: pf-shimmer 1.4s infinite;
-}
-@keyframes pf-shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+/* ── Skeletons ───────────────────────────────────────────────────────────── */
+.pf-skel { position: relative; overflow: hidden; background: rgba(0,0,0,.055); border-radius: 10px; animation: caPulse 1.4s ease-in-out infinite; }
+@keyframes caPulse { 0%,100%{opacity:.55} 50%{opacity:1} }
 
-/* The two tables side by side need room; stack them when the content area (not the
-   viewport — Orbit's sidebar takes 220px) is narrower than this. */
-@container pf-main (max-width: 1480px) {
-  .pf-grid > .s5, .pf-grid > .s7 { grid-column: span 12; }
-}
-@container pf-main (max-width: 1180px) {
-  .pf-grid > .s4, .pf-grid > .s8 { grid-column: span 12; }
-}
-@media (max-width: 1280px) {
-  .pf-krow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .pf-krow.k4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .s8, .s7, .s6, .s5, .s4 { grid-column: span 12; }
-}
-@media (max-width: 900px) {
-  /* Narrow screens: the wrapped controls would cover a third of the screen if sticky. */
-  .pf-top { position: static; padding: 12px 16px; justify-content: flex-start; flex-wrap: wrap; }
-  .pf-top-row2 { justify-content: flex-start; }
-  .pf-select select { min-width: 0; }
-  .pf-main { padding: 22px 16px 48px; }
-  .pf-krow, .pf-krow.k4 { grid-template-columns: 1fr 1fr; }
-  .pf-panel { padding: 20px 18px; }
-}
-
-/* ── Profitability sidebar (Orbit's .sidebar, restyled to the Leadership screenshot) ── */
-.pf-shell { --sidebar-w: 280px; }
-.pf-shell .sidebar-nav { padding: 20px 16px; font-family: 'Montserrat', 'DM Sans', system-ui, sans-serif; }
-.pf-shell .nav-label {
-  font-size: 13px; font-weight: 600; letter-spacing: .09em; color: #5F6B7A; padding: 6px 2px 12px; text-transform: uppercase;
-}
-.pf-shell .pf-nav-list { display: flex; flex-direction: column; gap: 6px; }
-.pf-shell .pf-nav-item {
-  display: flex; align-items: center; gap: 16px; padding: 13px 18px; border-radius: 10px;
-  font-size: 17px; font-weight: 500; line-height: 1.25; color: #1B2433; text-decoration: none;
-}
-.pf-shell .pf-nav-item svg {
-  width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7;
-  stroke-linecap: round; stroke-linejoin: round; opacity: .85;
-}
-.pf-shell .pf-nav-item:hover { background: #EEF1F5; }
-.pf-shell .pf-nav-item[aria-current='page'] { background: #2D5BA6; color: #fff; }
-.pf-shell .pf-nav-item[aria-current='page'] svg { opacity: 1; }
-.pf-shell .pf-nav-item:focus-visible { outline: 3px solid rgba(45, 91, 166, .45); outline-offset: 2px; }
-
-@media (max-width: 900px) {
-  /* Sidebar becomes a horizontal row of the same items above the content. */
-  .app-shell.pf-shell { flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
-  .pf-shell .sidebar { position: static; width: 100%; min-width: 0; height: auto; border-right: 0; border-bottom: 1px solid #E3E6EB; overflow: visible; }
-  .pf-shell .sidebar-brand, .pf-shell .sidebar-footer, .pf-shell .nav-label { display: none; }
-  .pf-shell .sidebar-nav { padding: 10px 12px; }
-  .pf-shell .pf-nav-list { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
-  .pf-shell .pf-nav-item { white-space: nowrap; padding: 10px 14px; font-size: 15px; }
-  .pf-shell .main-area { margin-left: 0; }
-}
-
-/* Routes: the route-type table sits in 7/12 next to its chart; tighter cells so it fits. */
-.pf .pf-compact table { font-size: 13px; }
-.pf .pf-compact th, .pf .pf-compact td { padding: 10px 6px; }
-.pf .pf-compact tbody td:first-child { white-space: normal; min-width: 120px; }
-.pf-type { display: inline-flex; align-items: baseline; }
-.pf-type .pf-sw { flex: none; }
-/* …and stacks with its chart below the width where ten columns fit in 7/12. */
-@container pf-main (max-width: 1560px) {
-  .pf-routes .pf-grid > .s5, .pf-routes .pf-grid > .s7 { grid-column: span 12; }
-}
-
-/* Customers: "New" tag (Orbit badge style) and the customer × country heatmap */
-.pf-new-tag {
-  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px; background: #1B2433;
-  color: #F5C518; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; vertical-align: 1px;
-}
+/* ── Heatmap table (Customers page) ─────────────────────────────────────── */
 .pf table.pf-heat { border-collapse: separate; border-spacing: 0; }
 .pf table.pf-heat td {
-  border: 2px solid #fff; border-radius: 6px; font-weight: 500; font-variant-numeric: tabular-nums;
-  text-align: right; white-space: nowrap; padding: 10px 12px;
+  border: 2px solid #fff; border-radius: 4px; font-weight: 500;
+  font-variant-numeric: tabular-nums; text-align: right;
+  white-space: nowrap; padding: 8px 10px;
 }
 .pf table.pf-heat td.pf-heat-empty { color: var(--pf-muted); background: none; }
 .pf table.pf-heat tbody th { font-weight: 500; white-space: nowrap; border-bottom: 1px solid var(--pf-border); }
 .pf table.pf-heat thead th a { color: inherit; text-decoration: none; }
 .pf table.pf-heat thead th a:hover { color: var(--pf-primary); text-decoration: underline; }
-.pf-linkbtn { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
-.pf-linkbtn:hover { color: var(--pf-primary); text-decoration: underline; }
-.pf-top-row2 { flex-basis: 100%; display: flex; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
-/* Customers: 14 columns in the full-width table — slightly narrower cell padding. */
-.pf .pf-tight th, .pf .pf-tight td { padding-left: 9px; padding-right: 9px; }
+
+/* ── Compact / tight table variants ─────────────────────────────────────── */
+.pf .pf-compact table { font-size: 12px; }
+.pf .pf-compact th, .pf .pf-compact td { padding: 8px 10px; }
+.pf .pf-compact tbody td:first-child { white-space: normal; min-width: 100px; }
+.pf .pf-tight th, .pf .pf-tight td { padding-left: 10px; padding-right: 10px; }
+.pf-type { display: inline-flex; align-items: baseline; }
+.pf-type .pf-sw { flex: none; }
+
+/* Second controls row (Customers team/ctype filters) */
+.pf-top-row2 { flex-basis: 100%; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+/* ── Sidebar nav (overrides Orbit sidebar to match our tab style) ────────── */
+.pf-shell .sidebar-nav { padding: 16px 12px; font-family: var(--pf-font); }
+.pf-shell .nav-label {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .08em;
+  color: var(--pf-muted); padding: 4px 2px 10px; text-transform: uppercase;
+}
+.pf-shell .pf-nav-list { display: flex; flex-direction: column; gap: 4px; }
+.pf-shell .pf-nav-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px;
+  font-size: 13.5px; font-weight: 500; line-height: 1.25;
+  color: var(--pf-ink); text-decoration: none;
+}
+.pf-shell .pf-nav-item svg {
+  width: 18px; height: 18px; flex: none; fill: none;
+  stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; opacity: .8;
+}
+.pf-shell .pf-nav-item:hover { background: var(--pf-bg3); }
+.pf-shell .pf-nav-item[aria-current='page'] { background: var(--pf-blue-bg); color: var(--pf-primary); }
+.pf-shell .pf-nav-item[aria-current='page'] svg { opacity: 1; }
+.pf-shell .pf-nav-item:focus-visible { outline: 3px solid rgba(24,95,165,.4); outline-offset: 2px; }
+
+/* ── Responsive breakpoints ──────────────────────────────────────────────── */
+@container pf-main (max-width: 1400px) {
+  .pf-grid > .s5, .pf-grid > .s7 { grid-column: span 12; }
+}
+@container pf-main (max-width: 1100px) {
+  .pf-grid > .s4, .pf-grid > .s8 { grid-column: span 12; }
+}
+/* Routes: route-type table stacks with chart below narrower content area */
+@container pf-main (max-width: 1480px) {
+  .pf-routes .pf-grid > .s5, .pf-routes .pf-grid > .s7 { grid-column: span 12; }
+}
+
+@media (max-width: 1280px) {
+  .pf-krow     { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pf-krow.k4  { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .s8, .s7, .s6, .s5, .s4 { grid-column: span 12; }
+}
+@media (max-width: 900px) {
+  .pf-top { position: static; padding: 10px 12px; justify-content: flex-start; }
+  .pf-top-row2 { justify-content: flex-start; }
+  .pf-select select { min-width: 0; }
+  .pf-main { padding: 16px 12px 48px; gap: 16px; }
+  .pf-krow, .pf-krow.k4 { grid-template-columns: 1fr 1fr; }
+  .pf-panel { padding: 14px 16px; }
+  .pf-shell .pf-nav-item { white-space: nowrap; padding: 8px 12px; font-size: 13px; }
+}
+@media (max-width: 900px) {
+  .app-shell.pf-shell { flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
+  .pf-shell .sidebar { position: static; width: 100%; min-width: 0; height: auto; border-right: 0; border-bottom: 1px solid var(--pf-border); overflow: visible; }
+  .pf-shell .sidebar-brand, .pf-shell .sidebar-footer, .pf-shell .nav-label { display: none; }
+  .pf-shell .sidebar-nav { padding: 8px 10px; }
+  .pf-shell .pf-nav-list { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
+  .pf-shell .main-area { margin-left: 0; }
+}
