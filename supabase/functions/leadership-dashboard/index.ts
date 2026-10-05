@@ -425,29 +425,14 @@ FROM agg
 `
 }
 
-// 1.2 Q_TARGETS — profit targets from three mapping tables
-// Executive Summary uses kind='dept' only; others fetched for GEO and product-line tabs.
-// When USE_SNAP=true:
-//   - dept  targets: snap.mapping_weekly, mapping_name='profit_target_by_department'
-//   - geo   targets: snap.mapping_weekly, mapping_name='profit_target_by_geo'
-//   - pl    targets: snap.mapping_weekly, mapping_name='profit_target_by_product_line'
-// All three are pinned to the same snapshot_date so geo/pl targets are consistent with data.
-function makeQTargets(snapFilter: string | null): string {
-  const useSnap = USE_SNAP && snapFilter !== null
-
-  const deptFrom = useSnap
-    ? `(
-  SELECT
-    'dept'                                     AS kind,
-    FORMAT_DATE('%Y-%m', key_date)             AS ym,
-    key_1                                      AS dim,
-    CAST(ROUND(value_num, 2) AS FLOAT64)       AS tgt,
-    ''                                         AS notes
-  FROM \`elife-data-warehouse-prod.snap.mapping_weekly\`
-  WHERE snapshot_date = ${snapFilter}
-    AND mapping_name  = 'profit_target_by_department'
-)`
-    : `(
+// 1.2 Q_TARGETS — profit targets from three live mapping tables
+// Targets are static monthly figures set by humans — they do NOT need snapshot-pinning.
+// Reading from snap.mapping_weekly caused a one-week lag: targets added to the mapping
+// table would not appear on the dashboard until the next Monday snapshot ran.
+// Fix (2026-10-05): always read from the live mapping.* tables regardless of USE_SNAP.
+// This means targets are always current without waiting for the next snapshot.
+function makeQTargets(_snapFilter: string | null): string {
+  const deptFrom = `(
   SELECT 'dept' AS kind,
          FORMAT_DATE('%Y-%m', target_month) AS ym,
          department AS dim,
@@ -456,19 +441,7 @@ function makeQTargets(snapFilter: string | null): string {
   FROM \`elife-data-warehouse-prod.mapping.mapping_profit_target_by_department\`
 )`
 
-  const geoFrom = useSnap
-    ? `(
-  SELECT
-    'geo'                                      AS kind,
-    FORMAT_DATE('%Y-%m', key_date)             AS ym,
-    key_1                                      AS dim,
-    CAST(ROUND(value_num, 2) AS FLOAT64)       AS tgt,
-    ''                                         AS notes
-  FROM \`elife-data-warehouse-prod.snap.mapping_weekly\`
-  WHERE snapshot_date = ${snapFilter}
-    AND mapping_name  = 'profit_target_by_geo'
-)`
-    : `(
+  const geoFrom = `(
   SELECT 'geo' AS kind,
          FORMAT_DATE('%Y-%m', target_month) AS ym,
          geo AS dim,
@@ -477,19 +450,7 @@ function makeQTargets(snapFilter: string | null): string {
   FROM \`elife-data-warehouse-prod.mapping.mapping_profit_target_by_geo\`
 )`
 
-  const plFrom = useSnap
-    ? `(
-  SELECT
-    'pl'                                       AS kind,
-    FORMAT_DATE('%Y-%m', key_date)             AS ym,
-    key_1                                      AS dim,
-    CAST(ROUND(value_num, 2) AS FLOAT64)       AS tgt,
-    ''                                         AS notes
-  FROM \`elife-data-warehouse-prod.snap.mapping_weekly\`
-  WHERE snapshot_date = ${snapFilter}
-    AND mapping_name  = 'profit_target_by_product_line'
-)`
-    : `(
+  const plFrom = `(
   SELECT 'pl' AS kind,
          FORMAT_DATE('%Y-%m', target_month) AS ym,
          product_line AS dim,

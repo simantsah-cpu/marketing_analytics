@@ -35,6 +35,10 @@ const LEADERSHIP_NAV_ITEMS = [
 
 const DEST_NAV_ITEMS = []
 
+const FLEET_NAV_ITEMS = [
+  { to: '/fleet-analysis', label: 'Supply', icon: <svg className="nav-icon" viewBox="0 0 16 16" fill="none"><rect x="1" y="9" width="3" height="5" rx="1" fill="currentColor" opacity=".4"/><rect x="5.5" y="6" width="3" height="8" rx="1" fill="currentColor" opacity=".7"/><rect x="10" y="3" width="3" height="11" rx="1" fill="currentColor" opacity=".9"/><path d="M1 7l3-3 3 2 4-5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg> },
+]
+
 // Profitability sidebar — one item per built page (each later page adds its own).
 // Icons: 24px grid, outline; styled by .pf-nav-item in profitability.css.
 const PROFITABILITY_NAV_ITEMS = [
@@ -76,7 +80,8 @@ export default function Sidebar() {
   const isDestAnalysis = location.pathname.startsWith('/destination-analysis') && location.pathname !== '/destination-analysis-new'
   const isDestNew      = location.pathname === '/destination-analysis-new'
   const isProfitability = location.pathname.startsWith('/profitability')
-  const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : isDestNew ? [] : navItemsFallback(isLeadership, AFFILIATE_NAV_ITEMS)
+  const isFleetAnalysis = location.pathname.startsWith('/fleet-analysis')
+  const navItems = isReport109 ? REPORT109_NAV_ITEMS : isLLM ? LLM_NAV_ITEMS : isDestAnalysis ? DEST_NAV_ITEMS : isDestNew ? [] : isFleetAnalysis ? FLEET_NAV_ITEMS : navItemsFallback(isLeadership, AFFILIATE_NAV_ITEMS)
 
   function navItemsFallback(isLead, items) { return items }
 
@@ -98,7 +103,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="sidebar-nav" aria-label={isProfitability ? 'Profitability' : undefined}>
-        {!isDestNew && <div className="nav-label">{isReport109 ? 'Report — 109' : isLeadership ? 'Leadership' : isProfitability ? 'Profitability' : 'Dashboard'}</div>}
+        {!isDestNew && <div className="nav-label">{isReport109 ? 'Report — 109' : isLeadership ? 'Leadership' : isProfitability ? 'Profitability' : isFleetAnalysis ? 'Fleet Lifecycle' : 'Dashboard'}</div>}
         {isProfitability ? (
           <div className="pf-nav-list">
             {PROFITABILITY_NAV_ITEMS.map(item => (

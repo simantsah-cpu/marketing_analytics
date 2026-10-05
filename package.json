@@ -12,6 +12,14 @@
     "deploy:leadership": "supabase functions deploy leadership-dashboard --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
     "deploy:customer": "supabase functions deploy customer_analysis --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
     "deploy:profitability": "supabase functions deploy profitability --project-ref fpwgnceigulqonjdzfbo",
+    "deploy:fleet": "supabase functions deploy fleet-analysis --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
+    "deploy:fleet-ovd": "supabase functions deploy fleet-analysis-ovd --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
+    "deploy:fleet-drivers": "supabase functions deploy fleet-analysis-drivers --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
+    "deploy:fleet-complaints": "supabase functions deploy fleet-analysis-complaints --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
+    "deploy:fleet-airports": "supabase functions deploy fleet-analysis-airports --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
+    "deploy:fleet-cohorts": "supabase functions deploy fleet-analysis-cohorts --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
+    "deploy:fleet-performance": "supabase functions deploy fleet-analysis-performance --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
+    "deploy:fleet-geography": "supabase functions deploy fleet-analysis-geography --project-ref fpwgnceigulqonjdzfbo --no-verify-jwt",
     "test:profitability": "deno test --allow-read tests/profitability"
   },
   "dependencies": {
